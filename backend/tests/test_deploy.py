@@ -46,6 +46,13 @@ def test_pooler_transacao_usa_nullpool_sem_prepared_statements():
     eng.dispose()
 
 
+def test_espacos_e_tabulacoes_nas_variaveis_sao_ignorados(monkeypatch):
+    monkeypatch.setenv("PLAN_AMBIENTE", "\thomologacao ")
+    monkeypatch.setenv("PLAN_AUTH_MODO", " local\n")
+    s = Settings()
+    assert s.ambiente == "homologacao" and s.auth_modo == "local"
+
+
 def test_validacao_de_configuracao_em_producao():
     s = Settings(ambiente="producao", database_url="postgresql://u:p@localhost/x", jwt_secret="dev-curto")
     erros = " ".join(s.validar())

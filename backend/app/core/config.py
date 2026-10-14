@@ -48,7 +48,8 @@ def normalizar_url_banco(url: str) -> str:
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=(str(_RAIZ / ".env"), ".env"), env_prefix="PLAN_", extra="ignore", populate_by_name=True)
+    model_config = SettingsConfigDict(env_file=(str(_RAIZ / ".env"), ".env"), env_prefix="PLAN_", extra="ignore", populate_by_name=True,
+                                      str_strip_whitespace=True)  # ignora espaços/tabulações coladas por engano
 
     ambiente: str = "desenvolvimento"  # desenvolvimento | homologacao | producao | teste
     database_url: str = Field("postgresql+psycopg://plan:plan@localhost:5432/plan_horario",
