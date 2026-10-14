@@ -23,7 +23,7 @@ DO $$
 DECLARE t record;
 BEGIN
   FOR t IN SELECT tablename FROM pg_tables WHERE schemaname = 'public' LOOP
-    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', t.tablename);
+    EXECUTE 'ALTER TABLE public.' || quote_ident(t.tablename) || ' ENABLE ROW LEVEL SECURITY';
   END LOOP;
   -- Papéis da Data API do Supabase (inexistentes em PostgreSQL comum).
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN

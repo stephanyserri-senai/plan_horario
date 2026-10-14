@@ -67,7 +67,12 @@ python -m alembic current          # deve mostrar 0002 (head)
 
 As migrações rodam em transação: se falharem, nada é alterado. **Nunca** rode `alembic downgrade` em produção sem backup e revisão, pois um *downgrade* pode remover colunas.
 
-**Alternativa sem Python:** o arquivo `backend/sql/schema_completo.sql` (gerado por `scripts/gerar_sql_migracoes.sh`) contém o SQL completo para um banco **novo**. Cole-o no **SQL Editor** do Supabase. Use-o só em banco vazio; para bancos existentes, use o Alembic.
+**Alternativa sem Python (SQL Editor do Supabase), para banco NOVO:**
+
+1. cole e execute `backend/sql/schema_completo.sql` (estrutura completa; gerado por `scripts/gerar_sql_migracoes.sh`);
+2. cole e execute `backend/sql/seed_inicial.sql`. Ele traz perfis, pesos padrão e configurações e é idempotente. Também cria o **usuário de teste** `admin` / `admin@123` (apenas homologação; o `DELETE` para removê-lo está no próprio arquivo). É gerado por `scripts/gerar_seed_sql.py`.
+
+Para bancos que já têm dados, use o Alembic.
 
 ### Verificar o resultado
 

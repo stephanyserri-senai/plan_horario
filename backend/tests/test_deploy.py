@@ -116,16 +116,26 @@ def test_sql_offline_das_migracoes_reproduz_banco_novo():
     assert r.returncode == 0, r.stderr[-1500:]
     sql = r.stdout
     assert "EXCLUDE USING gist" in sql and "ENABLE ROW LEVEL SECURITY" in sql
+    assert "%%" not in sql  # editores SQL (Supabase) não convertem '%%'
+    assert sql == (RAIZ / "backend" / "sql" / "schema_completo.sql").read_text(), "regenere com scripts/gerar_sql_migracoes.sh"
     nome = f"plan_sqlcheck_{uuid.uuid4().hex[:6]}"
     from sqlalchemy import create_engine
     adm = create_engine(base + "/postgres", isolation_level="AUTOCOMMIT")
     with adm.connect() as c:
         c.execute(text(f"CREATE DATABASE {nome}"))
     try:
+        # Executa o texto EXATAMENTE como um editor SQL (sem interpretação de '%' pelo driver).
+        import psycopg
+        dsn = f"{base}/{nome}".replace("postgresql+psycopg://", "postgresql://")
+        with psycopg.connect(dsn, autocommit=True) as conn:
+            conn.execute(sql.encode())
+            conn.execute((RAIZ / "backend" / "sql" / "seed_inicial.sql").read_bytes())
+            conn.execute((RAIZ / "backend" / "sql" / "seed_inicial.sql").read_bytes())  # idempotente
         eng = create_engine(f"{base}/{nome}")
-        with eng.begin() as c:
-            c.exec_driver_sql(sql)
         with eng.connect() as c:
+            assert c.scalar(text("SELECT count(*) FROM usuarios WHERE email = 'admin'")) == 1
+            assert c.scalar(text("SELECT count(*) FROM pg_class cl JOIN pg_namespace n ON n.oid = cl.relnamespace "
+                                 "WHERE n.nspname = 'public' AND cl.relkind = 'r' AND NOT cl.relrowsecurity")) == 0
             assert c.scalar(text("SELECT version_num FROM alembic_version")) == "0002"
             assert c.scalar(text("SELECT count(*) FROM pg_constraint WHERE conname LIKE 'excl_alocacao_%'")) == 3
         eng.dispose()
