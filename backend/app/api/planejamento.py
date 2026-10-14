@@ -483,3 +483,79 @@ def obter_execucao(eid: int, ctx: Contexto = Depends(requer("alocacoes.ler")), d
 
 
 _ = (minutos, Query, datetime)
+
+
+# =============================================================================
+# Processamento em segundo plano (fila) e primeiros passos
+# =============================================================================
+def _pendentes(db: Session) -> dict:
+    from app.models import SimulacaoCapacidade
+    ex = db.scalars(select(ExecucaoOtimizacao).where(ExecucaoOtimizacao.status.in_(["pendente", "executando"]))).all()
+    sims = db.scalars(select(SimulacaoCapacidade).where(SimulacaoCapacidade.status.in_(["pendente", "executando"]),
+                                                       SimulacaoCapacidade.tipo == "completa")).all()
+    datas = [e.criado_em for e in ex if getattr(e, "criado_em", None)] + [s.criado_em for s in sims if getattr(s, "criado_em", None)]
+    mais_antigo = min(datas) if datas else None
+    return {"execucoes": len(ex), "simulacoes": len(sims),
+            "espera_min": round((db.scalar(select(func.localtimestamp())) - mais_antigo).total_seconds() / 60, 1) if mais_antigo else 0}
+
+
+@router.get("/processamento")
+def status_processamento(ctx: Contexto = Depends(get_contexto), db: Session = Depends(get_db)):
+    """Situação do processamento de gerações/simulações, em linguagem simples."""
+    from app.core.config import get_settings
+    from app.models import Configuracao
+    from app.services import acionador
+    s = get_settings()
+    p = _pendentes(db)
+    w = db.get(Configuracao, "worker_status")
+    return {"modo": s.modo_executor, "acionamento_automatico": acionador.configurado() if s.modo_executor == "fila" else True,
+            "pendentes": p, "worker": w.valor if w else None}
+
+
+@router.post("/processamento/acionar")
+def acionar_processamento(ctx: Contexto = Depends(get_contexto), db: Session = Depends(get_db)):
+    """Botão "Processar agora": aciona o serviço de otimização para a fila atual."""
+    if not (ctx.pode("otimizacao.executar") or ctx.pode("simulacao.executar")):
+        raise AcessoNegado("Seu perfil não pode iniciar processamentos.")
+    from app.services import acionador
+    r = acionador.acionar_worker(forcar=True)
+    msgs = {
+        "acionado": "Processamento iniciado. Em geral leva de 2 a 5 minutos; esta página atualiza sozinha.",
+        "nao_aplicavel": "Neste ambiente o processamento já é automático.",
+        "nao_configurado": "O início automático não está configurado neste servidor. O processamento acontece "
+                           "automaticamente a cada ~15 minutos. Peça ao administrador para configurar PLAN_GITHUB_TOKEN (ver DEPLOY.md).",
+        "falhou": "Não foi possível iniciar agora. O processamento automático periódico (a cada ~15 min) continuará tentando.",
+    }
+    return {"resultado": r, "mensagem": msgs.get(r, msgs["falhou"])}
+
+
+@router.get("/primeiros-passos")
+def primeiros_passos(cenario_id: int | None = None, ctx: Contexto = Depends(get_contexto), db: Session = Depends(get_db)):
+    """Checklist do que falta cadastrar para gerar a grade (contagens simples)."""
+    from app.models import Curso, Unidade
+
+    def cont(modelo, *filtros):
+        q = select(func.count()).select_from(modelo)
+        if hasattr(modelo, "ativo"):
+            q = q.where(modelo.ativo.is_(True))
+        for f in filtros:
+            q = q.where(f)
+        return db.scalar(q) or 0
+    alocs = cont(Alocacao, Alocacao.cenario_id == cenario_id, Alocacao.status != "cancelada") if cenario_id else 0
+    turmas = cont(Turma, Turma.simulacao_id.is_(None))
+    turma_ucs = db.scalar(select(func.count()).select_from(TurmaUC).join(Turma).where(TurmaUC.ativo.is_(True), Turma.ativo.is_(True),
+                                                                                       Turma.simulacao_id.is_(None))) or 0
+    passos = [
+        {"chave": "unidades", "titulo": "Cadastrar a unidade (escola)", "qtd": cont(Unidade), "link": "/cadastros/unidades"},
+        {"chave": "turnos", "titulo": "Definir turnos e horários de aula", "qtd": cont(PeriodoHorario), "link": "/cadastros/turnos"},
+        {"chave": "ambientes", "titulo": "Cadastrar salas e laboratórios", "qtd": cont(Ambiente), "link": "/cadastros/ambientes"},
+        {"chave": "cursos", "titulo": "Cadastrar cursos e matrizes", "qtd": cont(Curso), "link": "/cadastros/cursos"},
+        {"chave": "ucs", "titulo": "Cadastrar unidades curriculares (disciplinas)", "qtd": cont(UnidadeCurricular), "link": "/cadastros/ucs"},
+        {"chave": "instrutores", "titulo": "Cadastrar instrutores e o que cada um pode ministrar", "qtd": cont(Instrutor), "link": "/cadastros/instrutores"},
+        {"chave": "turmas", "titulo": "Cadastrar turmas (com as disciplinas a ofertar)", "qtd": min(turmas, turma_ucs), "link": "/cadastros/turmas"},
+        {"chave": "cenario", "titulo": "Criar o cenário (período letivo a planejar)", "qtd": cont(CenarioPlanejamento), "link": "/planejamento"},
+        {"chave": "grade", "titulo": "Gerar os horários", "qtd": alocs, "link": "/geracao"},
+    ]
+    for p in passos:
+        p["feito"] = p["qtd"] > 0
+    return {"passos": passos, "concluidos": sum(p["feito"] for p in passos), "total": len(passos)}

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { api, dataBR, qs } from "../api";
-import { Abas, Badge, Campo, Card, Erro, EstadoCenario, Json, Modal, OcorrenciasLista, Pagina, Tabela, useCarregar } from "../components/ui";
+import { Abas, Badge, Campo, Card, AntesDepois, Erro, EstadoCenario, Modal, ResumoTabela, rotulo, OcorrenciasLista, Pagina, Tabela, useCarregar } from "../components/ui";
 import { useApp } from "../contexto";
 import { useOpcoes } from "../hooks";
 
@@ -84,7 +84,9 @@ function Cenarios() {
         {impacto && <>
           <p>{impacto.adicionadas} aula(s) adicionada(s), {impacto.removidas} removida(s), {impacto.alteradas} alterada(s).</p>
           <p><b>Turmas afetadas:</b> {impacto.recursos_afetados.turmas.join(", ") || "—"} · <b>Instrutores:</b> {impacto.recursos_afetados.instrutores.join(", ") || "—"} · <b>Ambientes:</b> {impacto.recursos_afetados.ambientes.join(", ") || "—"}</p>
-          <Json dados={impacto.detalhes.alteradas.slice(0, 50)} />
+          {impacto.detalhes.alteradas.length > 0 && <Tabela colunas={[{ chave: "data", rotulo: "Data", render: (x: any) => dataBR(x.data) }, { chave: "inicio", rotulo: "Horário" },
+            { chave: "m", rotulo: "O que mudou", render: (x: any) => Object.keys(x.mudancas || {}).map((k) => rotulo(k)).join(", ") }]}
+            linhas={impacto.detalhes.alteradas.slice(0, 50)} chave={(_x, i) => i} />}
         </>}
       </Modal>
     </>
@@ -116,22 +118,44 @@ function Oferta() {
   );
 }
 
+const LIMITANTE: Record<string, string> = {
+  instrutor: "Falta de instrutor habilitado ou disponível", ambiente: "Falta de sala/laboratório compatível ou livre", turma: "A turma não tem horários livres",
+  "combinação": "Poucos horários em que turma, instrutor e sala estão livres ao mesmo tempo", nenhum: "Competição com outras aulas pelos mesmos horários",
+};
+
+function Alternativa({ a }: { a: any }) {
+  const itens: any[] = Array.isArray(a.itens) ? a.itens : [];
+  if (a.gargalo) return null; // tratado em tabela própria
+  return (
+    <li>{a.descricao || rotulo(a.tipo || "")}
+      {itens.length > 0 && typeof itens[0] === "string" && <div className="chips">{itens.map((x: string) => <span key={x} className="chip">{x}</span>)}</div>}
+      {itens.length > 0 && typeof itens[0] === "object" && <Tabela colunas={[{ chave: "data", rotulo: "Dia", render: (it: any) => dataBR(it.data) }, { chave: "h", rotulo: "Horário", render: (it: any) => `${it.inicio}–${it.fim}` },
+        { chave: "i", rotulo: "Instrutores livres", render: (it: any) => it.instrutores?.join(", ") }, { chave: "a", rotulo: "Salas livres", render: (it: any) => it.ambientes?.join(", ") }]}
+        linhas={itens.slice(0, 10)} chave={(_it, k) => k} />}
+    </li>
+  );
+}
+
 export function Recomendacao({ r }: { r: any }) {
+  const alts: any[] = Array.isArray(r.alternativas) ? r.alternativas : [];
+  const gargalos = alts.filter((a) => a.gargalo);
+  const comDescricao = alts.filter((a) => !a.gargalo && (a.descricao || a.itens));
+  const linhas = alts.filter((a) => !a.gargalo && !a.descricao && !a.itens);
   return (
     <div className="recomendacao">
       <h3>{r.pergunta}</h3>
-      {r.problema && <p><b>Problema identificado:</b> {r.problema}</p>}
-      {r.recurso_limitante && <p><b>Recurso limitante:</b> {r.recurso_limitante}</p>}
-      <details open><summary>Dados utilizados</summary><Json dados={r.dados_utilizados} /></details>
-      {Array.isArray(r.alternativas) && r.alternativas.length > 0 && <div><b>Alternativas propostas:</b>
-        <ul>{r.alternativas.map((a: any, i: number) => <li key={i}>{a.descricao || a.tipo || a.gargalo || JSON.stringify(a).slice(0, 200)}
-          {Array.isArray(a.itens) && <ul>{a.itens.slice(0, 10).map((it: any, k: number) => <li key={k}>{typeof it === "string" ? it : `${dataBR(it.data)} ${it.inicio}–${it.fim}: ${it.instrutores?.join(", ")} · ${it.ambientes?.join(", ")}`}</li>)}</ul>}
-          {Array.isArray(a.ambientes_compativeis_ociosos) && a.ambientes_compativeis_ociosos.length > 0 && <div>Ambientes compatíveis ociosos: {a.ambientes_compativeis_ociosos.map((x: any) => `${x.codigo} (${x.horas_ociosas} h)`).join(", ")}</div>}
-        </li>)}</ul></div>}
-      {r.restricoes_atendidas && <p><b>Restrições atendidas:</b> {r.restricoes_atendidas}</p>}
-      {r.impacto && <p><b>Impacto estimado:</b> {r.impacto}</p>}
-      {(r.antes || r.depois) && <div className="grid-2"><Card titulo="Antes"><Json dados={r.antes} /></Card><Card titulo="Depois"><Json dados={r.depois} /></Card></div>}
-      {r.limitacoes && <p className="sub"><b>Limitações e ressalvas:</b> {r.limitacoes}</p>}
+      {r.problema && <p><b>O que aconteceu:</b> {r.problema}</p>}
+      {r.recurso_limitante && <p><b>Principal causa:</b> {LIMITANTE[r.recurso_limitante] || r.recurso_limitante}</p>}
+      {r.impacto && <p><b>Resultado:</b> {r.impacto}</p>}
+      {(comDescricao.length > 0 || gargalos.length > 0 || linhas.length > 0) && <h4>O que você pode fazer</h4>}
+      {comDescricao.length > 0 && <ul>{comDescricao.map((a, i) => <Alternativa key={i} a={a} />)}</ul>}
+      {gargalos.length > 0 && <Tabela colunas={[{ chave: "gargalo", rotulo: "Onde falta capacidade" }, { chave: "deficit_h", rotulo: "Falta (h/semana)", alinhar: "dir" },
+        { chave: "o", rotulo: "Salas compatíveis com horário sobrando", render: (g: any) => g.ambientes_compativeis_ociosos?.length ? g.ambientes_compativeis_ociosos.map((x: any) => `${x.codigo} (${x.horas_ociosas} h livres)`).join(", ") : "nenhuma" }]}
+        linhas={gargalos} chave={(_g, i) => i} />}
+      {linhas.length > 0 && <ResumoTabela dados={linhas} />}
+      {r.depois ? <AntesDepois antes={r.antes} depois={r.depois} /> : null}
+      {r.restricoes_atendidas && <p className="sub">✔ {r.restricoes_atendidas}</p>}
+      {r.limitacoes && <p className="sub"><b>Observação:</b> {r.limitacoes}</p>}
     </div>
   );
 }
@@ -182,8 +206,9 @@ function Versoes() {
       <Modal titulo="Comparação entre versões" aberto={!!comp} fechar={() => setComp(null)} largo>
         {comp && <>
           <p>v{comp.versao_a.numero} → v{comp.versao_b.numero}: <b>{comp.adicionadas}</b> adicionada(s), <b>{comp.removidas}</b> removida(s), <b>{comp.alteradas}</b> alterada(s).</p>
-          <div className="grid-2"><Card titulo={`Indicadores v${comp.versao_a.numero}`}><Json dados={comp.versao_a.indicadores} /></Card><Card titulo={`Indicadores v${comp.versao_b.numero}`}><Json dados={comp.versao_b.indicadores} /></Card></div>
-          <Json dados={comp.recursos_afetados} />
+          <AntesDepois antes={comp.versao_a.indicadores} depois={comp.versao_b.indicadores} rotuloA={`Versão ${comp.versao_a.numero}`} rotuloB={`Versão ${comp.versao_b.numero}`} />
+          <ResumoTabela dados={Object.fromEntries(Object.entries(comp.recursos_afetados || {}).map(([k, v]: any) => [k, Array.isArray(v) ? v.length : v]))} />
+          <p className="sub">Acima: quantidade de turmas, instrutores e salas afetados pela diferença entre as versões.</p>
         </>}
       </Modal>
     </>

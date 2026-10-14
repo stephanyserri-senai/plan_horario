@@ -141,7 +141,11 @@ def despachar(execucao_id: int, ctx=None, forcar_sincrono: bool = False) -> str:
         executar(execucao_id, ctx)
     elif modo == "thread":
         submeter(execucao_id)
-    # modo "fila": o job fica 'pendente' até um worker (python -m app.worker) reivindicá-lo
+    else:
+        # modo "fila": o job fica 'pendente' até um worker (python -m app.worker) reivindicá-lo;
+        # se configurado, o worker do GitHub Actions é acionado na hora.
+        from app.services.acionador import acionar_worker
+        acionar_worker()
     return modo
 
 

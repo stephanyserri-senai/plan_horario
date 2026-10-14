@@ -78,6 +78,8 @@ Todos os nomes, com exemplos, estão em [`.env.example`](.env.example).
 | `PLAN_JWT_SECRET` | ✔ se `local` | — | **segredo** | 32+ caracteres aleatórios |
 | `PLAN_URL_PUBLICA` | ✔ | — | público | URL do site (links de convite e recuperação) |
 | `PLAN_EXECUTOR` | `fila` | `fila` | — | na Vercel o padrão (`auto`) já resulta em `fila` |
+| `PLAN_GITHUB_TOKEN` | recomendado | — | **segredo** | inicia o worker do GitHub Actions na hora (ver seção 5, Opção A) |
+| `PLAN_GITHUB_REPO`, `PLAN_GITHUB_REF` | opcional | — | — | `dono/repositorio` e branch; vazio = detectados automaticamente na Vercel |
 | `PLAN_CORS_ORIGENS` | opcional | — | — | só se outro domínio consumir a API |
 | `PLAN_LOG_LEVEL` | opcional | opcional | — | `INFO` |
 | `PLAN_SOLVER_THREADS`, `PLAN_SOLVER_LIMITE_MAX_S` | — | ✔ | — | ajuste à CPU do worker |
@@ -103,9 +105,17 @@ Para economizar minutos, ele primeiro consulta a fila e só instala o OR-Tools e
      `postgresql://postgres.<ref>:<senha>@aws-1-<regiao>.pooler.supabase.com:5432/postgres`
 2. Opcional, na aba **Variables**: `PLAN_AMBIENTE` (padrão `homologacao`) e `PLAN_AUTH_MODO` (padrão `local`).
 3. Para testar, rode **Run workflow** e confira o log do passo "Há jobs na fila?".
+4. **Início imediato (recomendado — o planejador nunca precisa abrir o GitHub):**
+   1. GitHub → foto do perfil → **Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token**.
+   2. *Repository access*: **Only select repositories** → este repositório.
+   3. *Permissions → Repository permissions → Actions*: **Read and write** (nada além disso).
+   4. Defina uma validade (ex.: 1 ano) e gere o token.
+   5. Vercel → Settings → Environment Variables: `PLAN_GITHUB_TOKEN` = o token (marque *Sensitive*) → **Redeploy**.
+
+   Com isso, ao clicar em **Gerar horários** ou **Montar grade de teste**, a API dispara o workflow na hora e o resultado aparece em cerca de 2–5 minutos. Se o disparo falhar, nada se perde: o job continua na fila e o agendamento a cada ~15 min o processa. A tela mostra "Processar agora" se a espera passar do normal. O token fica só no servidor (nunca vai ao navegador) e só consegue disparar workflows deste repositório.
 
 **Limitações:**
-* a geração não é imediata (espera de até cerca de 15–20 minutos, ou o disparo manual);
+* sem `PLAN_GITHUB_TOKEN`, a geração não é imediata (espera de até cerca de 15–20 minutos);
 * repositórios privados têm cota mensal de minutos gratuitos;
 * execuções agendadas só ocorrem na branch padrão e são suspensas após 60 dias sem atividade no repositório.
 

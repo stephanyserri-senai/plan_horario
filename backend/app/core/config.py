@@ -84,6 +84,13 @@ class Settings(BaseSettings):
     worker_intervalo_s: float = 5.0
     worker_heartbeat_expira_s: int = 300
 
+    # Acionamento automático do worker no GitHub Actions (somente servidor; NUNCA no frontend).
+    # Token fine-grained com permissão "Actions: Read and write" apenas neste repositório.
+    github_token: str = ""
+    github_repo: str = ""  # dono/repositorio; vazio = detectado na Vercel (VERCEL_GIT_REPO_OWNER/SLUG)
+    github_ref: str = ""  # branch; vazio = branch do deploy (VERCEL_GIT_COMMIT_REF) ou main
+    github_workflow: str = "worker.yml"
+
     limite_upload_mb: float = 20.0
     log_level: str = "INFO"
 

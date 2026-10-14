@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { api } from "../api";
-import { Abas, Campo, Card, Erro, Pagina, Tabela, useCarregar } from "../components/ui";
+import { Abas, Campo, Card, Erro, fmt, Pagina, Tabela, useCarregar } from "../components/ui";
 import { useApp } from "../contexto";
 import { ListaEntidade, useMeta } from "./Cadastro";
 
@@ -81,7 +81,7 @@ function Aprendizado() {
       </Card>}
       <Card titulo="Registros de decisão (revise antes de incluir no treinamento)">
         <Tabela colunas={[{ chave: "id", rotulo: "#" }, { chave: "tipo", rotulo: "Tipo" }, { chave: "motivo", rotulo: "Motivo" }, { chave: "criado_em", rotulo: "Quando", render: (r: any) => new Date(r.criado_em).toLocaleString("pt-BR") },
-          { chave: "dados", rotulo: "Dados", render: (r: any) => <small>{JSON.stringify(r.dados).slice(0, 120)}</small> },
+          { chave: "dados", rotulo: "Dados", render: (r: any) => <small>{fmt(r.dados)}</small> },
           { chave: "incluir_treinamento", rotulo: "Incluir no treino", render: (r: any) => <input type="checkbox" aria-label="Incluir no treinamento" checked={r.incluir_treinamento}
             onChange={async (e) => { await api.put(`/api/aprendizado/registros/${r.id}`, { incluir_treinamento: e.target.checked }); regs.recarregar(); av.recarregar(); }} /> },
           { chave: "x", rotulo: "", render: (r: any) => <button className="btn-link" onClick={async () => { await api.del(`/api/aprendizado/registros/${r.id}`); regs.recarregar(); }}>Excluir</button> }]}

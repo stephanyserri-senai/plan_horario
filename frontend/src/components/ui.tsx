@@ -139,7 +139,7 @@ export function fmt(v: any): ReactNode {
   if (v === null || v === undefined || v === "") return <span className="mudo">—</span>;
   if (typeof v === "boolean") return v ? "Sim" : "Não";
   if (Array.isArray(v)) return v.join(", ");
-  if (typeof v === "object") return JSON.stringify(v);
+  if (typeof v === "object") return valorSimples(v);
   return String(v);
 }
 
@@ -212,6 +212,56 @@ export function Selecao({ valor, mudar, opcoes, vazio, rotulo, id }: {
   );
 }
 
-export function Json({ dados }: { dados: any }) {
-  return <pre className="json">{JSON.stringify(dados, null, 2)}</pre>;
+// --------------------------------------------------------------------------
+// Exibição amigável de resultados (sem JSON): rótulos em português e tabelas.
+const ROTULOS: Record<string, string> = {
+  restante_h: "Carga horária ainda sem horário (h)", deficit_total_h: "Falta de capacidade (h/semana)", deficit_ambientes_h: "Falta de salas/laboratórios (h/semana)",
+  deficit_h: "Falta (h/semana)", gargalos: "Gargalos", total_gargalos: "Gargalos", taxa_ocupacao_ambientes_pct: "Ocupação das salas (%)",
+  taxa_ocupacao_instrutores_pct: "Ocupação dos instrutores (%)", aulas: "Aulas", total_aulas: "Aulas", horas_programadas: "Horas programadas",
+  turmas: "Turmas", instrutores: "Instrutores", ambientes: "Salas/laboratórios", ucs: "Unidades curriculares", conflitos: "Conflitos",
+  bloqueios: "Bloqueios", alertas: "Alertas", janelas: "Janelas (horários vagos entre aulas)", turma: "Turma", uc: "Unidade curricular",
+  data: "Data", inicio: "Início", fim: "Fim", data_limite: "Prazo", risco: "Risco", capacidade_restante_estimada_h: "Capacidade restante estimada (h)",
+  cenario_id: "Cenário", valor: "Valor", unidade: "Unidade de medida", pontuacao_total: "Pontuação total (menor é melhor)",
+  alto: "Risco alto", medio: "Risco médio", baixo: "Risco baixo", sem_risco: "Sem risco", demanda_h: "Demanda (h/semana)", capacidade_h: "Capacidade (h/semana)",
+  viabilidade_estimada: "Viabilidade estimada", aulas_criadas: "Aulas criadas", turmas_ucs: "Turmas × UCs", mudancas: "Mudanças",
+  instrutor_id: "Instrutor", ambiente_id: "Sala/laboratório", grupo: "Grupo", descricao: "Descrição", tipo: "Tipo",
+};
+export function rotulo(k: string): string {
+  if (ROTULOS[k]) return ROTULOS[k];
+  let t = k.replace(/_pct$/, " (%)").replace(/_h$/, " (h)").replace(/_s$/, " (s)").replace(/_/g, " ");
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+function valorSimples(v: any): ReactNode {
+  if (v === null || v === undefined || v === "") return <span className="mudo">—</span>;
+  if (typeof v === "boolean") return v ? "Sim" : "Não";
+  if (typeof v === "number") return Number.isInteger(v) ? v.toLocaleString("pt-BR") : v.toLocaleString("pt-BR", { maximumFractionDigits: 1 });
+  if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v)) return `${v.slice(8, 10)}/${v.slice(5, 7)}/${v.slice(0, 4)}`;
+  if (Array.isArray(v) && v.length === 0) return <span className="mudo">—</span>;
+  if (Array.isArray(v)) return v.every((x) => typeof x !== "object") ? v.map((x) => valorSimples(x)).reduce((a: any, b: any) => [a, ", ", b]) || "—" : `${v.length} item(ns)`;
+  if (typeof v === "object") return Object.entries(v).filter(([, x]) => typeof x !== "object" || x === null).map(([k, x]) => `${rotulo(k)}: ${x ?? "—"}`).join(" · ");
+  return String(v);
+}
+/** Tabela "Item | Valor" para um objeto, ou tabela de linhas para uma lista de objetos. */
+export function ResumoTabela({ dados, vazio }: { dados: any; vazio?: string }) {
+  if (dados === null || dados === undefined || (Array.isArray(dados) && dados.length === 0)) return <p className="mudo">{vazio || "Nada a mostrar."}</p>;
+  if (Array.isArray(dados)) {
+    if (dados.every((x) => typeof x !== "object" || x === null)) return <ul>{dados.map((x, i) => <li key={i}>{valorSimples(x)}</li>)}</ul>;
+    const chaves = [...new Set(dados.flatMap((x) => Object.keys(x || {})))].filter((k) => !k.endsWith("_id") && k !== "id" && k !== "chave");
+    return <Tabela colunas={chaves.map((k) => ({ chave: k, rotulo: rotulo(k), render: (l: any) => valorSimples(l[k]) }))} linhas={dados} chave={(_l, i) => i} />;
+  }
+  if (typeof dados !== "object") return <p>{valorSimples(dados)}</p>;
+  const linhas = Object.entries(dados).filter(([k, v]) => !k.endsWith("_id") && k !== "id" && !(Array.isArray(v) && v.some((x) => typeof x === "object")));
+  return <Tabela colunas={[{ chave: "k", rotulo: "Item", render: (l: any) => rotulo(l.k) }, { chave: "v", rotulo: "Valor", alinhar: "dir", render: (l: any) => valorSimples(l.v) }]}
+    linhas={linhas.map(([k, v]) => ({ k, v }))} chave={(l) => l.k} />;
+}
+/** Comparação lado a lado: Indicador | Antes | Depois. */
+export function AntesDepois({ antes, depois, rotuloA = "Antes", rotuloB = "Depois" }: { antes: any; depois: any; rotuloA?: string; rotuloB?: string }) {
+  const simples = (o: any) => Object.fromEntries(Object.entries(o || {}).filter(([k, v]) => !k.endsWith("_id") && (typeof v !== "object" || v === null)));
+  const a = simples(antes), b = simples(depois);
+  const chaves = [...new Set([...Object.keys(a), ...Object.keys(b)])];
+  if (!chaves.length) return null;
+  return <Tabela colunas={[{ chave: "k", rotulo: "Indicador", render: (l: any) => rotulo(l.k) },
+    { chave: "a", rotulo: rotuloA, alinhar: "dir", render: (l: any) => valorSimples(a[l.k]) },
+    ...(depois ? [{ chave: "b", rotulo: rotuloB, alinhar: "dir" as const, render: (l: any) => valorSimples(b[l.k]) }] : [])]}
+    linhas={chaves.map((k) => ({ k }))} chave={(l) => l.k} />;
 }

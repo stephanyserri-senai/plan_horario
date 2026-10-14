@@ -3,6 +3,7 @@ import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Too
 import { api, dataBR, qs } from "../api";
 import { Badge, Card, Kpi, Modal, Pagina, Tabela, useCarregar } from "../components/ui";
 import { useApp } from "../contexto";
+import { PrimeirosPassos } from "../components/PrimeirosPassos";
 
 const COR = "var(--grafico-1)";
 
@@ -15,7 +16,7 @@ export default function Dashboard() {
   const inst = useCarregar(() => cenario ? api.get(`/api/indicadores/institucionais${qs(p)}`) : Promise.resolve(null), [cenario?.id, inicio, fim]);
   const amb = useCarregar(() => cenario ? api.get(`/api/indicadores/ambientes${qs(p)}`) : Promise.resolve(null), [cenario?.id, inicio, fim]);
   const ins = useCarregar(() => cenario ? api.get(`/api/indicadores/instrutores${qs(p)}`) : Promise.resolve(null), [cenario?.id, inicio, fim]);
-  if (!cenario) return <Pagina titulo="Dashboard"><p>Nenhum cenário cadastrado. Crie um cenário em Planejamento.</p></Pagina>;
+  if (!cenario) return <Pagina titulo="Início"><PrimeirosPassos /><p>Nenhum cenário cadastrado. Crie um cenário (o período letivo a planejar) em <b>Planejamento → Cenários</b>.</p></Pagina>;
   const d = inst.dados;
   const a = amb.dados;
   const i = ins.dados;
@@ -31,11 +32,12 @@ export default function Dashboard() {
     { chave: "capacidade_restante_estimada_h", rotulo: "Capacidade até o prazo (h)", alinhar: "dir" as const }, { chave: "data_limite", rotulo: "Prazo", render: (l: any) => dataBR(l.data_limite) },
     { chave: "risco_atraso", rotulo: "Risco", render: (l: any) => <Badge tipo={l.risco_atraso === "alto" ? "bloqueio" : "alerta"}>{l.risco_atraso}</Badge> }];
   return (
-    <Pagina titulo="Dashboard" descricao={`Indicadores calculados a partir das aulas gravadas no cenário “${cenario.nome}”. Clique em um indicador para ver o detalhamento.`}
+    <Pagina titulo="Início" descricao={`Visão geral do cenário “${cenario.nome}”. Clique em um indicador para ver os detalhes.`}
       acoes={<div className="filtros">
         <label>Início <input type="date" value={inicio} onChange={(e) => setInicio(e.target.value)} /></label>
         <label>Fim <input type="date" value={fim} onChange={(e) => setFim(e.target.value)} /></label>
       </div>}>
+      <PrimeirosPassos />
       {(inst.erro || amb.erro) && <div className="erro-box">{inst.erro || amb.erro}</div>}
       {(inst.carregando && !d) && <p role="status">Calculando indicadores…</p>}
       {d && a && i && <>

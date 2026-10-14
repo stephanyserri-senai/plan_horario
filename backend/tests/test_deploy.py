@@ -353,3 +353,73 @@ def test_env_example_legivel_e_sem_segredos_reais():
     texto = (RAIZ / ".env.example").read_text()
     assert "eyJhbGciOi" not in texto and "sb_secret_" not in texto
     assert s.supabase_jwt_secret == "" and s.supabase_service_role_key == ""
+
+
+# ------------------------------------------------------------------ acionamento automático e primeiros passos
+def _login(c):
+    return {"Authorization": "Bearer " + c.post("/api/auth/login", json={"email": "admin@teste", "senha": "senha-forte-1"}).json()["token"]}
+
+
+def test_acionamento_do_worker_no_github(monkeypatch):
+    """Com PLAN_GITHUB_TOKEN, a fila dispara o workflow na hora; sem token, nada é chamado."""
+    from app.services import acionador
+    chamadas = []
+
+    class Resp:
+        status = 204
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    def falso_urlopen(req, timeout=None):
+        chamadas.append((req.full_url, req.headers.get("Authorization"), req.data))
+        return Resp()
+    monkeypatch.setattr(acionador.urllib.request, "urlopen", falso_urlopen)
+    monkeypatch.setenv("PLAN_EXECUTOR", "fila")
+    monkeypatch.delenv("PLAN_GITHUB_TOKEN", raising=False)
+    get_settings.cache_clear()
+    try:
+        assert acionador.acionar_worker(forcar=True) == "nao_configurado" and not chamadas
+        monkeypatch.setenv("PLAN_GITHUB_TOKEN", "tok-teste")
+        monkeypatch.setenv("VERCEL_GIT_REPO_OWNER", "dono")
+        monkeypatch.setenv("VERCEL_GIT_REPO_SLUG", "repo")
+        monkeypatch.setenv("VERCEL_GIT_COMMIT_REF", "principal")
+        get_settings.cache_clear()
+        assert acionador.acionar_worker(forcar=True) == "acionado"
+        url, auth, corpo = chamadas[-1]
+        assert url == "https://api.github.com/repos/dono/repo/actions/workflows/worker.yml/dispatches"
+        assert auth == "Bearer tok-teste" and b'"principal"' in corpo
+        assert acionador.acionar_worker() == "recente" and len(chamadas) == 1  # sem rajadas
+
+        def erro(req, timeout=None):
+            raise acionador.urllib.error.HTTPError(req.full_url, 401, "x", {}, None)
+        monkeypatch.setattr(acionador.urllib.request, "urlopen", erro)
+        assert acionador.acionar_worker(forcar=True) == "falhou"
+    finally:
+        get_settings.cache_clear()
+
+
+def test_token_do_github_nao_e_exposto(monkeypatch, mundo):
+    monkeypatch.setenv("PLAN_GITHUB_TOKEN", "segredo-github-123")
+    get_settings.cache_clear()
+    try:
+        from app.main import app
+        c = TestClient(app)
+        h = _login(c)
+        for rota in ("/api/auth/config", "/api/saude", "/api/processamento"):
+            assert "segredo-github-123" not in c.get(rota, headers=h).text
+    finally:
+        get_settings.cache_clear()
+
+
+def test_status_de_processamento_e_primeiros_passos(db, mundo):
+    from app.main import app
+    c = TestClient(app)
+    h = _login(c)
+    _criar_execucao(db, mundo)
+    st = c.get("/api/processamento", headers=h).json()
+    assert st["pendentes"]["execucoes"] == 1 and st["pendentes"]["espera_min"] >= 0
+    assert c.post("/api/processamento/acionar", headers=h).json()["mensagem"]
+    pp = c.get(f"/api/primeiros-passos?cenario_id={mundo.cen.id}", headers=h).json()
+    feitos = {p["chave"]: p["feito"] for p in pp["passos"]}
+    assert feitos["unidades"] and feitos["turmas"] and feitos["cenario"] and not feitos["grade"]
+    assert pp["total"] == len(pp["passos"]) and 0 < pp["concluidos"] < pp["total"]

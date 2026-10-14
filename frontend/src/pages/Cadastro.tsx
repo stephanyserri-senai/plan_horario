@@ -22,6 +22,29 @@ const RELACIONADOS: Record<string, string[]> = {
   cursos: ["cursos", "matrizes", "ucs"],
   ambientes: ["ambientes", "tipos_ambiente", "disponibilidade_ambientes", "recursos_ambientes"],
   recursos: ["recursos", "recursos_ambientes"],
+  unidades: ["unidades", "calendarios", "calendario_excecoes", "bloqueios", "horarios_funcionamento", "setores", "deslocamentos"],
+  turnos: ["turnos", "periodos"],
+};
+
+// Explicação curta, em linguagem simples, mostrada no topo de cada cadastro.
+const AJUDA: Record<string, string> = {
+  turmas: "Cada turma pertence a um curso/matriz. Ao criar a turma, as unidades curriculares da matriz são incluídas automaticamente na aba “Turma × UC” (é o que será programado).",
+  turma_ucs: "Disciplinas que cada turma vai cursar. Indique aqui instrutor ou sala preferidos, se houver.",
+  instrutores: "Cadastre o instrutor e, nas abas ao lado, o que ele pode ministrar (Competências) e quando está disponível (Disponibilidade). Sem competência cadastrada o sistema não o escala.",
+  competencias: "Quais unidades curriculares cada instrutor está habilitado a ministrar.",
+  disponibilidade_instrutores: "Dias e horários em que cada instrutor pode dar aula. Sem registros, considera-se disponível em todo o horário de funcionamento.",
+  ucs: "Disciplinas da matriz: carga horária, quantas aulas por semana e o tipo de sala exigido (ex.: laboratório de informática).",
+  cursos: "Cursos ofertados e suas matrizes curriculares (versões do currículo).",
+  matrizes: "Versões do currículo de cada curso. Use “Nova versão” para copiar uma matriz existente.",
+  ambientes: "Salas, laboratórios e oficinas: capacidade de alunos, tipo e equipamentos. O sistema só coloca a aula em sala compatível.",
+  tipos_ambiente: "Categorias de sala (ex.: sala teórica, laboratório de informática) usadas para casar disciplina e sala.",
+  recursos: "Equipamentos e materiais (ex.: projetor, kits). Podem ser exigidos por disciplinas.",
+  unidades: "Escolas/unidades da instituição. Nas abas ao lado: calendário letivo, feriados e bloqueios.",
+  calendarios: "Período letivo de cada unidade.",
+  calendario_excecoes: "Feriados, recessos e dias sem aula: o sistema não programa aulas nessas datas.",
+  bloqueios: "Indisponibilidades pontuais de sala, instrutor ou turma (ex.: manutenção, evento).",
+  turnos: "Turnos (manhã, tarde, noite). Na aba “Períodos”, cadastre os horários de cada aula do turno (ex.: 07:30–08:20).",
+  periodos: "Horários de aula de cada turno. As aulas sempre ocupam um ou mais períodos seguidos.",
 };
 
 const OCULTAR_LISTA = new Set(["criado_em", "atualizado_em", "regras_operacionais", "restricoes", "restricoes_pedagogicas", "competencias", "maquinas",
@@ -242,8 +265,9 @@ export default function Cadastro() {
   useEffect(() => setAba(rel[0]), [ent]);
   const meta = metas.find((m) => m.chave === ent);
   return (
-    <Pagina titulo={meta?.rotulo || "Cadastros"} descricao="Inclusão, consulta, edição, inativação, pesquisa, filtros e histórico. Toda gravação é validada no servidor e auditada.">
+    <Pagina titulo={meta?.rotulo || "Cadastros"} descricao={AJUDA[ent] || "Inclua, pesquise e edite registros. Tudo é validado e fica registrado no histórico."}>
       {rel.length > 1 && <Abas abas={rel.map((r) => ({ id: r, rotulo: metas.find((m) => m.chave === r)?.rotulo || r }))} ativa={aba} mudar={setAba} />}
+      {aba !== ent && AJUDA[aba] && <p className="sub">{AJUDA[aba]}</p>}
       <ListaEntidade key={aba} ent={aba} />
     </Pagina>
   );

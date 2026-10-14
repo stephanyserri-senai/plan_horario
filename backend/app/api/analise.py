@@ -136,7 +136,10 @@ def sim_completa(d: dict = Body(...), ctx: Contexto = Depends(requer("simulacao.
     if modo == "thread":
         threading.Thread(target=rodar, daemon=True).start()
         return {"id": sid, "status": "em_execucao", "mensagem": "Simulação completa iniciada; acompanhe na lista de simulações."}
-    return {"id": sid, "status": "pendente", "mensagem": "Simulação enviada para a fila do serviço de otimização; acompanhe na lista de simulações."}
+    from app.services.acionador import acionar_worker
+    acionar_worker()
+    return {"id": sid, "status": "pendente", "mensagem": "Simulação enviada para processamento. O resultado aparece na lista de simulações "
+                                                         "em alguns minutos; a página atualiza sozinha."}
 
 
 @router.get("/simulador")

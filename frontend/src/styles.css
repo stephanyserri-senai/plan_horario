@@ -129,3 +129,35 @@ details summary { cursor: pointer; margin: 8px 0; }
   .usuario { margin-left: 0; }
   .dl { grid-template-columns: 1fr; }
 }
+
+/* Menu agrupado */
+.grupo-menu { margin-bottom: 8px; }
+.grupo-titulo { font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; opacity: .65; padding: 8px 10px 4px; }
+
+/* Processamento em segundo plano */
+.processando { display: flex; gap: 12px; align-items: flex-start; background: var(--info-bg); color: var(--info); border-radius: 10px; padding: 12px 14px; margin-bottom: 14px; }
+.processando .btn { margin-top: 6px; }
+.spinner { width: 18px; height: 18px; border: 3px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: girar 1s linear infinite; flex-shrink: 0; margin-top: 2px; }
+@keyframes girar { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
+
+/* Primeiros passos */
+.passos h2 { font-size: 1.05rem; margin: 0; }
+.passos-topo { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.passos .barra { height: 6px; background: var(--fundo); border-radius: 99px; margin: 10px 0; overflow: hidden; }
+.passos .barra span { display: block; height: 100%; background: var(--ok); }
+.passos ol { list-style: none; padding: 0; margin: 0; display: grid; gap: 4px; }
+.passos li { display: flex; gap: 8px; align-items: baseline; }
+.passos li.feito a { color: var(--mudo); text-decoration: line-through; }
+.passos li.proximo { font-weight: 600; }
+.marca-passo { width: 1.2em; color: var(--ok); }
+
+/* Explicações em linguagem simples */
+.explicacao .destaque { font-size: 1.05rem; }
+.explicacao > .tabela-wrap, .recomendacao .tabela-wrap { margin: 8px 0 12px; }
+.recomendacao h4 { margin: 12px 0 4px; }
+.chips { display: flex; flex-wrap: wrap; margin: 4px 0; }
+.chips .chip { cursor: default; }
+details.avancado { margin: 10px 0; border: 1px dashed var(--borda); border-radius: 8px; padding: 6px 10px; }
+details.avancado summary { cursor: pointer; color: var(--primaria); }
+.btn-grande { padding: 10px 20px; font-size: 1rem; margin-top: 8px; }
