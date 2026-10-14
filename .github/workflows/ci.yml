@@ -14,8 +14,8 @@ jobs:
         ports: ["5432:5432"]
         options: --health-cmd pg_isready --health-interval 5s --health-retries 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with: { python-version: "3.12" }
       - run: pip install -r backend/requirements.txt
       - run: cd backend && python -m pytest -q
@@ -26,8 +26,8 @@ jobs:
     name: API no formato da Vercel (sem OR-Tools)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with: { python-version: "3.12" }
       - run: python -m venv /tmp/v && /tmp/v/bin/pip install -r requirements.txt
       - name: Importa a função sem OR-Tools e verifica o tamanho das dependências (< 250 MB)
@@ -43,7 +43,7 @@ jobs:
     name: Frontend (typecheck e build)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-node@v4
         with: { node-version: "22" }
       - run: cd frontend && npm ci && npm run typecheck && npm run build

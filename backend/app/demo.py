@@ -138,6 +138,9 @@ def remover(db):
 
 
 if __name__ == "__main__":
+    from app.core.config import get_settings
     acao = sys.argv[1] if len(sys.argv) > 1 else "carregar"
+    if acao == "carregar" and get_settings().producao:
+        raise SystemExit("Recusado: dados de demonstração não podem ser carregados com PLAN_AMBIENTE=producao.")
     with SessionLocal() as s:
         print((carregar if acao == "carregar" else remover)(s))

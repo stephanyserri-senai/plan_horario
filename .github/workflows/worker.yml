@@ -38,7 +38,7 @@ jobs:
             exit 1
           fi
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
@@ -65,10 +65,10 @@ jobs:
               f.write(f"pendentes={n}\n")
           EOF
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         if: steps.fila.outputs.pendentes != '0'
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         if: steps.fila.outputs.pendentes != '0'
         with:
           python-version: "3.12"
