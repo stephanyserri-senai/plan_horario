@@ -90,6 +90,29 @@ Todos os nomes, com exemplos, estão em [`.env.example`](.env.example).
 
 ## 5. Publicar o worker do otimizador
 
+### Opção A — GitHub Actions (gratuita; em uso na homologação)
+
+O workflow `.github/workflows/worker.yml` processa a fila:
+* automaticamente, a cada cerca de 15 minutos (o GitHub pode atrasar execuções agendadas);
+* manualmente, em **Actions → Worker do otimizador → Run workflow**.
+
+Para economizar minutos, ele primeiro consulta a fila e só instala o OR-Tools e executa `python -m app.worker --uma-vez` quando há jobs pendentes.
+
+1. **GitHub → Settings → Secrets and variables → Actions → New repository secret:**
+   * `PLAN_DATABASE_URL`: a URL do **Session pooler** (porta 5432):
+     `postgresql://postgres.<ref>:<senha>@aws-1-<regiao>.pooler.supabase.com:5432/postgres`
+2. Opcional, na aba **Variables**: `PLAN_AMBIENTE` (padrão `homologacao`) e `PLAN_AUTH_MODO` (padrão `local`).
+3. Para testar, rode **Run workflow** e confira o log do passo "Há jobs na fila?".
+
+**Limitações:**
+* a geração não é imediata (espera de até cerca de 15–20 minutos, ou o disparo manual);
+* repositórios privados têm cota mensal de minutos gratuitos;
+* execuções agendadas só ocorrem na branch padrão e são suspensas após 60 dias sem atividade no repositório.
+
+Para resposta em segundos, use a opção B.
+
+### Opção B — Serviço de container sempre ligado
+
 Exemplo com **Render** (outros provedores são análogos):
 
 1. Render → **New → Background Worker** → conecte o **mesmo** repositório do GitHub.

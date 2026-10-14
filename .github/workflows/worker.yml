@@ -1,0 +1,85 @@
+name: Worker do otimizador
+
+# Processa a fila de geração de horários e de simulações completas
+# (tabelas execucoes_otimizacao / simulacoes_capacidade com status 'pendente').
+# - automático a cada ~15 min (o GitHub pode atrasar execuções agendadas);
+# - manual: Actions → "Worker do otimizador" → Run workflow.
+# Só instala o OR-Tools e executa o worker quando há jobs pendentes.
+# Segredo necessário: PLAN_DATABASE_URL (Settings → Secrets and variables → Actions).
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: worker-otimizador
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  processar-fila:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      PLAN_DATABASE_URL: ${{ secrets.PLAN_DATABASE_URL }}
+      PLAN_AMBIENTE: ${{ vars.PLAN_AMBIENTE || 'homologacao' }}
+      PLAN_AUTH_MODO: ${{ vars.PLAN_AUTH_MODO || 'local' }}
+      PLAN_EXECUTOR: fila
+      PLAN_SOLVER_THREADS: "4"
+      PLAN_SOLVER_LIMITE_MAX_S: "1200"
+    steps:
+      - name: Verificar configuração
+        run: |
+          if [ -z "$PLAN_DATABASE_URL" ]; then
+            echo "::error::Cadastre o segredo PLAN_DATABASE_URL em Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Há jobs na fila?
+        id: fila
+        run: |
+          pip install --quiet "psycopg[binary]==3.3.6"
+          python - <<'EOF'
+          import os, re, psycopg
+          url = os.environ["PLAN_DATABASE_URL"].strip()
+          url = re.sub(r"^postgres(ql)?(\+psycopg)?://", "postgresql://", url)
+          # senha com '@' não codificado: os '@' anteriores ao último pertencem à senha
+          esq, _, resto = url.partition("://")
+          aut, barra, cam = resto.partition("/")
+          if aut.count("@") > 1:
+              cred, _, host = aut.rpartition("@")
+              u, dp, s = cred.partition(":")
+              url = f"{esq}://{u}{dp}{s.replace('@', '%40')}@{host}{barra}{cam}"
+          with psycopg.connect(url, sslmode="require", prepare_threshold=None, connect_timeout=20) as c:
+              n = c.execute("""select (select count(*) from execucoes_otimizacao where status in ('pendente','executando'))
+                                    + (select count(*) from simulacoes_capacidade where status in ('pendente','executando') and tipo='completa')""").fetchone()[0]
+          print(f"Jobs pendentes/em execução: {n}")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"pendentes={n}\n")
+          EOF
+
+      - uses: actions/checkout@v4
+        if: steps.fila.outputs.pendentes != '0'
+
+      - uses: actions/setup-python@v5
+        if: steps.fila.outputs.pendentes != '0'
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+
+      - name: Instalar dependências (com OR-Tools)
+        if: steps.fila.outputs.pendentes != '0'
+        run: pip install -r backend/requirements.txt
+
+      - name: Processar a fila
+        if: steps.fila.outputs.pendentes != '0'
+        working-directory: backend
+        run: python -m app.worker --uma-vez
