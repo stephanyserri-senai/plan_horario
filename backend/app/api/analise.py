@@ -295,6 +295,60 @@ def exportar_indicadores(tipo: str, cenario_id: int, formato: str = "xlsx", inic
     return _arquivo(linhas, formato, f"indicadores_{tipo}", f"Indicadores – {tipo} – {exportacao.nome_cenario(db, cenario_id)} ({d0:%d/%m/%Y}–{d1:%d/%m/%Y})", abas)
 
 
+XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+def _xlsx(conteudo: bytes, nome: str) -> Response:
+    return Response(conteudo, media_type=XLSX, headers={"Content-Disposition": f'attachment; filename="{nome}.xlsx"'})
+
+
+@router.get("/exportar/horario_turmas")
+def exportar_horario_turmas(cenario_id: int, turma_id: int | None = None, ctx: Contexto = Depends(requer("exportacao.executar")), db: Session = Depends(get_db)):
+    from app.services import exportacao_planilhas
+    arq = exportacao_planilhas.horario_turmas(db, cenario_id, turma_id, ctx.unidades)
+    auditoria.registrar(db, ctx, "exportacao.horario_turmas", "cenarios_planejamento", cenario_id, depois={"turma_id": turma_id})
+    db.commit()
+    return _xlsx(arq, "horario_turmas")
+
+
+@router.get("/exportar/agenda_instrutores")
+def exportar_agenda_instrutores(cenario_id: int, instrutor_id: int | None = None, inicio: date | None = None, fim: date | None = None,
+                                ctx: Contexto = Depends(requer("exportacao.executar")), db: Session = Depends(get_db)):
+    from app.services import exportacao_planilhas
+    d0, d1 = _periodo(db, cenario_id, inicio, fim)
+    arq = exportacao_planilhas.agenda_instrutores(db, cenario_id, d0, d1, instrutor_id, ctx.unidades, ctx.pode("dados_pessoais.ler"))
+    auditoria.registrar(db, ctx, "exportacao.agenda_instrutores", "cenarios_planejamento", cenario_id, depois={"instrutor_id": instrutor_id})
+    db.commit()
+    return _xlsx(arq, "agenda_instrutores")
+
+
+@router.get("/exportar/uso_ambientes")
+def exportar_uso_ambientes(cenario_id: int, ambiente_id: int | None = None, inicio: date | None = None, fim: date | None = None,
+                           ctx: Contexto = Depends(requer("exportacao.executar")), db: Session = Depends(get_db)):
+    from app.services import exportacao_planilhas
+    d0, d1 = _periodo(db, cenario_id, inicio, fim)
+    arq = exportacao_planilhas.uso_ambientes(db, cenario_id, d0, d1, ambiente_id, ctx.unidades)
+    auditoria.registrar(db, ctx, "exportacao.uso_ambientes", "cenarios_planejamento", cenario_id, depois={"ambiente_id": ambiente_id})
+    db.commit()
+    return _xlsx(arq, "salas_e_laboratorios")
+
+
+@router.get("/exportar/cadastro/{tipo}")
+def exportar_cadastro(tipo: str, ctx: Contexto = Depends(requer("exportacao.executar")), db: Session = Depends(get_db)):
+    """Cadastro atual no mesmo formato do modelo de importação: edite e reenvie em Importar planilha."""
+    from app.services import exportacao_planilhas, modelos_planilha
+    if tipo not in modelos_planilha.MODELOS:
+        raise NaoEncontrado("Cadastro inexistente.")
+    linhas = exportacao_planilhas.linhas_cadastro(db, tipo, ctx.unidades)
+    if tipo == "levantamento_instrutores" and not ctx.pode("dados_pessoais.ler"):
+        for l in linhas:
+            l[2] = None  # e-mail é dado pessoal
+    arq = modelos_planilha.gerar_modelo(db, tipo, linhas)
+    auditoria.registrar(db, ctx, "exportacao.cadastro", tipo, None, depois={"linhas": len(linhas)})
+    db.commit()
+    return _xlsx(arq, f"cadastro_{tipo}")
+
+
 @router.get("/exportar/comparativo")
 def exportar_comparativo(cenarios_ids: str, formato: str = "xlsx", ctx: Contexto = Depends(requer("exportacao.executar")), db: Session = Depends(get_db)):
     ids = [int(x) for x in cenarios_ids.split(",")]

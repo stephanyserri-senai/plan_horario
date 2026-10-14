@@ -43,7 +43,7 @@ const MENU: { grupo: string; itens: Item[] }[] = [
     { para: "/cadastros/recursos", rotulo: "Recursos e equipamentos", icone: "🔧", acao: "cadastros.ler" },
     { para: "/cadastros/unidades", rotulo: "Unidades, áreas e calendário", icone: "🏢", acao: "cadastros.ler" },
     { para: "/cadastros/turnos", rotulo: "Turnos e horários", icone: "🕘", acao: "cadastros.ler" },
-    { para: "/importacao", rotulo: "Importar planilha", icone: "⇪", acao: "importacao.executar" },
+    { para: "/importacao", rotulo: "Importar e exportar", icone: "⇅", acao: "importacao.executar|exportacao.executar" },
   ] },
   { grupo: "Administração", itens: [
     { para: "/usuarios", rotulo: "Usuários e permissões", icone: "🔑", acao: "usuarios.gerenciar" },
@@ -132,7 +132,7 @@ export default function App() {
         <div className="marca"><img src="/icone.png" alt="" width={40} height={40} /><span>Planejamento<br /><small>Acadêmico</small></span></div>
         <nav aria-label="Menu principal">
           {MENU.map((g) => {
-            const itens = g.itens.filter((m) => !m.acao || pode(m.acao));
+            const itens = g.itens.filter((m) => !m.acao || m.acao.split("|").some((a) => pode(a)));
             return itens.length > 0 && <div key={g.grupo} className="grupo-menu">
               <div className="grupo-titulo">{g.grupo}</div>
               {itens.map((m) => (

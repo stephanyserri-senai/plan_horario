@@ -367,3 +367,13 @@ details.avancado summary { cursor: pointer; color: var(--primaria); }
   .passos, .bv-cadastros { grid-template-columns: repeat(2, minmax(0, 1fr)); } .passo::after { display: none; }
   .bv-grid, .bv-unidades { grid-template-columns: 1fr; }
 }
+
+/* Exportações */
+.exp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; margin: 12px 0; }
+.exp-cartao { display: flex; gap: 12px; border: 1px solid var(--borda); border-radius: 12px; padding: 14px; background: var(--superficie); }
+.exp-cartao:hover { border-color: var(--primaria); }
+.exp-ico { font-size: 1.5rem; width: 46px; height: 46px; flex-shrink: 0; border-radius: 12px; background: var(--info-bg); display: flex; align-items: center; justify-content: center; }
+.exp-corpo { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
+.exp-corpo p { margin: 0; font-size: .85rem; color: var(--mudo); }
+.exp-acoes { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+.exp-acoes select { flex: 1; min-width: 140px; }

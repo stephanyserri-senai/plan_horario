@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api, baixar } from "../api";
-import { Badge, Campo, Card, Erro, Pagina, Tabela, useCarregar } from "../components/ui";
+import { Abas, Badge, Campo, Card, Erro, Pagina, Tabela, useCarregar } from "../components/ui";
+import Exportar from "./Exportar";
 import { useApp } from "../contexto";
 
 const TIPOS: [string, string][] = [
@@ -13,7 +14,22 @@ const TIPOS: [string, string][] = [
 ];
 const NOME_TIPO = Object.fromEntries(TIPOS);
 
-export default function Importacao() {
+export default function ImportarExportar() {
+  const { pode } = useApp();
+  const [sp, setSp] = useSearchParams();
+  const podeImp = pode("importacao.executar"), podeExp = pode("exportacao.executar");
+  const aba = sp.get("aba") || (podeImp ? "importar" : "exportar");
+  return (
+    <Pagina titulo="Importar e exportar" descricao="Traga dados por planilha ou baixe a grade, a ocupação e os cadastros prontos em Excel.">
+      <Abas abas={[...(podeImp ? [{ id: "importar", rotulo: "⇪ Importar planilha" }] : []), ...(podeExp ? [{ id: "exportar", rotulo: "⬇ Exportar" }] : [])]}
+        ativa={aba} mudar={(a) => setSp({ aba: a })} />
+      {aba === "importar" && podeImp && <Importacao />}
+      {aba === "exportar" && podeExp && <Exportar />}
+    </Pagina>
+  );
+}
+
+function Importacao() {
   const { cenarios, cenario, aviso, auth } = useApp();
   const [arquivo, setArquivo] = useState<File | null>(null);
   const [sp] = useSearchParams();
@@ -43,7 +59,8 @@ export default function Importacao() {
   };
   const itens = (previa?.itens || []).filter((i: any) => !filtroAcao || i.acao === filtroAcao);
   return (
-    <Pagina titulo="Importação de planilhas" descricao="Baixe o modelo, preencha e envie. O sistema reconhece as colunas, mostra uma prévia com o que será criado ou atualizado e só grava quando você confirmar.">
+    <>
+      <p className="sub">Baixe o modelo, preencha e envie. O sistema reconhece as colunas, mostra uma prévia com o que será criado ou atualizado e só grava quando você confirmar.</p>
       <Card titulo="1. Selecionar arquivo">
         <div className="form-grid">
           <Campo rotulo="Arquivo (.xlsx, .csv)" ajuda={auth ? `Tamanho máximo: ${auth.limite_upload_mb} MB` : undefined}><input type="file" accept=".xlsx,.xlsm,.csv,.txt" onChange={(e) => setArquivo(e.target.files?.[0] || null)} /></Campo>
@@ -84,6 +101,6 @@ export default function Importacao() {
           { chave: "r", rotulo: "Relatório", render: (i: any) => <button className="btn-link" onClick={() => baixar(`/api/importacao/${i.id}/relatorio?formato=xlsx`, `importacao_${i.id}.xlsx`)}>XLSX</button> }]}
           linhas={hist.dados || []} />
       </Card>
-    </Pagina>
+    </>
   );
 }

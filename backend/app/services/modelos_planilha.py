@@ -110,7 +110,8 @@ MODELOS: dict[str, dict] = {
 }
 
 
-def gerar_modelo(db: Session, tipo: str) -> bytes:
+def gerar_modelo(db: Session, tipo: str, dados: list[list] | None = None) -> bytes:
+    """Modelo de importação. Com `dados`, vira a exportação do cadastro no mesmo formato (edite e reenvie)."""
     cfg = MODELOS[tipo]
     unidades = [u.codigo for u in db.scalars(select(Unidade).where(Unidade.ativo.is_(True)).order_by(Unidade.codigo))]
     areas = [(a.nome, db.get(Unidade, a.unidade_id).codigo) for a in db.scalars(select(Area).where(Area.ativo.is_(True)).order_by(Area.unidade_id, Area.nome))]
@@ -125,7 +126,7 @@ def gerar_modelo(db: Session, tipo: str) -> bytes:
     ws = wb.active
     ws.title = "Preencher"
     cols = cfg["colunas"]
-    ws["A1"] = f"Modelo de importação — {cfg['titulo']}"
+    ws["A1"] = f"{'Cadastro atual' if dados is not None else 'Modelo de importação'} — {cfg['titulo']}"
     ws["A1"].font = Font(name=FONTE, bold=True, size=13)
     ws["A2"] = (cfg["resumo"] + " Preencha a partir da linha 5 (células amarelas). Colunas com * são obrigatórias. "
                 "Linhas que começam com EXEMPLO são ignoradas na importação: apague-as ou deixe-as. Envie em Importar planilha.")
@@ -143,8 +144,14 @@ def gerar_modelo(db: Session, tipo: str) -> bytes:
         ws.column_dimensions[get_column_letter(j)].width = larg
     ws.row_dimensions[lin_cab].height = 42
     # exemplos (linha 4 em diante) e área de preenchimento
-    n_ex = max(len([x for x in c[5:] if x is not None]) for c in cols)
-    for k in range(n_ex):
+    n_ex = 0 if dados is not None else max(len([x for x in c[5:] if x is not None]) for c in cols)
+    for i, linha in enumerate(dados or [], start=lin_cab + 1):
+        for j, v in enumerate(linha, start=1):
+            c = ws.cell(row=i, column=j, value=v if v not in (None, "") else None)
+            c.font = Font(name=FONTE, size=10)
+            c.border = BORDA
+    n_ex = len(dados) if dados is not None else n_ex
+    for k in range(0 if dados is not None else n_ex):
         for j, col in enumerate(cols, start=1):
             v = col[5 + k] if len(col) > 5 + k else None
             c = ws.cell(row=lin_cab + 1 + k, column=j, value=v)
