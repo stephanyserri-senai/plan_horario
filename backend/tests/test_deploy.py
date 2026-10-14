@@ -144,6 +144,8 @@ def test_sql_offline_das_migracoes_reproduz_banco_novo():
             conn.execute(sql.encode())
             conn.execute((RAIZ / "backend" / "sql" / "seed_inicial.sql").read_bytes())
             conn.execute((RAIZ / "backend" / "sql" / "seed_inicial.sql").read_bytes())  # idempotente
+            for _ in range(2):  # demonstração pelo SQL Editor: remove a anterior e recarrega
+                conn.execute((RAIZ / "backend" / "sql" / "demo_recarregar.sql").read_bytes())
         eng = create_engine(f"{base}/{nome}")
         with eng.connect() as c:
             assert c.scalar(text("SELECT count(*) FROM usuarios WHERE email = 'admin'")) == 1
@@ -151,6 +153,10 @@ def test_sql_offline_das_migracoes_reproduz_banco_novo():
                                  "WHERE n.nspname = 'public' AND cl.relkind = 'r' AND NOT cl.relrowsecurity")) == 0
             assert c.scalar(text("SELECT version_num FROM alembic_version")) == "0002"
             assert c.scalar(text("SELECT count(*) FROM pg_constraint WHERE conname LIKE 'excl_alocacao_%'")) == 3
+            assert c.scalar(text("SELECT count(*) FROM unidades WHERE codigo = 'DEMO-U1'")) == 1
+            assert c.scalar(text("SELECT count(*) FROM periodos_horarios p JOIN unidades u ON u.id = p.unidade_id WHERE u.codigo = 'DEMO-U1'")) == 12
+            assert c.scalar(text("SELECT count(*) FROM turma_uc tu JOIN turmas t ON t.id = tu.turma_id WHERE t.codigo LIKE 'DEMO-%'")) == 8
+            assert c.scalar(text("SELECT valor->>'contagem' FROM configuracoes WHERE chave = 'regras_aula'")) == "hora_aula"
         eng.dispose()
     finally:
         with adm.connect() as c:

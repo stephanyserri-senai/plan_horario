@@ -74,6 +74,8 @@ As migrações rodam em transação: se falharem, nada é alterado. **Nunca** ro
 
 Para bancos que já têm dados, use o Alembic.
 
+**Dados de demonstração pelo SQL Editor (homologação):** cole e execute `backend/sql/demo_recarregar.sql`. Ele remove só os registros `DEMO-` (incluindo o cenário DEMO e suas aulas), carrega a demonstração atual e registra a regra de composição das aulas (`regras_aula`) se ainda não existir. Pode ser executado mais de uma vez. É gerado por `scripts/gerar_demo_sql.py` (equivale ao workflow "Dados de demonstração" → recarregar).
+
 ### Verificar o resultado
 
 No **SQL Editor**:

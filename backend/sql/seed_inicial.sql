@@ -65,9 +65,10 @@ INSERT INTO parametros_otimizacao (nome, pesos, limite_tempo_s, padrao, versao, 
 -- Configurações
 INSERT INTO configuracoes (chave, valor, descricao) VALUES ('limiares_ocupacao', '{"subutilizado_pct": 30.0, "demanda_excessiva_pct": 85.0, "instrutor_critico_pct": 90.0}'::jsonb, 'Limiares para classificar ambientes subutilizados/sobrecarregados e instrutores críticos.') ON CONFLICT (chave) DO NOTHING;
 INSERT INTO configuracoes (chave, valor, descricao) VALUES ('geral', '{"nome_instituicao": "", "fuso_horario": "America/Sao_Paulo"}'::jsonb, 'Parâmetros gerais da instituição.') ON CONFLICT (chave) DO NOTHING;
+INSERT INTO configuracoes (chave, valor, descricao) VALUES ('regras_aula', '{"turno_inteiro": true, "contagem": "hora_aula"}'::jsonb, 'Composição das aulas: com ''turno inteiro'', cada UC ocupa todas as aulas do turno no dia; aula parcial só no fechamento da carga horária (dividindo o turno com outra UC que também esteja fechando). ''hora_aula'': cada aula conta 1 h de carga horária.') ON CONFLICT (chave) DO NOTHING;
 
 -- USUÁRIO DE TESTE (login: admin / senha: admin@123) — SOMENTE homologação.
 -- Remova antes da produção: DELETE FROM usuarios WHERE email = 'admin' AND nome LIKE 'Administrador de TESTE%';
-INSERT INTO usuarios (nome, email, senha_hash, perfil, acesso_global, ativo) VALUES ('Administrador de TESTE (remover antes da produção)', 'admin', '$2b$12$q4eiqN1koTX3FKXxJ/RS1Oe/ovSrXMFxMgJvKyfE6pAWupjF/57Ei', 'administrador', true, true) ON CONFLICT (email) DO NOTHING;
+INSERT INTO usuarios (nome, email, senha_hash, perfil, acesso_global, ativo) VALUES ('Administrador de TESTE (remover antes da produção)', 'admin', '$2b$12$ci1vfK1qrYCRw/kiHH50HeXjQmOltiZFyD3YqltrVsBYdA2Ase0rG', 'administrador', true, true) ON CONFLICT (email) DO NOTHING;
 
 COMMIT;
