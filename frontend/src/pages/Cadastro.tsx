@@ -30,13 +30,13 @@ const RELACIONADOS: Record<string, string[]> = {
 
 // Explicação curta, em linguagem simples, mostrada no topo de cada cadastro.
 const AJUDA: Record<string, string> = {
-  turmas: "Escolha o curso e digite só o número e o tipo de oferta (HTC, AIT, AIB, EMP…): o código (ex.: ELT-12-HTC), o nome, a área, a unidade e a matriz vêm do curso, e as UCs da matriz entram sozinhas na aba “Turma × UC”.",
+  turmas: "Escolha o curso e digite só o número e o tipo de oferta (HTC, AIT, AIB, EMP…): o código (ex.: HTC-ELT-12), o nome, a área, a unidade e a matriz vêm do curso, e as UCs da matriz entram sozinhas na aba “Turma × UC”. As datas vêm do semestre e podem ser ajustadas ao prazo de cada turma.",
   turma_ucs: "Disciplinas que cada turma vai cursar. Indique aqui instrutor ou sala preferidos, se houver.",
   instrutores: "No próprio cadastro: escolha a área e marque as UCs que o instrutor ministra (aparecem as UCs dos cursos da área) e os turnos e dias em que pode dar aula. As abas ao lado mostram a visão geral.",
   competencias: "Quais unidades curriculares cada instrutor está habilitado a ministrar.",
   disponibilidade_instrutores: "Dias e horários em que cada instrutor pode dar aula. Sem registros, considera-se disponível em todo o horário de funcionamento.",
   ucs: "Disciplinas da matriz: carga horária, quantas aulas por semana e o tipo de sala exigido (ex.: laboratório de informática).",
-  cursos: "Cursos ofertados (a sigla, ex.: ELT, vira o início do código das turmas), suas matrizes curriculares e UCs. A unidade do curso é a da área.",
+  cursos: "Cursos ofertados (a sigla, ex.: ELT, entra no código das turmas: HTC-ELT-12), suas matrizes curriculares e UCs. A unidade do curso é a da área.",
   matrizes: "Versões do currículo de cada curso. Use “Nova versão” para copiar uma matriz existente.",
   ambientes: "Salas, laboratórios e oficinas: capacidade de alunos, tipo e equipamentos. O sistema só coloca a aula em sala compatível.",
   tipos_ambiente: "Categorias de sala (ex.: sala teórica, laboratório de informática) usadas para casar disciplina e sala.",
@@ -75,7 +75,14 @@ const LARGOS = new Set(["multiref", "competencias", "disponibilidade"]);
 
 /** Formulário em seções: o essencial de cara, o resto em "Mais opções"; campos que vêm de outro cadastro não aparecem. */
 export function Formulario({ meta, valores, setValores }: { meta: EntMeta; valores: any; setValores: (v: any) => void }) {
-  const set = (k: string, v: any) => setValores({ ...valores, [k]: v });
+  const set = (k: string, v: any) => {
+    const n = { ...valores, [k]: v };
+    // instrutor: horas por dia acompanham a carga contratual (40 h/sem = 8 h/dia = até 2 turnos), salvo ajuste manual
+    if (meta.chave === "instrutores" && k === "carga_horaria_contratual" && !valores.__horas_manual && Number(v) > 0)
+      n.max_horas_dia = Math.min(12, Math.max(1, Math.round(Number(v) / 5)));
+    if (k === "max_horas_dia") n.__horas_manual = true;
+    setValores(n);
+  };
   const setVarios = (o: Record<string, any>) => setValores({ ...valores, ...o });
   const editaveis = meta.campos.filter((c) => !c.somente_leitura && !(c.nome === "id" && meta.pk.length === 1) && c.secao !== "auto"
     && !(valores.todas_areas && (c.nome === "area_id" || c.nome === "areas_ids")));
@@ -104,7 +111,7 @@ export function Formulario({ meta, valores, setValores }: { meta: EntMeta; valor
 /** Valores iniciais de um registro novo (ex.: turma já com as datas do semestre selecionado). */
 function novoPadrao(ent: string, cenario: any): any {
   if (ent === "turmas") return { dias_possiveis: [0, 1, 2, 3, 4], data_inicio: cenario?.periodo_inicio || "", data_fim: cenario?.periodo_fim || "" };
-  if (ent === "instrutores") return { disp_dias: [0, 1, 2, 3, 4], disp_turnos: [], ucs_competencia: [] };
+  if (ent === "instrutores") return { carga_horaria_contratual: 40, max_horas_dia: 8, disp_dias: [0, 1, 2, 3, 4], disp_turnos: [], ucs_competencia: [] };
   return {};
 }
 
@@ -195,6 +202,7 @@ export function ListaEntidade({ ent }: { ent: string }) {
       delete corpo.__novo;
       if (!corpo.__disp) { delete corpo.disp_turnos; delete corpo.disp_dias; }  // só regrava a disponibilidade se foi alterada
       delete corpo.__disp;
+      delete corpo.__horas_manual;
       if (novo) await api.post(`/api/cadastros/${ent}`, corpo);
       else await api.put(`/api/cadastros/${ent}/${idDe(meta, edicao)}`, corpo);
       invalidarOpcoes(ent);

@@ -446,6 +446,12 @@ def _preparar_levantamento(db, r, v, E, A):
         E.append("limite de aulas por semana maior que a carga contratual")
     _area(r, v, d, E, A, multiplas=True)
     disp = []
+    from app.services.regras_aula import horas_dia_pela_carga, turnos_por_dia
+    if d.get("max_horas_dia") is None and d.get("carga_horaria_contratual"):
+        d["max_horas_dia"] = horas_dia_pela_carga(d["carga_horaria_contratual"])
+    if v["turnos"] and len(_lista(v["turnos"])) > turnos_por_dia(d.get("max_horas_dia") or 8):
+        A.append(f"{len(_lista(v['turnos']))} turnos marcados, mas {d.get('max_horas_dia') or 8:g} h por dia permitem no máximo "
+                 f"{turnos_por_dia(d.get('max_horas_dia') or 8)} turno(s) no mesmo dia: o sistema respeita esse limite ao montar a grade")
     if v["turnos"]:
         dias = v["dias"] if v["dias"] is not None else [0, 1, 2, 3, 4]
         for t in _lista(v["turnos"]):

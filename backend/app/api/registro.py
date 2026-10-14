@@ -70,7 +70,7 @@ ENTIDADES: dict[str, dict] = {
                                     "label": "{dia_semana}", "busca": [], "dia": ["dia_semana"]},
 }
 
-# Tipos de oferta usados no código da turma (sigla do curso + número + tipo, ex.: ELT-12-HTC).
+# Tipos de oferta usados no código da turma (tipo + sigla do curso + número, ex.: HTC-ELT-12).
 TIPOS_OFERTA = [
     {"valor": "HTC", "rotulo": "HTC – Habilitação técnica"},
     {"valor": "AIT", "rotulo": "AIT – Aprendizagem industrial técnica"},
@@ -88,7 +88,7 @@ FORMULARIOS: dict[str, dict] = {
     "cursos": {"principais": ["codigo", "nome", "area_id", "modalidade", "tipo", "carga_horaria_total"],
                "avancados": ["situacao", "turnos_possiveis"],
                "rotulos": {"codigo": "Sigla do curso (ex.: ELT)", "area_id": "Área", "tipo": "Tipo de curso"},
-               "ajuda": {"codigo": "Usada no código das turmas: ELT + número + tipo de oferta = ELT-12-HTC.",
+               "ajuda": {"codigo": "Usada no código das turmas: tipo de oferta + sigla + número = HTC-ELT-12.",
                          "area_id": "A unidade é a da área."}},
     "matrizes": {"principais": ["curso_id", "versao", "vigencia_inicio", "situacao"], "avancados": ["matriz_origem_id"]},
     "ucs": {"principais": ["matriz_id", "codigo", "nome", "carga_horaria_total", "encontros_semanais", "tipos_ambiente_ids", "sequencia", "certificacao_exigida"],
@@ -103,12 +103,15 @@ FORMULARIOS: dict[str, dict] = {
                "avancados": ["matriz_id", "nome", "num_grupos", "prioridade", "necessidades_acessibilidade", "restricoes", "situacao"],
                "rotulos": {"dias_possiveis": "Dias de aula", "matriz_id": "Versão da matriz (padrão: a vigente do curso)",
                            "nome": "Nome (padrão: gerado a partir do curso)"},
-               "ajuda": {"_numero": "Só o número: o código fica sigla do curso + número + tipo (ex.: ELT-12-HTC).",
-                         "data_inicio": "Padrão: início do semestre selecionado."}},
+               "ajuda": {"_numero": "Só o número: o código fica tipo de oferta + sigla do curso + número (ex.: HTC-ELT-12).",
+                         "data_inicio": "Vem com o início do semestre; ajuste se a turma tiver outro prazo.",
+                         "data_fim": "Vem com o fim do semestre; ajuste conforme o prazo da turma."}},
     "instrutores": {"principais": ["matricula", "nome", "email", "unidade_id", "todas_areas", "area_id", "areas_ids", "carga_horaria_contratual",
-                                   "limite_ch_letiva", "turno_preferencial_id", "situacao", "ucs_competencia", "disp_turnos"],
-                    "avancados": ["max_horas_dia", "intervalo_minimo_h", "areas_competencia", "restricoes_deslocamento"],
-                    "rotulos": {"areas_competencia": "Formação e especialidades"}},
+                                   "max_horas_dia", "limite_ch_letiva", "turno_preferencial_id", "situacao", "ucs_competencia", "disp_turnos"],
+                    "avancados": ["intervalo_minimo_h", "areas_competencia", "restricoes_deslocamento"],
+                    "rotulos": {"areas_competencia": "Formação e especialidades", "max_horas_dia": "Horas de aula por dia"},
+                    "ajuda": {"max_horas_dia": "Calculada pela carga contratual (40 h/sem = 8 h/dia). 4 h = 1 turno por dia; 8 h = até 2 turnos.",
+                              "carga_horaria_contratual": "Define as horas por dia: carga ÷ 5 dias."}},
 }
 
 # tabela -> chave da entidade (para referências)

@@ -64,3 +64,16 @@ TURNOS_PADRAO = [
     ("T", "Tarde", [(13 * 60 + 30, 55), (14 * 60 + 25, 55), (15 * 60 + 40, 55), (16 * 60 + 35, 55)]),
     ("N", "Noite", [(18 * 60 + 20, 50), (19 * 60 + 10, 50), (20 * 60 + 10, 50), (21 * 60, 50)]),
 ]
+
+
+HORAS_POR_TURNO = 4  # cada turno = 4 aulas
+
+
+def turnos_por_dia(max_horas_dia) -> int:
+    """Quantos turnos o instrutor pode assumir no mesmo dia: 4 h = 1, 8 h = 2, 12 h = 3."""
+    return max(1, int(float(max_horas_dia or HORAS_POR_TURNO) // HORAS_POR_TURNO))
+
+
+def horas_dia_pela_carga(carga_semanal) -> float:
+    """Jornada diária pela carga contratual em 5 dias (40 h/sem = 8 h/dia), limitada a 12 h."""
+    return float(min(12, max(1, round(float(carga_semanal) / 5))))

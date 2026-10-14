@@ -19,6 +19,7 @@ from app.models import (
     CompetenciaInstrutor,
 )
 from app.services import auditoria
+from app.services.regras_aula import horas_dia_pela_carga, turnos_por_dia
 
 router = APIRouter(prefix="/api", tags=["cadastros"])
 
@@ -195,16 +196,21 @@ def _traduzir_integridade(e: IntegrityError):
 
 # ============================================================================ preenchimento automático
 def _partes_codigo(sigla: str, codigo: str) -> tuple[str | None, str | None]:
-    """ELT-12-HTC -> ('12', 'HTC'); códigos fora do padrão -> (None, None)."""
-    if sigla and codigo.upper().startswith(sigla.upper() + "-"):
-        partes = codigo[len(sigla) + 1:].split("-")
-        if partes and partes[0]:
-            return partes[0], (partes[1] if len(partes) > 1 else None)
+    """HTC-ELT-12 -> ('12', 'HTC'); ELT-12 (sem tipo) -> ('12', None); códigos fora do padrão -> (None, None)."""
+    S, C = (sigla or "").upper(), (codigo or "").upper()
+    if not S:
+        return None, None
+    i = C.find("-" + S + "-")
+    if i > 0:
+        return codigo[i + len(S) + 2:] or None, codigo[:i]
+    if C.startswith(S + "-"):
+        return codigo[len(S) + 1:] or None, None
     return None, None
 
 
 def codigo_turma(sigla: str, numero, tipo) -> str:
-    return "-".join(str(x).strip().upper() for x in (sigla, numero, tipo) if x not in (None, ""))
+    """Tipo de oferta + sigla do curso + número: HTC-ELT-12."""
+    return "-".join(str(x).strip().upper() for x in (tipo, sigla, numero) if x not in (None, ""))
 
 
 def _matriz_padrao(db: Session, curso_id: int) -> MatrizCurricular | None:
@@ -226,6 +232,10 @@ def _derivar(db: Session, ent: str, dados: dict, obj=None) -> dict:
         area = db.get(Area, int(d["area_id"]))
         if area:
             d["unidade_id"] = area.unidade_id
+    if ent == "instrutores" and vazio("max_horas_dia") and not vazio("carga_horaria_contratual"):
+        d["max_horas_dia"] = horas_dia_pela_carga(d["carga_horaria_contratual"])
+    if ent == "instrutores" and obj is None and vazio("limite_ch_letiva") and not vazio("carga_horaria_contratual"):
+        d["limite_ch_letiva"] = min(30.0, float(d["carga_horaria_contratual"]))  # padrão do cadastro, sem passar da carga contratual
     if ent == "ambientes" and obj is None and vazio("capacidade_operacional") and not vazio("capacidade_fisica"):
         d["capacidade_operacional"] = d["capacidade_fisica"]
     if ent == "ucs" and obj is None and vazio("duracao_bloco_periodos"):
@@ -306,6 +316,10 @@ def _gravar_instrutor(db: Session, inst, dados: dict):
                     raise EntradaInvalida("UC inexistente.")
                 db.add(CompetenciaInstrutor(instrutor_id=inst.id, uc_id=uc_id, nivel=nivel, ativo=True))
     if dados.get("disp_turnos") is not None:
+        limite = turnos_por_dia(inst.max_horas_dia)
+        if len(set(dados["disp_turnos"])) > limite:
+            raise ConflitoValidacao(f"Com {float(inst.max_horas_dia):g} h de aula por dia o instrutor pode ter até {limite} turno(s) por dia. "
+                                    "Aumente as horas por dia (ou a carga contratual) para marcar mais turnos.")
         dias = [int(x) for x in (dados.get("disp_dias") if dados.get("disp_dias") is not None else [0, 1, 2, 3, 4])]
         db.execute(delete(DisponibilidadeInstrutor).where(DisponibilidadeInstrutor.instrutor_id == inst.id))
         for tid in dados["disp_turnos"]:

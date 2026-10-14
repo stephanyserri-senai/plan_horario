@@ -33,13 +33,13 @@ def test_cadastros_preenchem_campos_repetidos(db, mundo):
     assert uc["duracao_bloco_periodos"] == 4
     # prévia do código
     p = c.get(f"/api/cadastros-apoio/codigo-turma?curso_id={curso['id']}&numero=12&tipo=htc", headers=h).json()
-    assert p == {"codigo": "ELT-12-HTC", "existe": False, "sigla": "ELT", "matriz": "2026.1"}
+    assert p == {"codigo": "HTC-ELT-12", "existe": False, "sigla": "ELT", "matriz": "2026.1"}
     # turma: curso + número + tipo; matriz, área, unidade, código e nome automáticos
     r = c.post("/api/cadastros/turmas", json={"curso_id": curso["id"], "_numero": "12", "_tipo_oferta": "HTC", "turno_id": manha.id,
                                               "qtd_alunos": 30, "data_inicio": "2026-08-03", "data_fim": "2026-12-18"}, headers=h)
     assert r.status_code == 200, r.text
     t = r.json()
-    assert t["codigo"] == "ELT-12-HTC" and t["matriz_id"] == mat["id"] and t["unidade_id"] == bm.id and t["area_id"] == energ.id
+    assert t["codigo"] == "HTC-ELT-12" and t["matriz_id"] == mat["id"] and t["unidade_id"] == bm.id and t["area_id"] == energ.id
     assert t["_numero"] == "12" and t["_tipo_oferta"] == "HTC"
     assert "Habilitação técnica" in t["nome"] and "Manhã" in t["nome"]
     assert db.scalar(select(TurmaUC).where(TurmaUC.turma_id == t["id"])) is not None  # UCs ligadas
@@ -49,7 +49,7 @@ def test_cadastros_preenchem_campos_repetidos(db, mundo):
     # mudar o número reescreve código e nome gerado
     r = c.put(f"/api/cadastros/turmas/{t['id']}", json={**t, "_numero": "13"}, headers=h)
     assert r.status_code == 200, r.text
-    assert db.get(Turma, t["id"]).codigo == "ELT-13-HTC"
+    assert db.get(Turma, t["id"]).codigo == "HTC-ELT-13"
     # UCs das áreas escolhidas
     lista = c.get(f"/api/cadastros-apoio/ucs-por-area?areas={energ.id}", headers=h).json()
     assert lista[0]["ucs"][0]["codigo"] == "FEL"
@@ -66,6 +66,15 @@ def test_cadastros_preenchem_campos_repetidos(db, mundo):
     r = c.put(f"/api/cadastros/instrutores/{i['id']}", json={"ucs_competencia": []}, headers=h)
     assert r.status_code == 200 and r.json()["ucs_competencia"] == []
     assert db.scalar(select(CompetenciaInstrutor).where(CompetenciaInstrutor.instrutor_id == i["id"])).ativo is False
+    # horas por dia vêm da carga contratual e limitam os turnos por dia (4 h = 1 turno; 8 h = 2)
+    tarde = db.scalar(select(Turno).where(Turno.unidade_id == bm.id, Turno.codigo == "T"))
+    r = c.post("/api/cadastros/instrutores", json={"matricula": "M2", "nome": "Paulo", "area_id": energ.id, "carga_horaria_contratual": 20,
+                                                   "disp_turnos": [manha.id, tarde.id]}, headers=h)
+    assert r.status_code == 409 and "até 1 turno" in r.text
+    r = c.post("/api/cadastros/instrutores", json={"matricula": "M2", "nome": "Paulo", "area_id": energ.id, "carga_horaria_contratual": 40,
+                                                   "disp_turnos": [manha.id, tarde.id]}, headers=h)
+    assert r.status_code == 200, r.text
+    assert float(r.json()["max_horas_dia"]) == 8 and sorted(r.json()["disp_turnos"]) == sorted([manha.id, tarde.id])
     # metadados: campos automáticos ficam fora do formulário
     meta = {m["chave"]: m for m in c.get("/api/meta/entidades", headers=h).json()}
     sec = {f["nome"]: f["secao"] for f in meta["turmas"]["campos"]}

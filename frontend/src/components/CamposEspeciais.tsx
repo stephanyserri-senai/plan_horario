@@ -66,13 +66,21 @@ export function DisponibilidadeTurnos({ valores, setVarios }: { valores: any; se
   const sel: number[] = (valores.disp_turnos || []).map(Number);
   const dias: number[] = valores.disp_dias ?? [0, 1, 2, 3, 4];
   const mudar = (t: number[], d: number[]) => setVarios({ disp_turnos: t, disp_dias: d, __disp: true });
+  const horas = Number(valores.max_horas_dia) || 8;
+  const limite = Math.max(1, Math.floor(horas / 4));  // cada turno = 4 aulas
   return (
     <fieldset className="painel-campo">
       <legend>Quando pode dar aula</legend>
       {!valores.unidade_id ? <p className="sub">Escolha a unidade para ver os turnos.</p> : <>
-        <div className="checks"><span className="mudo">Turnos:</span>{turnos.map((t: any) => (
-          <label key={t.id}><input type="checkbox" checked={sel.includes(Number(t.id))}
-            onChange={(e) => mudar(e.target.checked ? [...sel, Number(t.id)] : sel.filter((x) => x !== Number(t.id)), dias)} /> {t.rotulo}</label>))}</div>
+        <p className="sub">Com <b>{horas} h de aula por dia</b> o instrutor pode ter até <b>{limite} turno{limite > 1 ? "s" : ""}</b> por dia.</p>
+        <div className="checks"><span className="mudo">Turnos:</span>{turnos.map((t: any) => {
+          const marcado = sel.includes(Number(t.id));
+          const bloqueado = !marcado && sel.length >= limite;
+          return <label key={t.id} className={bloqueado ? "desabilitado" : ""} title={bloqueado ? "Aumente as horas por dia para marcar mais turnos" : undefined}>
+            <input type="checkbox" checked={marcado} disabled={bloqueado}
+              onChange={(e) => mudar(e.target.checked ? [...sel, Number(t.id)] : sel.filter((x) => x !== Number(t.id)), dias)} /> {t.rotulo}</label>;
+        })}</div>
+        {sel.length > limite && <p className="sub tom-erro">⚠ {sel.length} turnos marcados, mas {horas} h por dia permitem {limite}. Desmarque um turno ou aumente as horas por dia.</p>}
         <div className="checks"><span className="mudo">Dias:</span>{DIAS.slice(0, 6).map((d, i) => (
           <label key={i}><input type="checkbox" checked={dias.includes(i)}
             onChange={(e) => mudar(sel, e.target.checked ? [...dias, i].sort() : dias.filter((x) => x !== i))} /> {d.slice(0, 3)}</label>))}</div>
