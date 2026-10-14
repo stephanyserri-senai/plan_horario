@@ -8,8 +8,13 @@ from app.core.db import Base
 import app.models  # noqa: F401
 
 config = context.config
-url = os.environ.get("ALEMBIC_DATABASE_URL") or get_settings().database_url
-config.set_main_option("sqlalchemy.url", url)
+from app.core.config import normalizar_url_banco
+
+# Migrações devem usar conexão DIRETA ou o pooler em modo sessão (porta 5432),
+# nunca o pooler em modo transação (6543). Ver SUPABASE.md.
+url = normalizar_url_banco(os.environ.get("ALEMBIC_DATABASE_URL") or get_settings().database_url_migracoes
+                           or get_settings().database_url)
+config.set_main_option("sqlalchemy.url", url.replace("%", "%%"))
 target_metadata = Base.metadata
 
 

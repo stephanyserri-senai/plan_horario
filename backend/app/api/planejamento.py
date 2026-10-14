@@ -455,11 +455,8 @@ def executar(d: dict = Body(...), ctx: Contexto = Depends(requer("otimizacao.exe
     ex = otimizacao.criar_execucao(db, ctx, int(d["cenario_id"]), escopo, d.get("parametros_id"), d.get("pesos"), d.get("limite_tempo_s"),
                                    d.get("modo", "completo"), bool(d.get("aplicar", True)))
     db.commit()
-    if d.get("sincrono"):
-        otimizacao.executar(ex.id, ctx)
-    else:
-        otimizacao.submeter(ex.id)
-    return {"execucao_id": ex.id}
+    modo = otimizacao.despachar(ex.id, ctx, forcar_sincrono=bool(d.get("sincrono")))
+    return {"execucao_id": ex.id, "modo_execucao": modo}
 
 
 def _exec_dict(e: ExecucaoOtimizacao, db: Session, completo=False) -> dict:

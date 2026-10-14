@@ -153,15 +153,84 @@ def _criar_turmas_simuladas(db: Session, sim: SimulacaoCapacidade, p: dict) -> l
     return turmas
 
 
-def simular_completa(db: Session, ctx, p: dict, cenario_base_id: int, nome: str, limite_tempo_s: float = 30, alternativas: bool = True) -> SimulacaoCapacidade:
-    """Executa de forma síncrona (chamado em background pela API)."""
+def criar_simulacao_completa(db: Session, ctx, p: dict, cenario_base_id: int, nome: str, limite_tempo_s: float = 30,
+                             alternativas: bool = True) -> SimulacaoCapacidade:
+    """Registra a simulação completa como job 'pendente' (processado por
+    `processar_simulacao` no worker, numa thread local ou de forma síncrona)."""
     _validar_parametros(db, p)
     base = db.get(CenarioPlanejamento, cenario_base_id)
     if base is None:
         raise NaoEncontrado("Cenário base não encontrado.")
-    sim = SimulacaoCapacidade(nome=nome, tipo="completa", parametros=p, cenario_base_id=base.id, status="executando", criado_por_id=getattr(ctx, "id", None))
+    from app.core.config import get_settings
+    limite = max(1.0, min(float(limite_tempo_s), float(get_settings().solver_limite_max_s)))
+    sim = SimulacaoCapacidade(nome=nome, tipo="completa", parametros={**p, "_execucao": {"limite_tempo_s": limite, "alternativas": bool(alternativas)}},
+                              cenario_base_id=base.id, status="pendente", criado_por_id=getattr(ctx, "id", None))
     db.add(sim)
     db.flush()
+    auditoria.registrar(db, ctx, "simulacao.solicitar", "simulacoes_capacidade", sim.id, depois={"nome": nome, "cenario_base_id": base.id})
+    return sim
+
+
+def reivindicar_simulacao(db: Session, worker: str) -> int | None:
+    from datetime import datetime
+    sim = db.scalars(select(SimulacaoCapacidade).where(SimulacaoCapacidade.status == "pendente", SimulacaoCapacidade.tipo == "completa")
+                     .order_by(SimulacaoCapacidade.id).limit(1).with_for_update(skip_locked=True)).first()
+    if sim is None:
+        db.rollback()
+        return None
+    agora = datetime.now()
+    sim.status, sim.worker, sim.iniciado_em, sim.heartbeat_em = "executando", worker, agora, agora
+    db.commit()
+    return sim.id
+
+
+def processar_simulacao(db: Session, sim_id: int, ctx=None) -> SimulacaoCapacidade:
+    """Executa a simulação completa. Em caso de erro, desfaz o que foi criado
+    (cenário e turmas simuladas) e registra a falha."""
+    from datetime import datetime
+    sim = db.get(SimulacaoCapacidade, sim_id)
+    if sim is None:
+        raise NaoEncontrado("Simulação não encontrada.")
+    if ctx is None and sim.criado_por_id:
+        from app.core.deps import carregar_contexto
+        from app.models import Usuario
+        u = db.get(Usuario, sim.criado_por_id)
+        ctx = carregar_contexto(db, u) if u else None
+    try:
+        return _processar(db, sim, ctx)
+    except Exception as e:
+        db.rollback()
+        sim = db.get(SimulacaoCapacidade, sim_id)
+        if sim.cenario_simulado_id:
+            c = db.get(CenarioPlanejamento, sim.cenario_simulado_id)
+            if c:
+                db.delete(c)
+        for t in db.scalars(select(Turma).where(Turma.simulacao_id == sim.id)):
+            db.delete(t)
+        sim.cenario_simulado_id = None
+        sim.status, sim.resultado, sim.finalizado_em = "falha", {"erro": str(e)}, datetime.now()
+        db.commit()
+        raise
+
+
+def simular_completa(db: Session, ctx, p: dict, cenario_base_id: int, nome: str, limite_tempo_s: float = 30, alternativas: bool = True) -> SimulacaoCapacidade:
+    """Cria e processa imediatamente (modo síncrono)."""
+    sim = criar_simulacao_completa(db, ctx, p, cenario_base_id, nome, limite_tempo_s, alternativas)
+    db.commit()
+    return processar_simulacao(db, sim.id, ctx)
+
+
+def _processar(db: Session, sim: SimulacaoCapacidade, ctx) -> SimulacaoCapacidade:
+    from datetime import datetime
+    p = {k: v for k, v in sim.parametros.items() if k != "_execucao"}
+    execucao = sim.parametros.get("_execucao", {})
+    limite_tempo_s = float(execucao.get("limite_tempo_s", 30))
+    alternativas = bool(execucao.get("alternativas", True))
+    nome = sim.nome
+    base = db.get(CenarioPlanejamento, sim.cenario_base_id)
+    if base is None:
+        raise NaoEncontrado("Cenário base não encontrado.")
+    sim.status, sim.iniciado_em = "executando", sim.iniciado_em or datetime.now()
     cen = cenarios.criar(db, ctx, f"Simulação: {nome}", base.unidade_id, base.periodo_inicio, base.periodo_fim,
                          f"Simulação sobre o cenário #{base.id}", "simulacao", base.id)
     cenarios.copiar_aulas(db, base.id, cen.id)
@@ -229,6 +298,7 @@ def simular_completa(db: Session, ctx, p: dict, cenario_base_id: int, nome: str,
     sim = db.get(SimulacaoCapacidade, sim.id)
     sim.resultado = resultado
     sim.status = "concluida"
+    sim.finalizado_em = datetime.now()
     auditoria.registrar(db, ctx, "simulacao.executar", "simulacoes_capacidade", sim.id, depois={"viabilidade": resultado["viabilidade"]})
     db.commit()
     return sim

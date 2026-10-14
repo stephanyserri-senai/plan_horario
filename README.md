@@ -6,6 +6,15 @@ Ela centraliza turmas, UCs, instrutores, ambientes, equipamentos e calendários 
 O sistema **impede** conflitos de instrutor, turma (inclusive com divisão em grupos), ambiente e equipamentos, inclusive sob concorrência.
 Ele também **gera** grades com Google OR-Tools CP-SAT, **mede** a ocupação real, **identifica gargalos**, **simula** novas ofertas sem tocar no planejamento vigente e **explica** cada recomendação com base nos dados cadastrados.
 
+| Documento | Conteúdo |
+|---|---|
+| [README.md](README.md) | visão geral, instalação e execução local |
+| [DEPLOY.md](DEPLOY.md) | publicação na Vercel, worker do otimizador e fluxo GitHub → Preview → Produção |
+| [SUPABASE.md](SUPABASE.md) | banco, conexões, migrações, autenticação, RLS e backup |
+| [SECURITY.md](SECURITY.md) | segredos, autenticação, autorização e riscos |
+| [TESTING.md](TESTING.md) | testes automatizados e validações antes da publicação |
+| [.env.example](.env.example) | todas as variáveis de ambiente |
+
 ---
 
 ## 1. Diagnóstico inicial e decisões
@@ -55,12 +64,13 @@ Pré-requisitos: Python ≥ 3.11, Node ≥ 20, PostgreSQL ≥ 14 com as extensõ
 docker compose up -d db
 
 # 2. Backend
+cp .env.example .env               # na RAIZ do repositório; ajuste PLAN_DATABASE_URL etc.
 cd backend
 python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env               # ajuste PLAN_DATABASE_URL, PLAN_JWT_SECRET, PLAN_ADMIN_*
-alembic upgrade head               # migrações versionadas (cria extensões e restrições)
-python -m app.seed                 # perfis, pesos padrão, configurações e 1º administrador
+pip install -r requirements.txt    # completo (inclui OR-Tools e pytest)
+alembic upgrade head               # migrações versionadas (cria extensões, restrições e RLS)
+python -m app.seed                 # perfis, pesos padrão, configurações e 1º administrador (PLAN_ADMIN_*)
+python -m app.seed --usuario-teste # opcional: usuário de TESTE admin / admin@123 (recusado em produção)
 uvicorn app.main:app --reload --port 8000
 
 # 3. Frontend (desenvolvimento, com proxy para a API)
@@ -69,8 +79,18 @@ npm ci
 npm run dev                        # http://localhost:5173
 ```
 
-Em produção, gere `npm run build`: a API serve `frontend/dist` na mesma origem.
-Defina `PLAN_AMBIENTE=producao` e um `PLAN_JWT_SECRET` forte; sem ele, a API não inicia.
+Localmente, `PLAN_EXECUTOR=auto` executa o otimizador em *threads* do próprio servidor. Para reproduzir a arquitetura de produção (fila e worker), use `PLAN_EXECUTOR=fila` e rode `python -m app.worker` em outro terminal.
+
+Fora da Vercel, `npm run build` gera `frontend/dist`, que a API serve na mesma origem. Para publicar na **Vercel + Supabase**, siga o [DEPLOY.md](DEPLOY.md).
+
+### Usuário de teste
+
+`python -m app.seed --usuario-teste` cria o administrador de **teste**, com login `admin` e senha `admin@123`. Ele serve para validar a instalação antes de cadastrar usuários reais.
+
+* O comando é recusado com `PLAN_AMBIENTE=producao`.
+* Enquanto o usuário existir, a API registra um alerta e `/api/saude` informa `usuario_teste_ativo: true`.
+* Remova com `python -m app.seed --remover-usuario-teste`.
+* No modo Supabase Auth, ver [DEPLOY.md](DEPLOY.md#7-usuário-de-teste-somente-desenvolvimentohomologação).
 
 ### Dados de demonstração (opcionais e removíveis)
 
@@ -101,7 +121,7 @@ cd backend && PLAN_TEST_DATABASE_URL=postgresql+psycopg://plan:plan@localhost:54
 cd frontend && npm run typecheck && npm run build
 ```
 
-Resultado atual: **36 testes passando** contra PostgreSQL real. Os testes verificam o resultado e a integridade final no banco.
+Resultado atual: **58 testes passando** contra PostgreSQL real (36 funcionais + 22 de preparação para Vercel/Supabase; ver [TESTING.md](TESTING.md)). Os testes verificam o resultado e a integridade final no banco.
 O CI (`.github/workflows/ci.yml`) executa a mesma suíte e o build do frontend.
 
 | Caso exigido (seção 20) | Teste |
@@ -221,7 +241,7 @@ O CI (`.github/workflows/ci.yml`) executa a mesma suíte e o build do frontend.
 * **Aproximações nos critérios de preferência do solver:** janelas e equilíbrio de carga são aproximados no padrão semanal. A régua oficial de comparação (`objetivo.py`) é calculada sobre as aulas datadas.
 * **Aulas avulsas fixas** (uma única ocorrência) não restringem o padrão semanal no solver; são respeitadas na expansão.
 * **Gargalos** são uma análise agregada: a ausência de déficit não garante uma grade; só o gerador comprova.
-* **Fila do otimizador em processo:** é suficiente para uma instância. Para escalar horizontalmente, troque `otimizacao.submeter` por uma fila externa (ex.: RQ/Celery); o contrato do solver já é serializável.
+* **Otimizador fora da Vercel:** em produção serverless, o gerador e a simulação completa rodam num worker separado (`python -m app.worker`), com fila no próprio PostgreSQL (`SKIP LOCKED` e *heartbeat*). Sem o worker publicado, essas execuções ficam na fila. Ver [DEPLOY.md](DEPLOY.md).
 * **Próximas tarefas sugeridas:**
   * testes de interface automatizados no CI (Playwright);
   * edição em lote na grade;

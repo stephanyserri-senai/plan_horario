@@ -13,6 +13,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Index,
+    LargeBinary,
     Integer,
     Numeric,
     String,
@@ -234,6 +235,9 @@ class ExecucaoOtimizacao(Base):
     criado_em: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     iniciado_em: Mapped[datetime | None] = mapped_column(DateTime)
     finalizado_em: Mapped[datetime | None] = mapped_column(DateTime)
+    # Fila: identificação do worker que processa e último sinal de vida.
+    worker: Mapped[str | None] = mapped_column(String(120))
+    heartbeat_em: Mapped[datetime | None] = mapped_column(DateTime)
 
 
 class ResultadoOtimizacao(Base):
@@ -259,6 +263,10 @@ class SimulacaoCapacidade(Base):
     resultado: Mapped[dict | None] = mapped_column(JSONB)
     criado_por_id: Mapped[int | None] = mapped_column(ForeignKey("usuarios.id"))
     criado_em: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    iniciado_em: Mapped[datetime | None] = mapped_column(DateTime)
+    finalizado_em: Mapped[datetime | None] = mapped_column(DateTime)
+    worker: Mapped[str | None] = mapped_column(String(120))
+    heartbeat_em: Mapped[datetime | None] = mapped_column(DateTime)
 
 
 class Validacao(Base):
@@ -307,6 +315,9 @@ class Importacao(Base):
     previa: Mapped[dict | None] = mapped_column(JSONB)
     relatorio: Mapped[dict | None] = mapped_column(JSONB)
     cenario_id: Mapped[int | None] = mapped_column(ForeignKey("cenarios_planejamento.id", ondelete="SET NULL"))
+    # Conteúdo do arquivo durante a prévia (persistido: funções serverless não compartilham memória).
+    # É descartado (NULL) após confirmar ou descartar a importação.
+    conteudo: Mapped[bytes | None] = mapped_column(LargeBinary, deferred=True)
     criado_por_id: Mapped[int | None] = mapped_column(ForeignKey("usuarios.id"))
     criado_em: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     confirmado_em: Mapped[datetime | None] = mapped_column(DateTime)
@@ -361,6 +372,8 @@ class Usuario(Base):
     nome: Mapped[str] = mapped_column(String(200))
     email: Mapped[str] = mapped_column(String(200), unique=True)
     senha_hash: Mapped[str] = mapped_column(String(200))
+    # Vínculo com o usuário do Supabase Auth (auth.users.id) quando PLAN_AUTH_MODO=supabase.
+    auth_user_id: Mapped[str | None] = mapped_column(String(36), unique=True)
     perfil: Mapped[str] = mapped_column(String(20))
     acesso_global: Mapped[bool] = mapped_column(Boolean, default=False)
     ativo: Mapped[bool] = mapped_column(Boolean, default=True)

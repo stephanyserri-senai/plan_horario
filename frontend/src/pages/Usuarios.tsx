@@ -15,6 +15,8 @@ export default function Usuarios() {
 }
 
 function ListaUsuarios() {
+  const { auth, aviso } = useApp();
+  const supabase = auth?.modo === "supabase";
   const us = useCarregar<any[]>(() => api.get("/api/usuarios"), []);
   const [ed, setEd] = useState<any | null>(null);
   const [erro, setErro] = useState<any>(null);
@@ -24,21 +26,28 @@ function ListaUsuarios() {
   const fontes: Record<string, any[]> = { unidade: unidades, curso: cursos, turma: turmas };
   const salvar = async () => {
     setErro(null);
-    try { ed.id ? await api.put(`/api/usuarios/${ed.id}`, ed) : await api.post("/api/usuarios", ed); setEd(null); us.recarregar(); } catch (e) { setErro(e); }
+    try {
+      const r = ed.id ? await api.put(`/api/usuarios/${ed.id}`, ed) : await api.post("/api/usuarios", ed);
+      if (r.convite) aviso(r.convite.enviado ? "Convite enviado pelo Supabase Auth." : `Usuário criado; convite não enviado: ${r.convite.erro}`, r.convite.enviado ? "ok" : "info");
+      setEd(null); us.recarregar();
+    } catch (e) { setErro(e); }
   };
   return (
     <>
       <button className="btn btn-primario" onClick={() => setEd({ nome: "", email: "", perfil: "consulta", escopos: [], acesso_global: false })}>+ Novo usuário</button>
       <Tabela colunas={[{ chave: "nome", rotulo: "Nome" }, { chave: "email", rotulo: "E-mail" }, { chave: "perfil", rotulo: "Perfil" }, { chave: "acesso_global", rotulo: "Acesso global" },
         { chave: "escopos", rotulo: "Escopo", render: (u: any) => u.escopos.map((e: any) => `${e.tipo} #${e.id}`).join(", ") || (u.acesso_global ? "todas" : "nenhum") },
-        { chave: "ativo", rotulo: "Ativo" }, { chave: "ultimo_acesso", rotulo: "Último acesso", render: (u: any) => u.ultimo_acesso ? new Date(u.ultimo_acesso).toLocaleString("pt-BR") : "—" }]}
+        { chave: "ativo", rotulo: "Ativo" },
+        ...(supabase ? [{ chave: "vinculado_supabase", rotulo: "Acesso Supabase", render: (u: any) => u.vinculado_supabase ? "vinculado" : <span onClick={(e) => e.stopPropagation()}>aguardando 1º acesso <button className="btn-link" onClick={async () => {
+          const r = await api.post(`/api/usuarios/${u.id}/convite`); aviso(r.enviado ? "Convite reenviado." : r.erro, r.enviado ? "ok" : "erro"); }}>reenviar convite</button></span> }] : []), { chave: "ultimo_acesso", rotulo: "Último acesso", render: (u: any) => u.ultimo_acesso ? new Date(u.ultimo_acesso).toLocaleString("pt-BR") : "—" }]}
         linhas={us.dados || []} aoClicar={(u) => setEd({ ...u })} />
       <Modal titulo={ed?.id ? "Editar usuário" : "Novo usuário"} aberto={!!ed} fechar={() => setEd(null)} largo>
         {ed && <>
           <div className="form-grid">
             <Campo rotulo="Nome" obrigatorio><input value={ed.nome} onChange={(e) => setEd({ ...ed, nome: e.target.value })} /></Campo>
             <Campo rotulo="E-mail" obrigatorio><input type="email" disabled={!!ed.id} value={ed.email} onChange={(e) => setEd({ ...ed, email: e.target.value })} /></Campo>
-            <Campo rotulo={ed.id ? "Nova senha (opcional)" : "Senha"} obrigatorio={!ed.id} ajuda="Mínimo 8 caracteres; armazenada com bcrypt."><input type="password" autoComplete="new-password" value={ed.senha || ""} onChange={(e) => setEd({ ...ed, senha: e.target.value })} /></Campo>
+            {supabase ? <p className="sub">A senha é definida pelo próprio usuário no Supabase Auth (convite por e-mail).</p> :
+              <Campo rotulo={ed.id ? "Nova senha (opcional)" : "Senha"} obrigatorio={!ed.id} ajuda="Mínimo 8 caracteres; armazenada com bcrypt."><input type="password" autoComplete="new-password" value={ed.senha || ""} onChange={(e) => setEd({ ...ed, senha: e.target.value })} /></Campo>}
             <Campo rotulo="Perfil"><select value={ed.perfil} onChange={(e) => setEd({ ...ed, perfil: e.target.value })}>{["administrador", "planejador", "coordenador", "gestor", "consulta"].map((p) => <option key={p}>{p}</option>)}</select></Campo>
             <Campo rotulo="Acesso"><label><input type="checkbox" checked={ed.acesso_global} onChange={(e) => setEd({ ...ed, acesso_global: e.target.checked })} /> Todas as unidades</label>
               {ed.id && <label><input type="checkbox" checked={ed.ativo} onChange={(e) => setEd({ ...ed, ativo: e.target.checked })} /> Ativo</label>}</Campo>

@@ -1,7 +1,11 @@
 name: CI
-on: [push, pull_request]
+on:
+  push:
+  pull_request:
+
 jobs:
   backend:
+    name: Backend (testes com PostgreSQL)
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -17,10 +21,29 @@ jobs:
       - run: cd backend && python -m pytest -q
         env:
           PLAN_TEST_DATABASE_URL: postgresql+psycopg://plan:plan@localhost:5432/plan_horario_test
+
+  api-vercel:
+    name: API no formato da Vercel (sem OR-Tools)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: python -m venv /tmp/v && /tmp/v/bin/pip install -r requirements.txt
+      - name: Importa a função sem OR-Tools e verifica o tamanho das dependências (< 250 MB)
+        run: |
+          VERCEL=1 /tmp/v/bin/python -c "import api.index; import importlib.util as u; assert u.find_spec('ortools') is None; print('ok')"
+          du -sm /tmp/v/lib/python3.12/site-packages | awk '{ if ($1 > 240) { print "dependências: " $1 " MB"; exit 1 } else print "dependências: " $1 " MB" }'
+      - name: Nenhum segredo versionado
+        run: |
+          ! git ls-files | grep -E '(^|/)\.env($|\.)' | grep -v '\.env\.example$'
+          ! git grep -nE 'service_role[^_]*["'"'"'][A-Za-z0-9._-]{30,}|eyJhbGciOi[A-Za-z0-9._-]{40,}' -- ':!*.md'
+
   frontend:
+    name: Frontend (typecheck e build)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: "22" }
-      - run: cd frontend && npm ci && npm run build
+      - run: cd frontend && npm ci && npm run typecheck && npm run build

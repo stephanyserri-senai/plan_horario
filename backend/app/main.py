@@ -1,5 +1,14 @@
-"""Aplicação FastAPI: Plataforma de Planejamento Acadêmico."""
+"""Aplicação FastAPI: Plataforma de Planejamento Acadêmico.
+
+Roda de três formas, com o mesmo código:
+- local (uvicorn): API + frontend compilado, otimizador em threads;
+- Vercel (função Python serverless, api/index.py): somente API; otimizador
+  em worker externo (PLAN_EXECUTOR=fila);
+- container (Dockerfile): API completa ou worker (python -m app.worker).
+"""
 import logging
+import time
+import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -8,6 +17,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import func, select, text
 
 from app.api import analise, cadastros, planejamento, seguranca
 from app.core.config import get_settings
@@ -18,26 +28,66 @@ settings = get_settings()
 logging.basicConfig(level=settings.log_level, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("app")
 
-if settings.producao and settings.jwt_secret.startswith("dev-"):
-    raise RuntimeError("Defina PLAN_JWT_SECRET em produção.")
+_erros_config = settings.validar()
+if _erros_config:
+    # Falha cedo e de forma explícita: configuração insegura ou incompleta.
+    raise RuntimeError("Configuração inválida: " + " | ".join(_erros_config))
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    from app.services.otimizacao import recuperar_execucoes_interrompidas
+    # Recuperação de execuções interrompidas só faz sentido quando ESTE processo
+    # executa o otimizador (modo thread). Em serverless/fila, o worker faz a
+    # recuperação baseada em heartbeat — senão cada cold start derrubaria jobs vivos.
+    if settings.modo_executor == "thread":
+        from app.services.otimizacao import recuperar_execucoes_interrompidas
+        try:
+            with SessionLocal() as db:
+                n = recuperar_execucoes_interrompidas(db)
+                if n:
+                    log.warning("%s execução(ões) do otimizador interrompida(s) foram marcadas como falha.", n)
+        except Exception:
+            log.exception("Falha ao recuperar execuções interrompidas")
     try:
+        from app.seed import usuario_teste_ativo
         with SessionLocal() as db:
-            n = recuperar_execucoes_interrompidas(db)
-            if n:
-                log.warning("%s execução(ões) do otimizador interrompida(s) foram marcadas como falha.", n)
+            if usuario_teste_ativo(db):
+                log.warning("ATENÇÃO: o usuário de TESTE (admin/admin@123) está ativo. Remova-o antes da produção: python -m app.seed --remover-usuario-teste")
     except Exception:
-        log.exception("Falha ao recuperar execuções interrompidas")
+        log.debug("Verificação do usuário de teste não realizada", exc_info=True)
+    log.info("API iniciada (ambiente=%s, auth=%s, executor=%s, serverless=%s)", settings.ambiente, settings.auth_modo,
+             settings.modo_executor, settings.serverless)
     yield
 
 
-app = FastAPI(title="Plataforma de Planejamento Acadêmico", version="1.0.0", lifespan=lifespan)
-app.add_middleware(CORSMiddleware, allow_origins=[o.strip() for o in settings.cors_origens.split(",")], allow_credentials=True,
-                   allow_methods=["*"], allow_headers=["*"])
+app = FastAPI(title="Plataforma de Planejamento Acadêmico", version="1.1.0", lifespan=lifespan,
+              docs_url=None if settings.producao else "/api/docs", openapi_url=None if settings.producao else "/api/openapi.json")
+app.add_middleware(CORSMiddleware, allow_origins=[o.strip() for o in settings.cors_origens.split(",") if o.strip()], allow_credentials=False,
+                   allow_methods=["*"], allow_headers=["Authorization", "Content-Type"])
+
+
+@app.middleware("http")
+async def registrar_requisicao(request: Request, call_next):
+    """Log estruturado por requisição (visível nos logs da Vercel/worker) e
+    cabeçalhos de segurança. Não registra corpo nem tokens."""
+    rid = request.headers.get("x-vercel-id") or uuid.uuid4().hex[:12]
+    t0 = time.perf_counter()
+    try:
+        resposta = await call_next(request)
+    except Exception:
+        log.exception("req=%s %s %s falhou", rid, request.method, request.url.path)
+        raise
+    dur = (time.perf_counter() - t0) * 1000
+    nivel = logging.WARNING if resposta.status_code >= 500 or dur > 10000 else logging.INFO
+    if request.url.path.startswith("/api"):
+        log.log(nivel, "req=%s %s %s -> %s %.0fms", rid, request.method, request.url.path, resposta.status_code, dur)
+    resposta.headers["X-Request-Id"] = rid
+    resposta.headers.setdefault("X-Content-Type-Options", "nosniff")
+    resposta.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    resposta.headers.setdefault("X-Frame-Options", "DENY")
+    if request.url.path.startswith("/api"):
+        resposta.headers.setdefault("Cache-Control", "no-store")
+    return resposta
 
 
 @app.exception_handler(ErroDominio)
@@ -63,17 +113,34 @@ for r in (seguranca.router, cadastros.router, planejamento.router, analise.route
 
 @app.get("/api/saude")
 def saude():
+    """Diagnóstico sem dados sensíveis: banco, migração, modo de execução e fila."""
+    from app.models import Configuracao, ExecucaoOtimizacao, SimulacaoCapacidade
     with SessionLocal() as db:
-        db.execute(__import__("sqlalchemy").text("select 1"))
-    return {"status": "ok", "ambiente": settings.ambiente}
+        db.execute(text("select 1"))
+        try:
+            revisao = db.scalar(text("select version_num from alembic_version"))
+        except Exception:
+            db.rollback()
+            revisao = None
+        fila = {
+            "execucoes_pendentes": db.scalar(select(func.count()).select_from(ExecucaoOtimizacao).where(ExecucaoOtimizacao.status == "pendente")),
+            "simulacoes_pendentes": db.scalar(select(func.count()).select_from(SimulacaoCapacidade).where(SimulacaoCapacidade.status == "pendente")),
+        }
+        w = db.get(Configuracao, "worker_status")
+        from app.seed import usuario_teste_ativo
+        teste = usuario_teste_ativo(db)
+    return {"usuario_teste_ativo": teste, "status": "ok", "ambiente": settings.ambiente, "auth": settings.auth_modo, "executor": settings.modo_executor,
+            "migracao": revisao, "fila": fila, "worker": w.valor if w else None}
 
 
-# Em produção, o build do frontend é servido pela própria API.
+# Fora da Vercel, o build do frontend é servido pela própria API (na Vercel, pela CDN).
 _dist = Path(__file__).resolve().parents[2] / "frontend" / "dist"
-if _dist.exists():
+if _dist.exists() and not settings.serverless:
     app.mount("/assets", StaticFiles(directory=_dist / "assets"), name="assets")
 
     @app.get("/{caminho:path}", include_in_schema=False)
     def spa(caminho: str):
-        alvo = _dist / caminho
-        return FileResponse(alvo if caminho and alvo.is_file() else _dist / "index.html")
+        alvo = (_dist / caminho).resolve()
+        if caminho and alvo.is_file() and _dist.resolve() in alvo.parents:
+            return FileResponse(alvo)
+        return FileResponse(_dist / "index.html")

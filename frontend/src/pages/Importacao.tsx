@@ -6,7 +6,7 @@ import { useApp } from "../contexto";
 const TIPOS = ["unidades", "cursos", "matrizes", "ucs", "turmas", "turma_ucs", "instrutores", "competencias", "ambientes", "disponibilidade_instrutores", "aulas"];
 
 export default function Importacao() {
-  const { cenarios, cenario, aviso } = useApp();
+  const { cenarios, cenario, aviso, auth } = useApp();
   const [arquivo, setArquivo] = useState<File | null>(null);
   const [tipo, setTipo] = useState("");
   const [cen, setCen] = useState<string>("");
@@ -37,7 +37,7 @@ export default function Importacao() {
     <Pagina titulo="Importação de planilhas" descricao="XLSX ou CSV: identificação da estrutura, mapeamento revisável de colunas, validação de relacionamentos, prévia, correção e confirmação.">
       <Card titulo="1. Selecionar arquivo">
         <div className="form-grid">
-          <Campo rotulo="Arquivo (.xlsx, .csv)"><input type="file" accept=".xlsx,.xlsm,.csv,.txt" onChange={(e) => setArquivo(e.target.files?.[0] || null)} /></Campo>
+          <Campo rotulo="Arquivo (.xlsx, .csv)" ajuda={auth ? `Tamanho máximo: ${auth.limite_upload_mb} MB` : undefined}><input type="file" accept=".xlsx,.xlsm,.csv,.txt" onChange={(e) => setArquivo(e.target.files?.[0] || null)} /></Campo>
           <Campo rotulo="Tipo de dados" ajuda="Vazio = identificar pelos cabeçalhos"><select value={tipo} onChange={(e) => setTipo(e.target.value)}><option value="">Detectar automaticamente</option>{TIPOS.map((t) => <option key={t}>{t}</option>)}</select></Campo>
           <Campo rotulo="Cenário de destino (aulas)" ajuda="Somente cenários em elaboração; horários publicados nunca são sobrescritos.">
             <select value={cen} onChange={(e) => setCen(e.target.value)}><option value="">Cenário atual</option>{cenarios.filter((c) => c.estado === "em_elaboracao").map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}</select></Campo>

@@ -1,0 +1,18 @@
+# Dependências de EXECUÇÃO da API (usadas na Vercel).
+# NÃO inclui OR-Tools: ele (com pandas/numpy, ~220 MB) excede o limite de 250 MB
+# das funções da Vercel. O solver roda no worker (backend/requirements.txt).
+# Mantenha este arquivo idêntico a /requirements.txt (verificado nos testes).
+fastapi==0.143.0
+starlette==1.6.0
+sqlalchemy==2.1.4
+alembic==1.20.0
+psycopg[binary]==3.3.6
+pydantic==2.13.5
+pydantic-settings==2.15.0
+bcrypt==5.0.0
+pyjwt[crypto]==2.14.0
+cryptography==50.0.1
+httpx==0.28.1
+python-multipart==0.0.32
+openpyxl==3.1.5
+reportlab==5.0.1

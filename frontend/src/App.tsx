@@ -11,7 +11,7 @@ import Gargalos from "./pages/Gargalos";
 import Geracao from "./pages/Geracao";
 import Grade from "./pages/Grade";
 import Importacao from "./pages/Importacao";
-import Login from "./pages/Login";
+import Login, { DefinirSenha } from "./pages/Login";
 import Planejamento from "./pages/Planejamento";
 import Relatorios from "./pages/Relatorios";
 import Simulador from "./pages/Simulador";
@@ -64,8 +64,9 @@ function BuscaGlobal() {
 }
 
 export default function App() {
-  const { usuario, sair, pode, cenarios, cenario, setCenarioId } = useApp();
+  const { usuario, sair, pode, cenarios, cenario, setCenarioId, definirSenha } = useApp();
   const [menuAberto, setMenuAberto] = useState(false);
+  if (definirSenha) return <DefinirSenha />;
   if (!usuario) return <Login />;
   return (
     <div className="app">

@@ -2,6 +2,7 @@
 exportação, auditoria, configurações e aprendizado."""
 from __future__ import annotations
 
+import logging
 import threading
 from datetime import date, datetime
 
@@ -10,6 +11,7 @@ from fastapi.responses import Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.db import SessionLocal, get_db
 from app.core.deps import Contexto, carregar_contexto, get_contexto, requer
 from app.core.errors import EntradaInvalida, NaoEncontrado
@@ -112,26 +114,29 @@ def sim_agregada(d: dict = Body(...), ctx: Contexto = Depends(requer("simulacao.
 
 @router.post("/simulador/completa")
 def sim_completa(d: dict = Body(...), ctx: Contexto = Depends(requer("simulacao.executar")), db: Session = Depends(get_db)):
-    simulador._validar_parametros(db, d["parametros"])
-    uid = ctx.id
+    """Registra a simulação como job e a encaminha conforme PLAN_EXECUTOR:
+    thread (processo local), fila (worker externo) ou síncrona."""
+    sim = simulador.criar_simulacao_completa(db, ctx, d["parametros"], int(d["cenario_base_id"]), d.get("nome") or "Simulação completa",
+                                             float(d.get("limite_tempo_s", 20)), bool(d.get("alternativas", True)))
+    db.commit()
+    modo = "sincrono" if d.get("sincrono") else get_settings().modo_executor
+    sid, uid = sim.id, ctx.id
 
     def rodar():
         with SessionLocal() as s:
-            c = carregar_contexto(s, s.get(Usuario, uid))
             try:
-                simulador.simular_completa(s, c, d["parametros"], int(d["cenario_base_id"]), d.get("nome") or "Simulação completa",
-                                           float(d.get("limite_tempo_s", 20)), bool(d.get("alternativas", True)))
-            except Exception as e:  # registra falha para consulta
-                s.rollback()
-                s.add(SimulacaoCapacidade(nome=d.get("nome") or "Simulação completa", tipo="completa", parametros=d["parametros"],
-                                          cenario_base_id=int(d["cenario_base_id"]), status="falha", resultado={"erro": str(e)}, criado_por_id=uid))
-                s.commit()
-    if d.get("sincrono"):
+                simulador.processar_simulacao(s, sid, carregar_contexto(s, s.get(Usuario, uid)))
+            except Exception:
+                logging.getLogger("simulador").exception("Falha na simulação %s", sid)
+    if modo == "sincrono":
         rodar()
-        sim = db.scalars(select(SimulacaoCapacidade).where(SimulacaoCapacidade.criado_por_id == uid).order_by(SimulacaoCapacidade.id.desc())).first()
+        db.expire_all()
+        sim = db.get(SimulacaoCapacidade, sid)
         return {"id": sim.id, "status": sim.status, "resultado": sim.resultado}
-    threading.Thread(target=rodar, daemon=True).start()
-    return {"status": "em_execucao", "mensagem": "Simulação completa iniciada; acompanhe na lista de simulações."}
+    if modo == "thread":
+        threading.Thread(target=rodar, daemon=True).start()
+        return {"id": sid, "status": "em_execucao", "mensagem": "Simulação completa iniciada; acompanhe na lista de simulações."}
+    return {"id": sid, "status": "pendente", "mensagem": "Simulação enviada para a fila do serviço de otimização; acompanhe na lista de simulações."}
 
 
 @router.get("/simulador")
@@ -163,24 +168,24 @@ async def previa(arquivo: UploadFile = File(...), tipo: str | None = Form(None),
                  cenario_id: int | None = Form(None), ctx: Contexto = Depends(requer("importacao.executar")), db: Session = Depends(get_db)):
     import json
     conteudo = await arquivo.read()
-    if len(conteudo) > 20 * 1024 * 1024:
-        raise EntradaInvalida("Arquivo maior que 20 MB.")
-    imp = importacao.gerar_previa(db, ctx, arquivo.filename, conteudo, tipo or None, planilha, json.loads(mapeamento) if mapeamento else None, cenario_id)
+    limite = get_settings().limite_upload_bytes
+    if len(conteudo) > limite:
+        raise EntradaInvalida(f"Arquivo maior que {limite / 1024 / 1024:.1f} MB.")
+    try:
+        mapa = json.loads(mapeamento) if mapeamento else None
+    except ValueError:
+        raise EntradaInvalida("Mapeamento inválido (JSON).")
+    imp = importacao.gerar_previa(db, ctx, arquivo.filename, conteudo, tipo or None, planilha, mapa, cenario_id)
     db.commit()
-    _ARQUIVOS[imp.id] = (arquivo.filename, conteudo)
     return {"id": imp.id, "tipo": imp.tipo, "mapeamento": imp.mapeamento, **imp.previa}
-
-
-_ARQUIVOS: dict[int, tuple[str, bytes]] = {}  # conteúdo mantido em memória apenas durante a prévia
 
 
 @router.post("/importacao/{iid}/remapear")
 def remapear(iid: int, d: dict = Body(...), ctx: Contexto = Depends(requer("importacao.executar")), db: Session = Depends(get_db)):
     imp = db.get(Importacao, iid)
-    if imp is None or iid not in _ARQUIVOS:
-        raise NaoEncontrado("Prévia expirada: envie o arquivo novamente.")
-    nome, conteudo = _ARQUIVOS[iid]
-    imp = importacao.gerar_previa(db, ctx, nome, conteudo, d.get("tipo") or imp.tipo, d.get("planilha"), d.get("mapeamento"),
+    if imp is None or imp.status != "previa" or imp.conteudo is None:
+        raise NaoEncontrado("Prévia não disponível: envie o arquivo novamente.")
+    imp = importacao.gerar_previa(db, ctx, imp.arquivo_nome, imp.conteudo, d.get("tipo") or imp.tipo, d.get("planilha"), d.get("mapeamento"),
                                   d.get("cenario_id", imp.cenario_id), importacao_id=iid)
     db.commit()
     return {"id": imp.id, "tipo": imp.tipo, "mapeamento": imp.mapeamento, **imp.previa}
@@ -190,7 +195,6 @@ def remapear(iid: int, d: dict = Body(...), ctx: Contexto = Depends(requer("impo
 def confirmar(iid: int, d: dict = Body(default={}), ctx: Contexto = Depends(requer("importacao.executar")), db: Session = Depends(get_db)):
     rel = importacao.confirmar(db, ctx, iid, bool(d.get("ignorar_erros")))
     db.commit()
-    _ARQUIVOS.pop(iid, None)
     return rel
 
 
@@ -199,8 +203,8 @@ def descartar(iid: int, ctx: Contexto = Depends(requer("importacao.executar")), 
     imp = db.get(Importacao, iid)
     if imp and imp.status == "previa":
         imp.status = "descartada"
+        imp.conteudo = None
         db.commit()
-    _ARQUIVOS.pop(iid, None)
     return {"ok": True}
 
 

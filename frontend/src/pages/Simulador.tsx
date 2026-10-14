@@ -32,7 +32,7 @@ export default function Simulador() {
     calendario_id: p.calendario_id ? Number(p.calendario_id) : null, quantidade_turmas: Number(p.quantidade_turmas), alunos_por_turma: Number(p.alunos_por_turma),
     num_grupos: Number(p.num_grupos), encontros_semanais: p.encontros_semanais ? Number(p.encontros_semanais) : null, uc_ids: p.uc_ids?.length ? p.uc_ids.map(Number) : null } });
   const agregada = async () => { setErro(null); setRodando(true); try { setRes({ agregada: await api.post("/api/simulador/agregada", corpo()) }); lista.recarregar(); } catch (e) { setErro(e); } finally { setRodando(false); } };
-  const completa = async () => { setErro(null); try { await api.post("/api/simulador/completa", { ...corpo(), limite_tempo_s: 20 }); aviso("Simulação completa iniciada; o resultado aparecerá na lista.", "info"); setTimeout(lista.recarregar, 3000); } catch (e) { setErro(e); } };
+  const completa = async () => { setErro(null); try { const r = await api.post("/api/simulador/completa", { ...corpo(), limite_tempo_s: 20 }); aviso(r.mensagem || "Simulação completa iniciada; o resultado aparecerá na lista.", "info"); lista.recarregar(); setTimeout(lista.recarregar, 4000); } catch (e) { setErro(e); } };
   return (
     <Pagina titulo="Simulador de capacidade" descricao="Avalia novas ofertas sem alterar horários publicados. A simulação agregada estima capacidade; a completa procura uma grade real com todas as restrições.">
       <div className="grid-2">

@@ -9,3 +9,11 @@ dist/
 *.log
 backend/storage/
 .DS_Store
+# Segredos e artefatos locais
+.env.*
+!.env.example
+.vercel/
+backups/
+*.dump
+*.pem
+*.key

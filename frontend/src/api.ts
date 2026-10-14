@@ -1,3 +1,5 @@
+import { configAuth, obterToken, tokenLocal } from "./auth";
+
 // Cliente HTTP da API. Toda autorização é validada no servidor; o frontend
 // apenas oculta ações que o perfil não possui.
 export class ErroApi extends Error {
@@ -12,20 +14,16 @@ export class ErroApi extends Error {
   }
 }
 
-const CHAVE_TOKEN = "plan_token";
-export const token = {
-  get: () => { try { return localStorage.getItem(CHAVE_TOKEN); } catch { return null; } },
-  set: (t: string | null) => { try { t ? localStorage.setItem(CHAVE_TOKEN, t) : localStorage.removeItem(CHAVE_TOKEN); } catch { /* sem armazenamento */ } },
-};
+export const token = tokenLocal;
 
 async function req<T = any>(metodo: string, caminho: string, corpo?: any, form?: FormData): Promise<T> {
   const headers: Record<string, string> = {};
-  const t = token.get();
+  const t = await obterToken();
   if (t) headers["Authorization"] = `Bearer ${t}`;
   if (corpo !== undefined && !form) headers["Content-Type"] = "application/json";
   const r = await fetch(caminho, { method: metodo, headers, body: form ?? (corpo !== undefined ? JSON.stringify(corpo) : undefined) });
   if (r.status === 401) {
-    token.set(null);
+    if (configAuth()?.modo !== "supabase") token.set(null);
     window.dispatchEvent(new Event("sessao-expirada"));
   }
   if (!r.ok) {

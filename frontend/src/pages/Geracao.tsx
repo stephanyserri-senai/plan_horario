@@ -12,7 +12,7 @@ const STATUS: Record<string, [string, string]> = {
 };
 
 export default function Geracao() {
-  const { cenario, pode, aviso, recarregarCenarios } = useApp();
+  const { cenario, pode, aviso, recarregarCenarios, auth } = useApp();
   const [escopo, setEscopo] = useState<any>({ tipo: "pendentes", ids: [] as string[], regenerar_flexiveis: false });
   const [modo, setModo] = useState("completo");
   const [limite, setLimite] = useState(30);
@@ -36,7 +36,7 @@ export default function Geracao() {
     setErro(null);
     try {
       const r = await api.post("/api/otimizacao/executar", { cenario_id: cenario.id, escopo: { ...escopo, ids: escopo.ids.map(Number) }, modo, limite_tempo_s: limite, parametros_id: paramId || undefined });
-      aviso(`Execução #${r.execucao_id} iniciada em segundo plano.`, "info");
+      aviso(r.modo_execucao === "fila" ? `Execução #${r.execucao_id} enviada para a fila do serviço de otimização.` : `Execução #${r.execucao_id} iniciada em segundo plano.`, "info");
       execs.recarregar();
       recarregarCenarios();
     } catch (e) { setErro(e); }
@@ -45,6 +45,7 @@ export default function Geracao() {
     <Pagina titulo="Geração inteligente de horários" descricao="Solver de restrições (Google OR-Tools CP-SAT). Restrições obrigatórias nunca viram penalidades; os pesos só ordenam soluções que já respeitam todas elas.">
       <div className="grid-2">
         <Card titulo="Nova execução">
+          {auth?.executor === "fila" && <p className="sub">As execuções são processadas pelo serviço de otimização (worker). Se ficarem “na fila” por muito tempo, verifique o worker em /api/saude.</p>}
           <Campo rotulo="Escopo"><select value={escopo.tipo} onChange={(e) => setEscopo({ ...escopo, tipo: e.target.value, ids: [] })}>
             <option value="pendentes">Somente atividades pendentes</option><option value="instituicao">Toda a instituição</option>
             <option value="unidade">Unidade(s)</option><option value="curso">Curso(s)</option><option value="turno">Turno(s)</option><option value="turma">Turma(s)</option></select></Campo>
@@ -72,7 +73,8 @@ export default function Geracao() {
       <Card titulo="Execuções deste cenário">
         <Tabela colunas={[{ chave: "id", rotulo: "#" }, { chave: "criado_em", rotulo: "Solicitada", render: (e: any) => new Date(e.criado_em).toLocaleString("pt-BR") },
           { chave: "escopo", rotulo: "Escopo", render: (e: any) => `${e.escopo.tipo}${e.escopo.ids?.length ? ` (${e.escopo.ids.join(",")})` : ""}` },
-          { chave: "status", rotulo: "Execução", render: (e: any) => <Badge tipo={e.status === "concluida" ? "ok" : e.status === "falha" ? "bloqueio" : "info"}>{e.status}</Badge> },
+          { chave: "status", rotulo: "Execução", render: (e: any) => <>{<Badge tipo={e.status === "concluida" ? "ok" : e.status === "falha" ? "bloqueio" : "info"}>{e.status === "pendente" ? "na fila" : e.status}</Badge>}
+            {e.status === "pendente" && auth?.executor === "fila" && <small className="mudo"> aguardando o worker do otimizador</small>}</> },
           { chave: "status_solver", rotulo: "Resultado", render: (e: any) => e.status_solver ? <Badge tipo={STATUS[e.status_solver]?.[0] || "info"}>{STATUS[e.status_solver]?.[1] || e.status_solver}</Badge> : "—" },
           { chave: "tempo_s", rotulo: "Tempo (s)", alinhar: "dir" }, { chave: "objetivo", rotulo: "Objetivo", alinhar: "dir" }]}
           linhas={execs.dados || []} aoClicar={async (e) => setDet(await api.get(`/api/otimizacao/execucoes/${e.id}`))} />

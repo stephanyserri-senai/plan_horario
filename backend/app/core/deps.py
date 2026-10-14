@@ -4,6 +4,7 @@ from fastapi import Depends, Header, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.db import get_db
 from app.core.errors import AcessoNegado
 from app.core.security import decodificar_token
@@ -67,14 +68,41 @@ def carregar_contexto(db: Session, usuario: Usuario) -> Contexto:
     return ctx
 
 
+def _usuario_supabase(db: Session, token: str) -> Usuario:
+    from sqlalchemy import func
+
+    from app.core.supabase_auth import TokenInvalido, verificar_token
+    from app.services import auditoria
+    try:
+        claims = verificar_token(token)
+    except TokenInvalido as e:
+        raise HTTPException(status_code=401, detail=f"Sessão inválida ou expirada. ({e})")
+    sub, email = claims.get("sub"), (claims.get("email") or "").strip().lower()
+    usuario = db.scalars(select(Usuario).where(Usuario.auth_user_id == sub)).first()
+    if usuario is None and email:
+        # Primeiro acesso: vincula pelo e-mail cadastrado pelo administrador.
+        usuario = db.scalars(select(Usuario).where(func.lower(Usuario.email) == email, Usuario.auth_user_id.is_(None))).first()
+        if usuario is not None:
+            usuario.auth_user_id = sub
+            auditoria.registrar(db, None, "auth.vincular_supabase", "usuarios", usuario.id, depois={"auth_user_id": sub, "email": email})
+            db.commit()
+    if usuario is None:
+        raise HTTPException(status_code=403, detail="Usuário autenticado, mas sem cadastro na plataforma. Solicite acesso ao administrador.")
+    return usuario
+
+
 def get_contexto(authorization: str | None = Header(default=None), db: Session = Depends(get_db)) -> Contexto:
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(status_code=401, detail="Autenticação necessária.")
-    try:
-        payload = decodificar_token(authorization.split(" ", 1)[1])
-    except Exception:
-        raise HTTPException(status_code=401, detail="Sessão inválida ou expirada.")
-    usuario = db.get(Usuario, int(payload["sub"]))
+    token = authorization.split(" ", 1)[1].strip()
+    if get_settings().auth_modo == "supabase":
+        usuario = _usuario_supabase(db, token)
+    else:
+        try:
+            payload = decodificar_token(token)
+        except Exception:
+            raise HTTPException(status_code=401, detail="Sessão inválida ou expirada.")
+        usuario = db.get(Usuario, int(payload["sub"]))
     if not usuario or not usuario.ativo:
         raise HTTPException(status_code=401, detail="Usuário inativo.")
     return carregar_contexto(db, usuario)

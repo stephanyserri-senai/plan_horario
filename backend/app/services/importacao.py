@@ -507,6 +507,7 @@ def gerar_previa(db: Session, ctx, nome: str, conteudo: bytes, tipo: str | None 
         imp = Importacao(arquivo_nome=nome, arquivo_hash=h, criado_por_id=getattr(ctx, "id", None))
         db.add(imp)
     imp.tipo, imp.mapeamento, imp.previa, imp.status, imp.cenario_id = tipo, mapa, previa, "previa", cenario_id
+    imp.conteudo = conteudo
     db.flush()
     return imp
 
@@ -570,6 +571,7 @@ def confirmar(db: Session, ctx, importacao_id: int, ignorar_erros: bool = False,
             rel["avisos"] += [f"linha {it['linha']}: {a}" for a in it["avisos"]]
     imp.status = "confirmada"
     imp.confirmado_em = datetime.now()
+    imp.conteudo = None  # o arquivo não é mantido após a confirmação (apenas hash, prévia e relatório)
     imp.relatorio = rel
     auditoria.registrar(db, ctx, "importacao.confirmar", "importacoes", imp.id, depois={"arquivo": imp.arquivo_nome, "hash": imp.arquivo_hash, **{k: v for k, v in rel.items() if k != "aulas_bloqueadas"}})
     return rel

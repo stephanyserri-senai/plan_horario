@@ -11,7 +11,7 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -55,8 +55,18 @@ from app.solver.contrato import (
     SaidaSolver,
     Slot,
 )
-from app.solver.cpsat import resolver
 from app.solver.criterios import normalizar_pesos
+
+
+def resolver(entrada):
+    """Importação tardia do CP-SAT: o OR-Tools só é necessário no processo que
+    executa o solver (worker/servidor local). A API serverless não o carrega."""
+    try:
+        from app.solver.cpsat import resolver as _resolver
+    except ImportError as e:  # pragma: no cover - depende do ambiente
+        raise RuntimeError("OR-Tools não está instalado neste processo. Em produção serverless (Vercel), a otimização "
+                           "é executada pelo worker externo (PLAN_EXECUTOR=fila). Ver DEPLOY.md.") from e
+    return _resolver(entrada)
 
 log = logging.getLogger("otimizacao")
 _executor: ThreadPoolExecutor | None = None
@@ -71,17 +81,68 @@ def executor() -> ThreadPoolExecutor:
     return _executor
 
 
-def recuperar_execucoes_interrompidas(db: Session) -> int:
-    """Chamado na inicialização: execuções em andamento quando o servidor
-    caiu são marcadas como falha e o cenário volta a 'em_elaboracao'."""
-    pend = db.scalars(select(ExecucaoOtimizacao).where(ExecucaoOtimizacao.status.in_(["pendente", "executando"]))).all()
+def recuperar_execucoes_interrompidas(db: Session, somente_expiradas: bool = False) -> int:
+    """Execuções em andamento quando o processo caiu são marcadas como falha e o
+    cenário volta a 'em_elaboracao' (a aplicação do resultado é transacional:
+    nenhuma aula parcial fica gravada).
+
+    - modo thread (servidor único): na inicialização, todas as execuções
+      'executando' pertencem a um processo que morreu;
+    - modo fila (worker externo): só são recuperadas as execuções cujo
+      heartbeat expirou (o worker pode estar vivo em outra máquina)."""
+    s = get_settings()
+    q = select(ExecucaoOtimizacao).where(ExecucaoOtimizacao.status.in_(["executando"] if somente_expiradas else ["pendente", "executando"]))
+    if somente_expiradas:
+        limite = datetime.now() - timedelta(seconds=s.worker_heartbeat_expira_s)
+        q = q.where(func.coalesce(ExecucaoOtimizacao.heartbeat_em, ExecucaoOtimizacao.iniciado_em) < limite)
+    pend = db.scalars(q.with_for_update(skip_locked=True)).all()
+    cenarios = set()
     for e in pend:
         e.status = "falha"
-        e.motivo_termino = "Execução interrompida por reinício do servidor. Nenhuma aula foi gravada (transação desfeita)."
+        e.motivo_termino = ("Execução interrompida (o processo que a executava parou de responder). "
+                            "Nenhuma aula foi gravada; solicite novamente.")
         e.finalizado_em = datetime.now()
-    db.execute(update(CenarioPlanejamento).where(CenarioPlanejamento.estado == "em_otimizacao").values(estado="em_elaboracao"))
+        cenarios.add(e.cenario_id)
+    if somente_expiradas:
+        if cenarios:
+            db.execute(update(CenarioPlanejamento).where(CenarioPlanejamento.id.in_(cenarios), CenarioPlanejamento.estado == "em_otimizacao")
+                       .values(estado="em_elaboracao"))
+    else:
+        db.execute(update(CenarioPlanejamento).where(CenarioPlanejamento.estado == "em_otimizacao").values(estado="em_elaboracao"))
     db.commit()
     return len(pend)
+
+
+def reivindicar_execucao(db: Session, worker: str) -> int | None:
+    """Fila no PostgreSQL: o próximo job pendente é reservado com
+    FOR UPDATE SKIP LOCKED — dois workers nunca pegam o mesmo job."""
+    ex = db.scalars(select(ExecucaoOtimizacao).where(ExecucaoOtimizacao.status == "pendente").order_by(ExecucaoOtimizacao.id)
+                    .limit(1).with_for_update(skip_locked=True)).first()
+    if ex is None:
+        db.rollback()
+        return None
+    agora = datetime.now()
+    ex.status, ex.worker, ex.iniciado_em, ex.heartbeat_em = "executando", worker, agora, agora
+    db.commit()
+    return ex.id
+
+
+def heartbeat_execucao(execucao_id: int):
+    with SessionLocal() as db:
+        db.execute(update(ExecucaoOtimizacao).where(ExecucaoOtimizacao.id == execucao_id, ExecucaoOtimizacao.status == "executando")
+                   .values(heartbeat_em=datetime.now()))
+        db.commit()
+
+
+def despachar(execucao_id: int, ctx=None, forcar_sincrono: bool = False) -> str:
+    """Encaminha a execução conforme PLAN_EXECUTOR. Retorna o modo usado."""
+    modo = "sincrono" if forcar_sincrono else get_settings().modo_executor
+    if modo == "sincrono":
+        executar(execucao_id, ctx)
+    elif modo == "thread":
+        submeter(execucao_id)
+    # modo "fila": o job fica 'pendente' até um worker (python -m app.worker) reivindicá-lo
+    return modo
 
 
 # =============================================================================
@@ -400,6 +461,7 @@ def criar_execucao(db: Session, ctx, cenario_id: int, escopo: dict, parametros_i
     conj = db.get(ParametrosOtimizacao, parametros_id) if parametros_id else db.scalars(select(ParametrosOtimizacao).where(ParametrosOtimizacao.padrao.is_(True))).first()
     pesos_final = normalizar_pesos({**((conj.pesos if conj else {}) or {}), **(pesos or {})})
     limite = float(limite_tempo_s or (conj.limite_tempo_s if conj else get_settings().solver_limite_padrao_s))
+    limite = max(1.0, min(limite, float(get_settings().solver_limite_max_s)))
     ex = ExecucaoOtimizacao(cenario_id=cenario_id, escopo=escopo, status="pendente", criado_por_id=getattr(ctx, "id", None),
                             parametros={"pesos": pesos_final, "limite_tempo_s": limite, "modo": modo, "aplicar": aplicar,
                                         "conjunto_parametros": {"id": conj.id, "nome": conj.nome, "versao": conj.versao} if conj else None})
@@ -415,8 +477,15 @@ def executar(execucao_id: int, ctx=None):
     db = SessionLocal()
     try:
         ex = db.get(ExecucaoOtimizacao, execucao_id)
-        ex.status, ex.iniciado_em = "executando", datetime.now()
+        if ex is None or ex.status in ("concluida", "falha", "cancelada"):
+            return
+        ex.status, ex.iniciado_em, ex.heartbeat_em = "executando", ex.iniciado_em or datetime.now(), datetime.now()
         db.commit()
+        if ctx is None and ex.criado_por_id:
+            from app.core.deps import carregar_contexto
+            from app.models import Usuario
+            u = db.get(Usuario, ex.criado_por_id)
+            ctx = carregar_contexto(db, u) if u else None
         cen = db.get(CenarioPlanejamento, ex.cenario_id)
         par = ex.parametros
         entrada, meta = montar_entrada(db, cen, ex.escopo, par["pesos"], par["limite_tempo_s"], par["modo"])

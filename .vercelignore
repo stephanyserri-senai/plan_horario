@@ -1,0 +1,12 @@
+# Não enviar para a Vercel (o build do frontend e a função Python não precisam)
+.git
+**/node_modules
+**/__pycache__
+**/.pytest_cache
+backend/tests
+docs/telas
+backups
+*.dump
+.env
+.env.*
+!.env.example

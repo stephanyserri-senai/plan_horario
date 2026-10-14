@@ -22,7 +22,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 
-from ortools.graph.python import max_flow
+from app.services import fluxo as max_flow
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
