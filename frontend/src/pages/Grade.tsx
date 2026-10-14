@@ -73,15 +73,32 @@ export default function Grade() {
     });
     return m;
   }, [aulas.dados, linhas]);
+  // Aulas de várias aulas seguidas ocupam as linhas correspondentes (um único bloco por turno).
+  const { span, coberta } = useMemo(() => {
+    const span: Record<string, number> = {}, coberta = new Set<string>();
+    for (const d of dias) {
+      const data = iso(addDias(semana, d));
+      linhas.forEach((p, i) => {
+        const lista = porCelula[`${data}|${p.id}`] || [];
+        if (!lista.length || coberta.has(`${data}|${i}`)) return;
+        const fimMax = lista.reduce((m, a) => (a.fim > m ? a.fim : m), "");
+        let n = 1;
+        while (i + n < linhas.length && linhas[i + n].turno_id === p.turno_id && linhas[i + n].fim <= fimMax && !(porCelula[`${data}|${linhas[i + n].id}`] || []).length) {
+          coberta.add(`${data}|${i + n}`); n++;
+        }
+        span[`${data}|${i}`] = n;
+      });
+    }
+    return { span, coberta };
+  }, [porCelula, linhas, dias, iso(semana)]);
   const continuacao = (data: string, p: Periodo) => (aulas.dados || []).some((a) => a.data === data && a.inicio < p.inicio && a.fim > p.inicio);
   const livre = (data: string, p: Periodo) => (livres.dados || []).some((l) => l.data === data && l.periodo_id === p.id);
 
   const mover = async (aulaId: number, data: string, p: Periodo) => {
     const a = (aulas.dados || []).find((x) => x.id === aulaId);
     if (!a) return;
-    const seq = linhas.filter((x) => x.turno_id === p.turno_id && x.ordem >= p.ordem);
-    let acum = 0, n = 0;
-    while (n < seq.length && acum < a.minutos_aula) { const s = seq[n]; acum += minutos(s.fim) - minutos(s.inicio); n++; }
+    // mantém a mesma quantidade de aulas (períodos) que a aula ocupava
+    const n = Math.max(1, linhas.filter((x) => x.inicio >= a.inicio && x.fim <= a.fim).length);
     try {
       await api.put(`/api/alocacoes/${a.id}`, { versao: a.versao, data, periodo_inicio_id: p.id, num_periodos: n, motivo: "arrastar e soltar" });
       aviso("Aula movida.");
@@ -130,15 +147,17 @@ export default function Grade() {
         <table className="grade">
           <thead><tr><th>Período</th>{dias.map((d) => <th key={d}>{DIAS_CURTOS[d]} {dataBR(iso(addDias(semana, d))).slice(0, 5)}</th>)}</tr></thead>
           <tbody>
-            {linhas.map((p) => (
-              <tr key={p.id}>
+            {linhas.map((p, i) => (
+              <tr key={p.id} className={i > 0 && linhas[i - 1].turno_id !== p.turno_id ? "novo-turno" : ""}>
                 <th className="periodo"><span>{p.turno}</span>{p.ordem}º {p.inicio}–{p.fim}{p.excepcional && <Badge tipo="alerta">excepcional</Badge>}</th>
                 {dias.map((d) => {
                   const data = iso(addDias(semana, d));
+                  if (coberta.has(`${data}|${i}`)) return null;
+                  const n = span[`${data}|${i}`] || 1;
                   const lista = p.dias_semana.includes(d) ? porCelula[`${data}|${p.id}`] || [] : [];
                   const ehLivre = mostrarLivres && livre(data, p);
                   return (
-                    <td key={d} className={`${ehLivre ? "livre" : ""} ${!p.dias_semana.includes(d) ? "indisp" : ""}`}
+                    <td key={d} rowSpan={n} style={n > 1 ? { ["--n" as any]: n } : undefined} className={`${n > 1 ? "bloco" : ""} ${ehLivre ? "livre" : ""} ${!p.dias_semana.includes(d) ? "indisp" : ""}`}
                         onDragOver={(e) => editavel && e.preventDefault()}
                         onDrop={(e) => { e.preventDefault(); const id = Number(e.dataTransfer.getData("text/aula")); if (id) mover(id, data, p); }}
                         onDoubleClick={() => editavel && setForm({ data, periodo_inicio_id: p.id, turma_id: modo === "turma" ? alvo : "", instrutor_id: modo === "instrutor" ? alvo : "", ambiente_id: modo === "ambiente" ? alvo : "" })}>
@@ -240,7 +259,7 @@ export function FormAula({ inicial, cenarioId, unidadeId, periodos, fechar }: { 
   const oferta = useCarregar<any[]>(() => f.turma_id ? api.get(`/api/planejamento/oferta${qs({ cenario_id: cenarioId, turma_id: f.turma_id })}`) : Promise.resolve([]), [f.turma_id]);
   const excecoes = useCarregar<any[]>(() => api.get("/api/excecoes"), []);
   const tuc = (oferta.dados || []).find((o) => String(o.turma_uc_id) === String(f.turma_uc_id));
-  useEffect(() => { if (tuc && !inicial.num_periodos && !inicial.hora_inicio) setF((x: any) => ({ ...x, num_periodos: tuc.duracao_bloco_periodos || x.num_periodos })); }, [tuc?.turma_uc_id]);
+  useEffect(() => { if (tuc && !inicial.num_periodos && !inicial.hora_inicio) setF((x: any) => ({ ...x, num_periodos: tuc.periodos_sugeridos || tuc.periodos_por_encontro || tuc.duracao_bloco_periodos || x.num_periodos })); }, [tuc?.turma_uc_id]);
   const set = (k: string, v: any) => setF((x: any) => ({ ...x, [k]: v }));
   const corpo = () => {
     const c: any = { ...f, cenario_id: cenarioId };
@@ -287,7 +306,7 @@ export function FormAula({ inicial, cenarioId, unidadeId, periodos, fechar }: { 
         <Campo rotulo="Período inicial"><select value={f.periodo_inicio_id ?? ""} onChange={(e) => setF({ ...f, periodo_inicio_id: e.target.value, hora_inicio: undefined, hora_fim: undefined })}>
           <option value="">{f.hora_inicio ? `${f.hora_inicio}–${f.hora_fim} (horário atual)` : "—"}</option>
           {periodos.map((p) => <option key={p.id} value={p.id}>{p.turno} {p.ordem}º {p.inicio}</option>)}</select></Campo>
-        <Campo rotulo="Nº de períodos"><input type="number" min={1} value={f.num_periodos ?? ""} onChange={(e) => set("num_periodos", e.target.value)} /></Campo>
+        <Campo rotulo="Nº de aulas (períodos)" ajuda={tuc ? (tuc.periodos_sugeridos < tuc.periodos_por_encontro ? `Fechamento da carga horária: faltam ${tuc.restante_h} h, use ${tuc.periodos_sugeridos} aula(s). O restante do turno pode ficar com outra UC que também esteja fechando.` : `Regra da instituição: a UC ocupa o turno inteiro (${tuc.periodos_por_encontro} aulas).`) : undefined}><input type="number" min={1} value={f.num_periodos ?? ""} onChange={(e) => set("num_periodos", e.target.value)} /></Campo>
         <Campo rotulo="Equipamento móvel reservado" ajuda="Necessário quando a UC exige equipamento que o ambiente não possui instalado.">
           <div className="linha">
             <Selecao valor={f.recursos?.[0]?.recurso_id ?? ""} mudar={(v) => set("recursos", v ? [{ recurso_id: v, quantidade: f.recursos?.[0]?.quantidade || 1 }] : [])} opcoes={recursos} vazio="(nenhum)" />

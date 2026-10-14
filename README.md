@@ -121,7 +121,7 @@ cd backend && PLAN_TEST_DATABASE_URL=postgresql+psycopg://plan:plan@localhost:54
 cd frontend && npm run typecheck && npm run build
 ```
 
-Resultado atual: **63 testes passando** contra PostgreSQL real (36 funcionais + 27 de publicação e operação na Vercel/Supabase; ver [TESTING.md](TESTING.md)). Os testes verificam o resultado e a integridade final no banco.
+Resultado atual: **67 testes passando** contra PostgreSQL real (40 funcionais + 27 de publicação e operação na Vercel/Supabase; ver [TESTING.md](TESTING.md)). Os testes verificam o resultado e a integridade final no banco.
 O CI (`.github/workflows/ci.yml`) executa a mesma suíte e o build do frontend.
 
 | Caso exigido (seção 20) | Teste |
@@ -156,6 +156,19 @@ O CI (`.github/workflows/ci.yml`) executa a mesma suíte e o build do frontend.
 | Publicação exige validação, edição só por proposta | `test_publicacao_exige_validacao_e_bloqueia_edicao` |
 
 ---
+
+## Regras de composição das aulas (padrão da instituição)
+
+| Turno | Aulas | Intervalo |
+|---|---|---|
+| Manhã | 07:30–08:25, 08:25–09:20, 09:40–10:35, 10:35–11:30 (4 × 55 min) | 09:20–09:40 |
+| Tarde | 13:30–14:25, 14:25–15:20, 15:40–16:35, 16:35–17:30 (4 × 55 min) | 15:20–15:40 |
+| Noite | 18:20–19:10, 19:10–20:00, 20:10–21:00, 21:00–21:50 (4 × 50 min) | 20:00–20:10 |
+
+* **Turno inteiro:** cada UC ocupa as 4 aulas do turno no dia. A validação central bloqueia aula parcial (`TURNO_INCOMPLETO`) em qualquer forma de alocação (formulário, arrastar, importação, gerador).
+* **Fechamento da carga horária:** quando falta menos que um turno para a UC terminar, a última aula pode ter só as aulas necessárias; o restante do turno pode ser usado por outra UC da turma que também esteja fechando. O gerador junta esses fechamentos automaticamente no mesmo turno.
+* **Hora-aula:** cada aula conta 1 h de carga horária (uma UC de 40 h = 10 turnos).
+* As regras ficam em **Configurações → Limiares e parâmetros → Regras de composição das aulas**. Para unidades novas, **Cadastros → Turnos e horários → Criar turnos padrão** cria os três turnos acima.
 
 ## 4. Como os princípios obrigatórios foram atendidos
 

@@ -38,6 +38,7 @@ from app.models import (
 )
 from app.services import auditoria
 from app.services.calendario import Calendarios, bloco_de_periodos, combinar, minutos_do_bloco, periodos_por_turno
+from app.services.regras_aula import credito_bloco, regras_aula
 from app.services.planejamento import ambientes_compativeis, instrutores_elegiveis
 from app.services.validacao import (
     BLOQUEIO,
@@ -103,13 +104,17 @@ def resolver_horario(db: Session, turma: Turma, d: DadosAula) -> tuple[datetime,
             bloco = bloco_de_periodos(db, d.periodo_inicio_id, d.num_periodos or 1, d.data.weekday())
         except ValueError as e:
             raise EntradaInvalida(str(e))
-        return combinar(d.data, bloco[0].hora_inicio), combinar(d.data, bloco[-1].hora_fim), minutos_do_bloco(bloco)
+        return combinar(d.data, bloco[0].hora_inicio), combinar(d.data, bloco[-1].hora_fim), credito_bloco(regras_aula(db), bloco)
     if d.hora_inicio and d.hora_fim:
         ini, fim = combinar(d.data, d.hora_inicio), combinar(d.data, d.hora_fim)
         if fim <= ini:
             raise EntradaInvalida("O horário de término deve ser posterior ao início.")
-        # Desconta intervalos entre períodos da unidade contidos na janela.
-        mins = int((fim - ini).total_seconds() // 60)
+        # Carga horária: aulas (períodos) da unidade contidas na janela; sem períodos, minutos corridos.
+        contidos = [p for p in db.scalars(select(PeriodoHorario).where(PeriodoHorario.unidade_id == turma.unidade_id, PeriodoHorario.ativo.is_(True)))
+                    if d.data.weekday() in (p.dias_semana or []) and d.hora_inicio <= p.hora_inicio and p.hora_fim <= d.hora_fim]
+        if turma.turno_id and any(p.turno_id == turma.turno_id for p in contidos):
+            contidos = [p for p in contidos if p.turno_id == turma.turno_id]
+        mins = credito_bloco(regras_aula(db), contidos) if contidos else int((fim - ini).total_seconds() // 60)
         return ini, fim, mins
     raise EntradaInvalida("Informe o período inicial e a quantidade de períodos, ou os horários de início e término.")
 

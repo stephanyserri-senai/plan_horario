@@ -29,11 +29,24 @@ from app.services.calendario import minutos
 
 
 def minutos_por_periodo(db: Session, unidade_id: int) -> float:
-    """Duração média de um período de aula na unidade (minutos)."""
+    """Carga horária (minutos) que uma aula/período vale na unidade: 60 em hora-aula; senão, a duração média."""
+    from app.services.regras_aula import hora_aula, regras_aula
+    if hora_aula(regras_aula(db)):
+        return 60.0
     ps = db.scalars(select(PeriodoHorario).where(PeriodoHorario.unidade_id == unidade_id, PeriodoHorario.ativo.is_(True))).all()
     if not ps:
         return 50.0
     return sum(minutos(p.hora_fim) - minutos(p.hora_inicio) for p in ps) / len(ps)
+
+
+def periodos_por_encontro(db: Session, turma: Turma, uc: UnidadeCurricular) -> int:
+    """Aulas por encontro: o turno inteiro quando a regra está ativa; senão, a duração do bloco da UC."""
+    from app.services.regras_aula import periodos_do_turno, regras_aula
+    if regras_aula(db).get("turno_inteiro") and turma.turno_id:
+        n = max((len(periodos_do_turno(db, turma.turno_id, d)) for d in (turma.dias_possiveis or [0])), default=0)
+        if n:
+            return n
+    return uc.duracao_bloco_periodos
 
 
 def instrutores_elegiveis(db: Session, uc: UnidadeCurricular, unidade_id: int, na_data: date | None = None) -> list[dict]:
@@ -127,7 +140,7 @@ def situacao_carga_horaria(db: Session, cenario_id: int | None, tuc: TurmaUC) ->
     total_h = uc.carga_horaria_total
     restante_h = max(total_h - (realizada_min + programada_min) / 60, 0)
     mpp = minutos_por_periodo(db, turma.unidade_id)
-    horas_encontro = uc.duracao_bloco_periodos * mpp / 60
+    horas_encontro = periodos_por_encontro(db, turma, uc) * mpp / 60
     encontros_necessarios = math.ceil(restante_h / horas_encontro - 1e-9) if horas_encontro else 0
     prereqs = db.scalars(select(UnidadeCurricular.codigo).join(UCPrerequisito, UCPrerequisito.prerequisito_id == UnidadeCurricular.id)
                          .where(UCPrerequisito.uc_id == uc.id)).all()
@@ -144,6 +157,8 @@ def situacao_carga_horaria(db: Session, cenario_id: int | None, tuc: TurmaUC) ->
         "uc_codigo": uc.codigo, "uc_nome": uc.nome, "situacao_cadastro": tuc.situacao, "estado_planejamento": estado,
         "total_h": total_h, "realizada_h": round(realizada_min / 60, 2), "programada_h": round(programada_min / 60, 2),
         "restante_h": round(restante_h, 2), "horas_por_encontro": round(horas_encontro, 2),
+        "periodos_por_encontro": periodos_por_encontro(db, turma, uc),
+        "periodos_sugeridos": min(periodos_por_encontro(db, turma, uc), max(1, math.ceil(restante_h * 60 / mpp - 1e-9))) if restante_h > 0 else periodos_por_encontro(db, turma, uc),
         "encontros_necessarios": encontros_necessarios, "encontros_semanais": uc.encontros_semanais, "duracao_bloco_periodos": uc.duracao_bloco_periodos,
         "data_inicio": (tuc.data_inicio or turma.data_inicio).isoformat(),
         "data_limite": (tuc.data_limite or turma.data_fim).isoformat(),

@@ -44,7 +44,7 @@ from app.models import (
     UnidadeCurricular,
 )
 from app.models.planejamento import TODOS_GRUPOS
-from app.services.calendario import Calendarios, minutos, sobrepoe, segunda_da_semana
+from app.services.calendario import Calendarios, combinar, minutos, sobrepoe, segunda_da_semana
 
 BLOQUEIO, ALERTA, PREFERENCIA, RECOMENDACAO = "bloqueio", "alerta", "preferencia", "recomendacao"
 
@@ -151,6 +151,14 @@ class BaseDados:
         if chave not in self._cache:
             self._cache[chave] = fn()
         return self._cache[chave]
+
+    def regras(self) -> dict:
+        from app.services.regras_aula import regras_aula
+        return self._memo(("regras_aula",), lambda: regras_aula(self.db))
+
+    def periodos_turno(self, turno_id, dia_semana):
+        from app.services.regras_aula import periodos_do_turno
+        return self._memo(("per_turno", turno_id, dia_semana), lambda: periodos_do_turno(self.db, turno_id, dia_semana))
 
     def disponibilidade_instrutor(self, instrutor_id):
         return self._memo(("disp_i", instrutor_id), lambda: self.db.scalars(
@@ -399,6 +407,29 @@ def validar_aula(b: BaseDados, a: AulaProposta, ignorar: set[int] | None = None)
     turno = b.get(Turno, turma.turno_id)
     if turno and (a.inicio.time() < turno.hora_inicio or a.fim.time() > turno.hora_fim):
         add(BLOQUEIO, "TURMA_FORA_TURNO", f"Horário {a.inicio:%H:%M}–{a.fim:%H:%M} fora do turno {turno.nome} da turma ({turno.hora_inicio:%H:%M}–{turno.hora_fim:%H:%M}).")
+
+    # --- turno inteiro: a UC ocupa todas as aulas do turno no dia, salvo no fechamento da carga horária
+    regras = b.regras()
+    per_turno = b.periodos_turno(turma.turno_id, dia) if regras.get("turno_inteiro") else []
+    if per_turno:
+        from app.services.regras_aula import credito_bloco, periodos_para_fechar
+        ini_t, fim_t = combinar(d, per_turno[0].hora_inicio), combinar(d, per_turno[-1].hora_fim)
+        if a.inicio > ini_t or a.fim < fim_t:
+            credito_turno = credito_bloco(regras, per_turno)
+            gs = [a.grupo] if a.grupo is not None else ([None] if not (uc.divide_grupos and turma.num_grupos > 1) else list(range(1, turma.num_grupos + 1)))
+            restantes = []
+            for g in gs:
+                r_, p_ = carga_horaria_minutos(b, tuc, g, ignorar)
+                restantes.append(uc.carga_horaria_total * 60 - r_ - p_)
+            restante = max(restantes) if restantes else 0
+            if restante >= credito_turno:
+                add(BLOQUEIO, "TURNO_INCOMPLETO",
+                    f"Cada UC deve ocupar o turno inteiro ({len(per_turno)} aulas, {per_turno[0].hora_inicio:%H:%M}–{per_turno[-1].hora_fim:%H:%M}). "
+                    f"Aula parcial só é permitida no fechamento da carga horária, e ainda faltam {restante / 60:.0f} h de {uc.codigo}.")
+            elif a.minutos_aula > 0 and restante > 0:
+                n = periodos_para_fechar(regras, restante, per_turno)
+                add(RECOMENDACAO, "FECHAMENTO_CH",
+                    f"Aula de fechamento de {uc.codigo}: faltam {restante / 60:.0f} h ({n} aula(s)); o restante do turno pode ser usado por outra UC que também esteja fechando.")
 
     alvos = [("turma", turma.id), ("unidade", turma.unidade_id)]
     if instrutor:

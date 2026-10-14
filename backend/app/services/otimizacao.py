@@ -41,8 +41,9 @@ from app.models import (
 )
 from app.models.planejamento import TODOS_GRUPOS
 from app.services import auditoria
-from app.services.calendario import Calendarios, combinar, minutos
-from app.services.planejamento import ambientes_compativeis, instrutores_elegiveis
+from app.services.calendario import Calendarios, bloco_de_periodos, combinar, minutos
+from app.services.planejamento import ambientes_compativeis, instrutores_elegiveis, periodos_por_encontro
+from app.services.regras_aula import credito_bloco, credito_periodo, periodos_do_turno, periodos_para_fechar, regras_aula
 from app.services.validacao import AulaProposta, BaseDados, SessaoExistente, carga_horaria_minutos, possui_bloqueio, validar_aula
 from app.solver.contrato import (
     AmbienteS,
@@ -222,6 +223,7 @@ def montar_entrada(db: Session, cenario: CenarioPlanejamento, escopo: dict, peso
                                                              (CenarioPlanejamento.unidade_id == cenario.unidade_id) if cenario.unidade_id
                                                              else CenarioPlanejamento.unidade_id.is_(None))).first()
     b = BaseDados(db, cenario.id).precarregar()
+    regras = regras_aula(db)
     atividades: list[AtividadeS] = []
     meta = {"atividades": {}, "substituir": sorted(ids_subst), "publicado_id": publicado.id if publicado else None, "ajustes": []}
     instr_ids, amb_ids, unidades = set(), set(), set()
@@ -238,8 +240,9 @@ def montar_entrada(db: Session, cenario: CenarioPlanejamento, escopo: dict, peso
         insts = instrutores_elegiveis(db, uc, turma.unidade_id, di)
         ambs = ambientes_compativeis(db, uc, turma, dividir)
         ps_unidade = [p for p in periodos if p.unidade_id == turma.unidade_id and (not turma.turno_id or p.turno_id == turma.turno_id)]
-        mpp = (sum(minutos(p.hora_fim) - minutos(p.hora_inicio) for p in ps_unidade) / len(ps_unidade)) if ps_unidade else 50
-        horas_encontro = uc.duracao_bloco_periodos * mpp / 60
+        mpp = (sum(credito_periodo(regras, p) for p in ps_unidade) / len(ps_unidade)) if ps_unidade else 50
+        num_periodos = periodos_por_encontro(db, turma, uc)
+        horas_encontro = num_periodos * mpp / 60
         semanas = max(((df - di).days + 1) / 7, 1 / 7)
         for g in grupos:
             realizados, programados = carga_horaria_minutos(b, tuc, g, ids_subst)
@@ -264,7 +267,7 @@ def montar_entrada(db: Session, cenario: CenarioPlanejamento, escopo: dict, peso
             at = AtividadeS(
                 chave=chave, turma_id=turma.id, turma_uc_id=tuc.id, uc_id=uc.id, grupo=g, grupos=list(TODOS_GRUPOS) if g is None else [g],
                 unidade_id=turma.unidade_id, turno_id=turma.turno_id, dias_permitidos=list(turma.dias_possiveis or []),
-                num_periodos=uc.duracao_bloco_periodos, encontros=enc, instrutores=[i["id"] for i in insts], ambientes=[a["id"] for a in ambs],
+                num_periodos=num_periodos, encontros=enc, instrutores=[i["id"] for i in insts], ambientes=[a["id"] for a in ambs],
                 tamanho=turma.qtd_alunos if g is None else math.ceil(turma.qtd_alunos / turma.num_grupos),
                 data_ini=di.toordinal(), data_fim=df.toordinal(), prioridade=min(turma.prioridade, uc.prioridade), urgencia=round(urg, 3),
                 aceita_convencional=any(not t.especializado for t in uc.tipos_ambiente) or not uc.tipos_ambiente,
@@ -274,6 +277,7 @@ def montar_entrada(db: Session, cenario: CenarioPlanejamento, escopo: dict, peso
             )
             atividades.append(at)
             meta["atividades"][chave] = {"turma_uc_id": tuc.id, "grupo": g, "restante_min": round(restante_h * 60), "data_ini": di.isoformat(),
+                                         "turno_id": turma.turno_id,
                                          "data_fim": df.isoformat(), "descricao": at.descricao}
             instr_ids.update(at.instrutores)
             amb_ids.update(at.ambientes)
@@ -323,7 +327,8 @@ def montar_entrada(db: Session, cenario: CenarioPlanejamento, escopo: dict, peso
                 for j in db.scalars(select(DisponibilidadeAmbiente).where(DisponibilidadeAmbiente.ambiente_id == a.id))]
         ambientes.append(AmbienteS(a.id, a.unidade_id, a.capacidade_operacional, a.capacidade_fisica,
                                    bool(tipos.get(a.tipo_ambiente_id) and tipos[a.tipo_ambiente_id].especializado), disp, a.tempo_preparacao_min or 0))
-    slots = [Slot(p.id, p.unidade_id, p.turno_id, p.ordem, list(p.dias_semana or []), minutos(p.hora_inicio), minutos(p.hora_fim), p.excepcional)
+    slots = [Slot(p.id, p.unidade_id, p.turno_id, p.ordem, list(p.dias_semana or []), minutos(p.hora_inicio), minutos(p.hora_fim), p.excepcional,
+                  credito_periodo(regras, p))
              for p in periodos if p.unidade_id in unidades]
     acervo = defaultdict(int)
     for r in recursos.values():
@@ -372,7 +377,9 @@ def aplicar_resultado(db: Session, ctx, cenario: CenarioPlanejamento, saida: Sai
     for a in saida.atribuicoes:
         por_ativ[a.chave].append(a)
     periodos = {p.id: p for p in db.scalars(select(PeriodoHorario))}
+    regras = regras_aula(db)
     criadas, puladas, riscos = 0, [], []
+    parciais = []  # aulas de fechamento de carga horária (turno incompleto)
     for chave, atribs in por_ativ.items():
         info = meta["atividades"][chave]
         tuc = db.get(TurmaUC, info["turma_uc_id"])
@@ -405,6 +412,18 @@ def aplicar_resultado(db: Session, ctx, cenario: CenarioPlanejamento, saida: Sai
                 p0 = periodos[at.slot_inicio_id]
                 ini = combinar(d, p0.hora_inicio)
                 fim = ini + timedelta(minutes=at.fim - at.ini)
+                mins = at.minutos
+                parcial = False
+                if restante < at.minutos:
+                    # fechamento da carga horária: só as aulas necessárias; o resto do turno fica livre
+                    bloco = [periodos[i] for i in at.slot_ids]
+                    n = periodos_para_fechar(regras, restante, bloco)
+                    if credito_bloco(regras, bloco[:n]) > restante and n > 1:
+                        n -= 1  # contagem por minutos reais: não exceder a carga
+                    bloco = bloco[:n]
+                    fim = combinar(d, bloco[-1].hora_fim)
+                    mins = credito_bloco(regras, bloco)
+                    parcial = n < len(at.slot_ids)
                 amb = amb_cache.setdefault(at.ambiente_id, db.get(Ambiente, at.ambiente_id) if at.ambiente_id else None)
                 faltantes = {}
                 if amb:
@@ -417,7 +436,7 @@ def aplicar_resultado(db: Session, ctx, cenario: CenarioPlanejamento, saida: Sai
                     if reservas is None:
                         puladas.append({"atividade": info["descricao"], "data": d.isoformat(), "motivo": "recursos móveis indisponíveis na data"})
                         continue
-                prop = AulaProposta(turma_uc_id=tuc.id, inicio=ini, fim=fim, minutos_aula=at.minutos, grupo=g, instrutor_id=at.instrutor_id,
+                prop = AulaProposta(turma_uc_id=tuc.id, inicio=ini, fim=fim, minutos_aula=mins, grupo=g, instrutor_id=at.instrutor_id,
                                     ambiente_id=at.ambiente_id, recursos=reservas, origem="solver")
                 oc = validar_aula(b, prop)
                 if possui_bloqueio(oc):
@@ -427,16 +446,18 @@ def aplicar_resultado(db: Session, ctx, cenario: CenarioPlanejamento, saida: Sai
                 prep = timedelta(minutes=(amb.tempo_preparacao_min if amb else 0) or 0)
                 al = Alocacao(cenario_id=cenario.id, atividade_id=atividades_db[(at.dia, at.ini)].id, turma_uc_id=tuc.id, turma_id=turma.id,
                               uc_id=tuc.uc_id, grupo=g, grupos=list(TODOS_GRUPOS) if g is None else [g], instrutor_id=at.instrutor_id,
-                              ambiente_id=at.ambiente_id, data=d, inicio=ini, fim=fim, fim_ambiente=fim + prep, minutos_aula=at.minutos,
+                              ambiente_id=at.ambiente_id, data=d, inicio=ini, fim=fim, fim_ambiente=fim + prep, minutos_aula=mins,
                               origem="solver", status="programada", criado_por_id=getattr(ctx, "id", None))
                 db.add(al)
                 db.flush()
                 for rid, q in reservas:
                     db.add(AlocacaoRecurso(alocacao_id=al.id, recurso_id=rid, quantidade=q))
                 sess = SessaoExistente(al.id, turma.id, tuc.id, tuc.uc_id, al.grupos, al.instrutor_id, al.ambiente_id, d, ini, fim, fim + prep,
-                                       at.minutos, "programada", amb.unidade_id if amb else turma.unidade_id, dict(reservas))
+                                       mins, "programada", amb.unidade_id if amb else turma.unidade_id, dict(reservas))
                 b.adicionar_virtual(sess)
-                restante -= at.minutos
+                restante -= mins
+                if parcial:
+                    parciais.append({"al": al, "limite": df, "turno_id": turma.turno_id})
                 criadas += 1
                 ultima = d
             seg += timedelta(days=7)
@@ -447,7 +468,61 @@ def aplicar_resultado(db: Session, ctx, cenario: CenarioPlanejamento, saida: Sai
                            "data_limite": df.isoformat(),
                            "motivo": "Datas letivas insuficientes até o prazo com o padrão semanal gerado (feriados/bloqueios pontuais)."})
     db.flush()
-    return {"aulas_criadas": criadas, "aulas_substituidas": len(meta["substituir"]), "datas_puladas": puladas, "riscos_conclusao": riscos}
+    juntadas = _compactar_fechamentos(db, cenario, parciais, regras) if regras.get("turno_inteiro") else 0
+    return {"aulas_criadas": criadas, "aulas_substituidas": len(meta["substituir"]), "datas_puladas": puladas, "riscos_conclusao": riscos,
+            "fechamentos_parciais": len(parciais), "fechamentos_juntados": juntadas}
+
+
+def _compactar_fechamentos(db: Session, cenario: CenarioPlanejamento, parciais: list[dict], regras: dict) -> int:
+    """Junta, no mesmo turno, aulas de fechamento de carga horária de UCs da mesma turma.
+
+    A aula de fechamento mais tardia é a "anfitriã"; uma de data anterior é
+    movida para as aulas livres logo após ela (o que mantém cada fechamento
+    depois das demais aulas da sua UC). Cada movimento passa pela validação
+    central e pelas restrições do banco; se algo impedir, nada muda."""
+    grupos = defaultdict(list)
+    for x in parciais:
+        grupos[(x["al"].turma_id, tuple(x["al"].grupos))].append(x)
+    juntadas = 0
+    for lst in grupos.values():
+        lst.sort(key=lambda x: (x["al"].data, x["al"].inicio))
+        usados: set[int] = set()
+        for host in reversed(lst):
+            h = host["al"]
+            if h.id in usados:
+                continue
+            livres = [p for p in periodos_do_turno(db, host["turno_id"], h.data.weekday()) if combinar(h.data, p.hora_inicio) >= h.fim]
+            for guest in lst:
+                gal = guest["al"]
+                if gal.id == h.id or gal.id in usados or gal.data >= h.data or h.data > guest["limite"]:
+                    continue
+                n = len([p for p in periodos_do_turno(db, guest["turno_id"], gal.data.weekday())
+                         if combinar(gal.data, p.hora_inicio) >= gal.inicio and combinar(gal.data, p.hora_fim) <= gal.fim])
+                if n == 0 or n > len(livres):
+                    continue
+                bloco = livres[:n]
+                ini, fim = combinar(h.data, bloco[0].hora_inicio), combinar(h.data, bloco[-1].hora_fim)
+                prop = AulaProposta(turma_uc_id=gal.turma_uc_id, inicio=ini, fim=fim, minutos_aula=gal.minutos_aula,
+                                    grupo=None if len(gal.grupos) == len(TODOS_GRUPOS) else gal.grupos[0], instrutor_id=gal.instrutor_id,
+                                    ambiente_id=gal.ambiente_id, alocacao_id=gal.id, origem="solver")
+                if possui_bloqueio(validar_aula(BaseDados(db, cenario.id), prop)):
+                    continue
+                antes = (gal.data, gal.inicio, gal.fim, gal.fim_ambiente)
+                try:
+                    with db.begin_nested():
+                        prep = gal.fim_ambiente - gal.fim
+                        gal.data, gal.inicio, gal.fim, gal.fim_ambiente = h.data, ini, fim, fim + prep
+                        db.flush()
+                except Exception:
+                    gal.data, gal.inicio, gal.fim, gal.fim_ambiente = antes
+                    continue
+                usados.update({h.id, gal.id})
+                livres = livres[n:]
+                juntadas += 1
+                if not livres:
+                    break
+    db.flush()
+    return juntadas
 
 
 # =============================================================================

@@ -57,7 +57,19 @@ function Limiares() {
   const cfg = useCarregar<any[]>(() => api.get("/api/configuracoes"), []);
   const [vals, setVals] = useState<Record<string, any>>({});
   return (
-    <>{(cfg.dados || []).map((c) => (
+    <>{(cfg.dados || []).map((c) => c.chave === "regras_aula" ? (
+      <Card key={c.chave} titulo="Regras de composição das aulas">
+        <p className="sub">{c.descricao}</p>
+        <label><input type="checkbox" checked={(vals.regras_aula?.turno_inteiro ?? c.valor.turno_inteiro) !== false}
+          onChange={(e) => setVals({ ...vals, regras_aula: { ...(vals.regras_aula || {}), turno_inteiro: e.target.checked } })} />{" "}
+          Cada UC ocupa o turno inteiro (todas as aulas do turno no dia); aula parcial só no fechamento da carga horária</label>
+        <Campo rotulo="Contagem da carga horária"><select value={vals.regras_aula?.contagem ?? c.valor.contagem}
+          onChange={(e) => setVals({ ...vals, regras_aula: { ...(vals.regras_aula || {}), contagem: e.target.value } })}>
+          <option value="hora_aula">Hora-aula: cada aula conta 1 h (recomendado)</option><option value="relogio">Minutos reais de aula</option></select></Campo>
+        <p className="sub">Atenção: mudar a contagem não recalcula aulas já gravadas; gere novamente os horários afetados.</p>
+        {pode("configuracoes.editar") && <button className="btn btn-primario" onClick={async () => { await api.put(`/api/configuracoes/${c.chave}`, { valor: vals[c.chave] || {} }); aviso("Configuração salva."); cfg.recarregar(); }}>Salvar</button>}
+      </Card>
+    ) : (
       <Card key={c.chave} titulo={c.chave}>
         <p className="sub">{c.descricao}</p>
         <div className="form-grid">{Object.entries(c.valor).map(([k, v]: any) => (

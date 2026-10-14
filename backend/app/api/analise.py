@@ -344,12 +344,24 @@ def listar_auditoria(entidade: str | None = None, acao: str | None = None, usuar
 
 @router.get("/configuracoes")
 def listar_config(ctx: Contexto = Depends(get_contexto), db: Session = Depends(get_db)):
-    return [auditoria.snapshot(c) for c in db.scalars(select(Configuracao).order_by(Configuracao.chave))]
+    from app.services.regras_aula import CHAVE, regras_aula
+    itens = [auditoria.snapshot(c) for c in db.scalars(select(Configuracao).order_by(Configuracao.chave))]
+    if not any(c["chave"] == CHAVE for c in itens):  # regra padrão ainda não personalizada
+        itens.append({"chave": CHAVE, "valor": regras_aula(db), "descricao": DESCRICAO_REGRAS})
+    return itens
+
+
+DESCRICAO_REGRAS = ("Composição das aulas: com 'turno inteiro', cada UC ocupa todas as aulas do turno no dia; aula parcial só no fechamento "
+                    "da carga horária (dividindo o turno com outra UC que também esteja fechando). 'hora_aula': cada aula conta 1 h de carga horária.")
 
 
 @router.put("/configuracoes/{chave}")
 def salvar_config(chave: str, d: dict = Body(...), ctx: Contexto = Depends(requer("configuracoes.editar")), db: Session = Depends(get_db)):
     c = db.get(Configuracao, chave)
+    from app.services.regras_aula import CHAVE, PADRAO
+    if c is None and chave == CHAVE:
+        c = Configuracao(chave=CHAVE, valor=dict(PADRAO), descricao=DESCRICAO_REGRAS)
+        db.add(c)
     if c is None:
         raise NaoEncontrado("Configuração inexistente.")
     antes = c.valor

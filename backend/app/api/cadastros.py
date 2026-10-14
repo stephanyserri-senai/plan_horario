@@ -413,3 +413,31 @@ def nova_versao_matriz(id_: int, dados: dict = Body(...), db: Session = Depends(
         db.rollback()
         _traduzir_integridade(e)
     return serializar(nova, "matrizes", ctx)
+
+
+@router.post("/unidades/{uid}/turnos-padrao")
+def criar_turnos_padrao(uid: int, ctx: Contexto = Depends(get_contexto), db: Session = Depends(get_db)):
+    """Cria os turnos da instituição (manhã, tarde e noite, 4 aulas cada) numa unidade que ainda não tem turnos.
+    Não altera nem apaga turnos existentes."""
+    from app.models import PeriodoHorario, Turno, Unidade
+    from app.services.regras_aula import TURNOS_PADRAO
+    ctx.exigir("cadastros.editar")
+    un = db.get(Unidade, uid)
+    if un is None:
+        raise NaoEncontrado("Unidade inexistente.")
+    if ctx.unidades is not None and uid not in ctx.unidades:
+        raise EntradaInvalida("Unidade fora do seu escopo de acesso.")
+    if db.scalar(select(func.count()).select_from(Turno).where(Turno.unidade_id == uid)):
+        raise EntradaInvalida("Esta unidade já possui turnos cadastrados; ajuste-os em Cadastros → Turnos e horários.")
+    hm = lambda m: time(m // 60, m % 60)  # noqa: E731
+    criados = []
+    for ordem, (cod, nome, aulas) in enumerate(TURNOS_PADRAO, 1):
+        t = Turno(unidade_id=uid, codigo=cod, nome=nome, hora_inicio=hm(aulas[0][0]), hora_fim=hm(aulas[-1][0] + aulas[-1][1]), ordem=ordem)
+        db.add(t)
+        db.flush()
+        for i, (ini, dur) in enumerate(aulas, 1):
+            db.add(PeriodoHorario(unidade_id=uid, turno_id=t.id, ordem=i, hora_inicio=hm(ini), hora_fim=hm(ini + dur), dias_semana=[0, 1, 2, 3, 4]))
+        criados.append(nome)
+        auditoria.registrar(db, ctx, "turno.criar_padrao", "turnos", t.id, depois=auditoria.snapshot(t))
+    db.commit()
+    return {"criados": criados, "mensagem": "Turnos criados: manhã (07:30–11:30), tarde (13:30–17:30) e noite (18:20–21:50), com 4 aulas cada e intervalo no meio."}

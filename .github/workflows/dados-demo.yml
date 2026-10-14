@@ -8,11 +8,11 @@ on:
   workflow_dispatch:
     inputs:
       acao:
-        description: "carregar ou remover os dados DEMO-"
+        description: "carregar, remover ou recarregar (remove e carrega de novo) os dados DEMO-"
         required: true
         default: carregar
         type: choice
-        options: [carregar, remover]
+        options: [carregar, recarregar, remover]
 
 permissions:
   contents: read

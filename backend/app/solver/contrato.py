@@ -28,6 +28,7 @@ class Slot:
     ini: int
     fim: int
     excepcional: bool = False
+    credito: int | None = None  # minutos de carga horária que o período vale (None = duração real)
 
 
 @dataclass

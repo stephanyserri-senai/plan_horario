@@ -262,13 +262,37 @@ export default function Cadastro() {
   const metas = useMeta();
   const rel = RELACIONADOS[ent] || [ent];
   const [aba, setAba] = useState(rel[0]);
+  const [versao, setVersao] = useState(0);
   useEffect(() => setAba(rel[0]), [ent]);
   const meta = metas.find((m) => m.chave === ent);
   return (
     <Pagina titulo={meta?.rotulo || "Cadastros"} descricao={AJUDA[ent] || "Inclua, pesquise e edite registros. Tudo é validado e fica registrado no histórico."}>
       {rel.length > 1 && <Abas abas={rel.map((r) => ({ id: r, rotulo: metas.find((m) => m.chave === r)?.rotulo || r }))} ativa={aba} mudar={setAba} />}
       {aba !== ent && AJUDA[aba] && <p className="sub">{AJUDA[aba]}</p>}
-      <ListaEntidade key={aba} ent={aba} />
+      {aba === "turnos" && <TurnosPadrao aoCriar={() => setVersao((v) => v + 1)} />}
+      <ListaEntidade key={`${aba}-${versao}`} ent={aba} />
     </Pagina>
+  );
+}
+
+/** Atalho: cria manhã, tarde e noite com 4 aulas cada (padrão da instituição) numa unidade sem turnos. */
+function TurnosPadrao({ aoCriar }: { aoCriar: () => void }) {
+  const { pode, aviso } = useApp();
+  const unidades = useOpcoes("unidades");
+  const [u, setU] = useState("");
+  if (!pode("cadastros.editar")) return null;
+  return (
+    <div className="card turnos-padrao">
+      <b>Unidade nova?</b> Crie de uma vez os turnos padrão: manhã 07:30–11:30 e tarde 13:30–17:30 (4 aulas de 55 min, intervalos 09:20–09:40 e 15:20–15:40)
+      e noite 18:20–21:50 (4 aulas de 50 min, intervalo 20:00–20:10).
+      <div className="filtros">
+        <select aria-label="Unidade" value={u} onChange={(e) => setU(e.target.value)}><option value="">Escolha a unidade…</option>
+          {unidades.map((x) => <option key={x.id} value={x.id}>{x.rotulo}</option>)}</select>
+        <button className="btn btn-primario" disabled={!u} onClick={async () => {
+          try { const r = await api.post(`/api/unidades/${u}/turnos-padrao`); aviso(r.mensagem); invalidarOpcoes("turnos"); invalidarOpcoes("periodos"); setU(""); aoCriar(); }
+          catch (e: any) { aviso(e.message, "erro"); }
+        }}>Criar turnos padrão</button>
+      </div>
+    </div>
   );
 }

@@ -63,7 +63,8 @@ def _opcoes(at: AtividadeS, grade: dict[tuple[int, int], list]) -> list[_Opcao]:
             for i in range(len(seq) - at.num_periodos + 1):
                 bloco = seq[i:i + at.num_periodos]
                 res.append(_Opcao(len(res), dia, bloco, bloco[0].ini, bloco[-1].fim,
-                                  sum(s.fim - s.ini for s in bloco), t, at.unidade_id, any(s.excepcional for s in bloco)))
+                                  sum(s.credito if s.credito is not None else s.fim - s.ini for s in bloco), t, at.unidade_id,
+                                  any(s.excepcional for s in bloco)))
     return res
 
 

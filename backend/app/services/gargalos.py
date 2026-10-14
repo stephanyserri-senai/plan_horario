@@ -41,6 +41,15 @@ from app.models import (
     UnidadeCurricular,
 )
 from app.services.calendario import Calendarios, minutos
+
+# Contagem de carga horária vigente na análise (hora-aula: cada período vale 60 min de CH).
+_HORA_AULA = {"ativo": False}
+
+
+def _fator(p) -> float:
+    """Converte minutos de relógio de um período em minutos de carga horária."""
+    dur = minutos(p.hora_fim) - minutos(p.hora_inicio)
+    return 60 / dur if _HORA_AULA["ativo"] and dur > 0 else 1.0
 from app.services.planejamento import ambientes_compativeis, instrutores_elegiveis, situacao_carga_horaria
 
 
@@ -74,9 +83,9 @@ def _horas_turno_ambiente(db, amb: Ambiente, turno_id: int, periodos: list[Perio
         for d in p.dias_semana or []:
             ini, fim = minutos(p.hora_inicio), minutos(p.hora_fim)
             if disp:
-                total += sum(max(0, min(fim, minutos(j.hora_fim)) - max(ini, minutos(j.hora_inicio))) for j in disp if j.dia_semana == d)
+                total += _fator(p) * sum(max(0, min(fim, minutos(j.hora_fim)) - max(ini, minutos(j.hora_inicio))) for j in disp if j.dia_semana == d)
             else:
-                total += fim - ini
+                total += _fator(p) * (fim - ini)
     return total / 60
 
 
@@ -87,7 +96,7 @@ def _horas_turno_instrutor(janelas, turno: Turno, periodos: list[PeriodoHorario]
             continue
         for d in p.dias_semana or []:
             ini, fim = minutos(p.hora_inicio), minutos(p.hora_fim)
-            total += max((max(0, min(fim, minutos(j.hora_fim)) - max(ini, minutos(j.hora_inicio))) for j in janelas if j.dia_semana == d), default=0)
+            total += _fator(p) * max((max(0, min(fim, minutos(j.hora_fim)) - max(ini, minutos(j.hora_inicio))) for j in janelas if j.dia_semana == d), default=0)
     return total / 60
 
 
@@ -124,6 +133,8 @@ def demandas_do_cenario(db: Session, cenario_id: int | None, d0: date, d1: date,
 
 def analisar(db: Session, cenario_id: int | None, d0: date, d1: date, unidade_id=None, demandas_extras: list[Demanda] | None = None,
              simulacao_id=None, data_referencia: date | None = None, horas_extra_ambiente: dict[int, float] | None = None) -> dict:
+    from app.services.regras_aula import hora_aula, regras_aula
+    _HORA_AULA["ativo"] = hora_aula(regras_aula(db))
     demandas = demandas_do_cenario(db, cenario_id, d0, d1, unidade_id, simulacao_id) + list(demandas_extras or [])
     data_referencia = data_referencia or d0
     turnos = {t.id: t for t in db.scalars(select(Turno).where(Turno.ativo.is_(True)))}
@@ -281,7 +292,7 @@ def analisar(db: Session, cenario_id: int | None, d0: date, d1: date, unidade_id
         for tipo, q in melhor.items():
             uso[(d.unidade_id, tipo, d.turno_id)] += q * d.horas_semana
     for (un, tipo, turno_id), qh in uso.items():
-        horas_turno = sum(minutos(p.hora_fim) - minutos(p.hora_inicio) for p in per_un[un] if turno_id is None or p.turno_id == turno_id
+        horas_turno = sum(_fator(p) * (minutos(p.hora_fim) - minutos(p.hora_inicio)) for p in per_un[un] if turno_id is None or p.turno_id == turno_id
                           for _d in (p.dias_semana or [])) / 60
         oferta = acervo[(un, tipo)] * horas_turno
         if qh > oferta + 0.01:
@@ -303,7 +314,7 @@ def analisar(db: Session, cenario_id: int | None, d0: date, d1: date, unidade_id
         dias = (turma.dias_possiveis if turma else [0, 1, 2, 3, 4]) or []
         un = dems[0].unidade_id
         tlist = [dems[0].turno_id] if dems[0].turno_id else list(turnos_un[un])
-        horas_turma = sum(minutos(p.hora_fim) - minutos(p.hora_inicio) for p in per_un[un] if p.turno_id in tlist
+        horas_turma = sum(_fator(p) * (minutos(p.hora_fim) - minutos(p.hora_inicio)) for p in per_un[un] if p.turno_id in tlist
                           for dd in (p.dias_semana or []) if dd in dias) / 60
         # demanda simultânea: pico de horas semanais entre UCs com janelas sobrepostas (grupos em paralelo contam uma vez)
         por_tuc = {}

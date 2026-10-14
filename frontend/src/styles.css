@@ -215,3 +215,8 @@ details.avancado summary { cursor: pointer; color: var(--primaria); }
 .nivel small { margin-left: 6px; color: var(--mudo); }
 
 .vazio-grade { padding: 16px; border: 1px dashed var(--borda); border-radius: 8px; margin: 10px; background: var(--superficie); }
+.turnos-padrao { background: var(--info-bg); border-color: transparent; }
+
+.grade td.bloco .aula { min-height: calc(var(--n) * 54px - 6px); display: flex; flex-direction: column; justify-content: flex-start; }
+.grade td.bloco .aula + .aula { min-height: 0; }
+.grade tr.novo-turno > * { border-top: 3px solid var(--borda); }

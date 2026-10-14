@@ -11,6 +11,7 @@ from datetime import date, time
 from sqlalchemy import delete, select, text
 
 from app.core.db import SessionLocal
+from app.services.regras_aula import TURNOS_PADRAO
 from app.models import (
     Ambiente, Calendario, CalendarioExcecao, CenarioPlanejamento, CompetenciaInstrutor, Curso, DisponibilidadeInstrutor, HabilitacaoInstrutor,
     Instrutor, MatrizCurricular, PeriodoHorario, Recurso, RecursoAmbiente, TipoAmbiente, Turma, TurmaUC, Turno, UCRecurso, UCTipoAmbiente, Unidade,
@@ -20,11 +21,8 @@ from app.models import (
 PREFIXO = "DEMO-"
 
 
-def _periodos(db, un, turno, inicios, dur=50):
-    for i, (h, m) in enumerate(inicios, 1):
-        ini = h * 60 + m
-        db.add(PeriodoHorario(unidade_id=un.id, turno_id=turno.id, ordem=i, hora_inicio=time(ini // 60, ini % 60),
-                              hora_fim=time((ini + dur) // 60, (ini + dur) % 60), dias_semana=[0, 1, 2, 3, 4]))
+def _hm(m: int) -> time:
+    return time(m // 60, m % 60)
 
 
 def carregar(db, ano: int = 2026):
@@ -33,14 +31,16 @@ def carregar(db, ano: int = 2026):
     un = Unidade(codigo=f"{PREFIXO}U1", nome="DEMO – Unidade Centro", cidade="Vitória")
     db.add(un)
     db.flush()
-    manha = Turno(unidade_id=un.id, codigo=f"{PREFIXO}M", nome="Manhã", hora_inicio=time(7, 30), hora_fim=time(11, 50), ordem=1)
-    tarde = Turno(unidade_id=un.id, codigo=f"{PREFIXO}T", nome="Tarde", hora_inicio=time(13, 30), hora_fim=time(17, 50), ordem=2)
-    noite = Turno(unidade_id=un.id, codigo=f"{PREFIXO}N", nome="Noite", hora_inicio=time(18, 30), hora_fim=time(22, 10), ordem=3)
-    db.add_all([manha, tarde, noite])
-    db.flush()
-    _periodos(db, un, manha, [(7, 30), (8, 20), (9, 30), (10, 20), (11, 10)][:4])
-    _periodos(db, un, tarde, [(13, 30), (14, 20), (15, 30), (16, 20)])
-    _periodos(db, un, noite, [(18, 30), (19, 20), (20, 30), (21, 20)])
+    # Turnos da instituição: 4 aulas por turno (55 min de manhã/tarde, 50 min à noite) com intervalo no meio.
+    turnos = {}
+    for ordem, (cod, nome, aulas) in enumerate(TURNOS_PADRAO, 1):
+        t = Turno(unidade_id=un.id, codigo=f"{PREFIXO}{cod}", nome=nome, hora_inicio=_hm(aulas[0][0]), hora_fim=_hm(aulas[-1][0] + aulas[-1][1]), ordem=ordem)
+        db.add(t)
+        db.flush()
+        for i, (ini, dur) in enumerate(aulas, 1):
+            db.add(PeriodoHorario(unidade_id=un.id, turno_id=t.id, ordem=i, hora_inicio=_hm(ini), hora_fim=_hm(ini + dur), dias_semana=[0, 1, 2, 3, 4]))
+        turnos[cod] = t
+    manha, tarde = turnos["M"], turnos["T"]
     cal = Calendario(unidade_id=un.id, nome=f"{PREFIXO}Calendário {ano}/2", data_inicio=date(ano, 8, 3), data_fim=date(ano, 12, 18))
     db.add(cal)
     db.flush()
@@ -54,8 +54,8 @@ def carregar(db, ano: int = 2026):
     salas = [Ambiente(codigo=f"{PREFIXO}S{n}", nome=f"Sala {n}", unidade_id=un.id, tipo_ambiente_id=tipos["SALA"].id, capacidade_fisica=40,
                       capacidade_operacional=36) for n in (101, 102)]
     info = Ambiente(codigo=f"{PREFIXO}LI1", nome="Lab. Informática 1", unidade_id=un.id, tipo_ambiente_id=tipos["INFO"].id, capacidade_fisica=32, capacidade_operacional=30)
-    cmd = Ambiente(codigo=f"{PREFIXO}LC1", nome="Lab. Comandos Elétricos", unidade_id=un.id, tipo_ambiente_id=tipos["CMD"].id, capacidade_fisica=20,
-                   capacidade_operacional=16, tempo_preparacao_min=10)
+    cmd = Ambiente(codigo=f"{PREFIXO}LC1", nome="Lab. Comandos Elétricos", unidade_id=un.id, tipo_ambiente_id=tipos["CMD"].id, capacidade_fisica=32,
+                   capacidade_operacional=30, tempo_preparacao_min=10)
     db.add_all(salas + [info, cmd])
     db.flush()
     bancada = Recurso(codigo=f"{PREFIXO}BAN", nome="Bancadas de comandos", tipo="bancada_comandos", unidade_id=un.id, quantidade_total=8)
@@ -71,10 +71,12 @@ def carregar(db, ano: int = 2026):
     db.add(mat)
     db.flush()
     ucs = []
-    for cod, nome, ch, tipos_uc, enc in [("FEL", "Fundamentos de Eletricidade", 40, ["SALA"], 2), ("DTE", "Desenho Técnico", 20, ["SALA", "INFO"], 1),
-                                         ("CMD", "Comandos Elétricos", 60, ["CMD"], 2), ("INF", "Informática Aplicada", 20, ["INFO"], 1)]:
-        uc = UnidadeCurricular(matriz_id=mat.id, codigo=f"{PREFIXO}{cod}", nome=nome, carga_horaria_total=ch, duracao_bloco_periodos=2, encontros_semanais=enc,
-                               divide_grupos=(cod == "CMD"), capacidade_max=16 if cod == "CMD" else None,
+    # Carga horária em hora-aula; cada encontro ocupa o turno inteiro (4 aulas).
+    # DTE (30 h) e INF (18 h) não são múltiplos de 4: suas últimas aulas são "fechamentos" de 2 aulas
+    # e o gerador as junta no mesmo turno.
+    for cod, nome, ch, tipos_uc, enc in [("FEL", "Fundamentos de Eletricidade", 40, ["SALA"], 2), ("DTE", "Desenho Técnico", 30, ["SALA", "INFO"], 1),
+                                         ("CMD", "Comandos Elétricos", 60, ["CMD"], 1), ("INF", "Informática Aplicada", 18, ["INFO"], 1)]:
+        uc = UnidadeCurricular(matriz_id=mat.id, codigo=f"{PREFIXO}{cod}", nome=nome, carga_horaria_total=ch, duracao_bloco_periodos=4, encontros_semanais=enc,
                                certificacao_exigida="NR-10" if cod == "CMD" else None)
         db.add(uc)
         db.flush()
@@ -94,10 +96,10 @@ def carregar(db, ano: int = 2026):
         if "CMD" in comps:
             db.add(HabilitacaoInstrutor(instrutor_id=i.id, nome="NR-10"))
         for d in range(5):
-            db.add(DisponibilidadeInstrutor(instrutor_id=i.id, dia_semana=d, hora_inicio=time(7, 30), hora_fim=time(17, 50)))
+            db.add(DisponibilidadeInstrutor(instrutor_id=i.id, dia_semana=d, hora_inicio=time(7, 30), hora_fim=time(17, 30)))
     for n, turno in ((1, manha), (2, tarde)):
         t = Turma(codigo=f"{PREFIXO}ELT-{n}", nome=f"Eletrotécnica {n} (DEMO)", curso_id=curso.id, matriz_id=mat.id, unidade_id=un.id, calendario_id=cal.id,
-                  turno_id=turno.id, qtd_alunos=30, data_inicio=date(ano, 8, 3), data_fim=date(ano, 12, 18), num_grupos=2)
+                  turno_id=turno.id, qtd_alunos=30, data_inicio=date(ano, 8, 3), data_fim=date(ano, 12, 18), num_grupos=1)
         db.add(t)
         db.flush()
         for uc in ucs:
@@ -140,7 +142,10 @@ def remover(db):
 if __name__ == "__main__":
     from app.core.config import get_settings
     acao = sys.argv[1] if len(sys.argv) > 1 else "carregar"
-    if acao == "carregar" and get_settings().producao:
+    if acao in ("carregar", "recarregar") and get_settings().producao:
         raise SystemExit("Recusado: dados de demonstração não podem ser carregados com PLAN_AMBIENTE=producao.")
     with SessionLocal() as s:
-        print((carregar if acao == "carregar" else remover)(s))
+        if acao == "recarregar":
+            print(remover(s), "→", carregar(s))
+        else:
+            print((carregar if acao == "carregar" else remover)(s))

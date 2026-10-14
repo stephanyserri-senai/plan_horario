@@ -31,7 +31,7 @@ from app.models import (
     UnidadeCurricular,
 )
 from app.services import auditoria, cenarios, gargalos, indicadores, otimizacao
-from app.services.planejamento import ambientes_compativeis, instrutores_elegiveis, minutos_por_periodo
+from app.services.planejamento import ambientes_compativeis, instrutores_elegiveis, minutos_por_periodo, periodos_por_encontro
 
 
 def _ucs_da_oferta(db: Session, p: dict) -> list[UnidadeCurricular]:
@@ -89,7 +89,7 @@ def simular_agregada(db: Session, p: dict, cenario_base_id: int) -> dict:
             for g in range(grupos):
                 extras.append(gargalos.Demanda(
                     chave=f"sim{n}-{uc.id}-{g}", turma_id=-(n + 1), turma_codigo=f"NOVA-{n + 1}", turno_id=p.get("turno_id"),
-                    unidade_id=p["unidade_id"], uc_id=uc.id, uc_codigo=uc.codigo, horas_semana=encontros * uc.duracao_bloco_periodos * mpp / 60,
+                    unidade_id=p["unidade_id"], uc_id=uc.id, uc_codigo=uc.codigo, horas_semana=encontros * periodos_por_encontro(db, fake, uc) * mpp / 60,
                     tamanho=math.ceil(fake.qtd_alunos / grupos), tipos=frozenset(t.id for t in uc.tipos_ambiente),
                     ambientes=[a["id"] for a in ambs], instrutores=[i["id"] for i in insts],
                     recursos_moveis={a["id"]: a["requer_recursos_moveis"] for a in ambs}, restante_h=uc.carga_horaria_total,

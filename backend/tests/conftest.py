@@ -24,7 +24,7 @@ from app.core.db import Base, SessionLocal, reset_engine  # noqa: E402
 from app.core.deps import carregar_contexto  # noqa: E402
 from app.models import (  # noqa: E402
     Ambiente, Calendario, CalendarioExcecao, CenarioPlanejamento, CompetenciaInstrutor, Curso, DisponibilidadeInstrutor, Instrutor,
-    MatrizCurricular, PeriodoHorario, Recurso, TipoAmbiente, Turma, TurmaUC, Turno, UCTipoAmbiente, Unidade, UnidadeCurricular, Usuario,
+    Configuracao, MatrizCurricular, PeriodoHorario, Recurso, TipoAmbiente, Turma, TurmaUC, Turno, UCTipoAmbiente, Unidade, UnidadeCurricular, Usuario,
 )
 from app.core.security import hash_senha  # noqa: E402
 
@@ -93,7 +93,10 @@ class Mundo:
         return db.scalar(select(TurmaUC).where(TurmaUC.turma_id == turma.id, TurmaUC.uc_id == uc.id))
 
 
-def criar_mundo(db) -> Mundo:
+def criar_mundo(db, regras: dict | None = None) -> Mundo:
+    # Os cenários de teste clássicos usam blocos de 2 aulas e minutos reais; os testes da
+    # regra "turno inteiro + hora-aula" (padrão da instituição) passam `regras` explicitamente.
+    db.merge(Configuracao(chave="regras_aula", valor=regras or {"turno_inteiro": False, "contagem": "relogio"}))
     u = Unidade(codigo="U1", nome="Unidade 1")
     db.add(u)
     db.flush()
