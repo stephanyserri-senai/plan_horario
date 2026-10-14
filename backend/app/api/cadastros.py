@@ -46,6 +46,14 @@ def serializar(obj, ent: str, ctx: Contexto | None = None) -> dict:
         M, col = (InstrutorArea, InstrutorArea.instrutor_id) if ent == "instrutores" else (AmbienteArea, AmbienteArea.ambiente_id)
         sess = object_session(obj)
         d["areas_ids"] = sorted(sess.scalars(select(M.area_id).where(col == obj.id)).all()) if sess else []
+    if ent == "instrutores" and getattr(obj, "id", None):
+        from sqlalchemy.orm import object_session
+        d.update(_dados_instrutor(object_session(obj), obj))
+    if ent == "turmas" and getattr(obj, "curso_id", None):
+        from sqlalchemy.orm import object_session
+        sess = object_session(obj)
+        curso = sess.get(Curso, obj.curso_id) if sess else None
+        d["_numero"], d["_tipo_oferta"] = _partes_codigo(curso.codigo if curso else "", obj.codigo or "")
     try:
         d["_rotulo"] = cfg["label"].format(**{k: ("" if v is None else v) for k, v in d.items()})
     except (KeyError, IndexError):
@@ -185,6 +193,167 @@ def _traduzir_integridade(e: IntegrityError):
     raise e
 
 
+# ============================================================================ preenchimento automático
+def _partes_codigo(sigla: str, codigo: str) -> tuple[str | None, str | None]:
+    """ELT-12-HTC -> ('12', 'HTC'); códigos fora do padrão -> (None, None)."""
+    if sigla and codigo.upper().startswith(sigla.upper() + "-"):
+        partes = codigo[len(sigla) + 1:].split("-")
+        if partes and partes[0]:
+            return partes[0], (partes[1] if len(partes) > 1 else None)
+    return None, None
+
+
+def codigo_turma(sigla: str, numero, tipo) -> str:
+    return "-".join(str(x).strip().upper() for x in (sigla, numero, tipo) if x not in (None, ""))
+
+
+def _matriz_padrao(db: Session, curso_id: int) -> MatrizCurricular | None:
+    ms = db.scalars(select(MatrizCurricular).where(MatrizCurricular.curso_id == curso_id, MatrizCurricular.ativo.is_(True))
+                    .order_by(MatrizCurricular.id.desc())).all()
+    return next((m for m in ms if m.situacao == "vigente"), ms[0] if ms else None)
+
+
+def _derivar(db: Session, ent: str, dados: dict, obj=None) -> dict:
+    """Completa campos que vêm de outro cadastro, para o usuário não digitar a mesma coisa duas vezes."""
+    from app.models import Area, Calendario, Turno
+    d = dict(dados)
+    vazio = lambda k: d.get(k) in (None, "")
+    if ent == "cursos" and not vazio("area_id"):
+        area = db.get(Area, int(d["area_id"]))
+        if area:
+            d["unidade_id"] = area.unidade_id  # a unidade do curso é sempre a da área
+    if ent in ("instrutores", "ambientes") and vazio("unidade_id") and obj is None and not vazio("area_id"):
+        area = db.get(Area, int(d["area_id"]))
+        if area:
+            d["unidade_id"] = area.unidade_id
+    if ent == "ambientes" and obj is None and vazio("capacidade_operacional") and not vazio("capacidade_fisica"):
+        d["capacidade_operacional"] = d["capacidade_fisica"]
+    if ent == "ucs" and obj is None and vazio("duracao_bloco_periodos"):
+        d["duracao_bloco_periodos"] = 4  # turno inteiro (a regra do turno prevalece de qualquer forma)
+    if ent == "turmas":
+        curso_id = d.get("curso_id") or (obj.curso_id if obj else None)
+        curso = db.get(Curso, int(curso_id)) if curso_id else None
+        if curso:
+            trocou_curso = obj is None or ("curso_id" in d and int(d["curso_id"]) != obj.curso_id)
+            if vazio("matriz_id") and trocou_curso:
+                m = _matriz_padrao(db, curso.id)
+                if m is None:
+                    raise ConflitoValidacao(f"O curso {curso.codigo} ainda não tem matriz curricular. Cadastre a matriz e as UCs antes da turma.")
+                d["matriz_id"] = m.id
+            if trocou_curso:
+                d["area_id"] = curso.area_id
+                area = db.get(Area, curso.area_id) if curso.area_id else None
+                d["unidade_id"] = area.unidade_id if area else curso.unidade_id
+            num = d.get("_numero")
+            if num not in (None, ""):
+                tipo = (d.get("_tipo_oferta") or "").strip().upper() or None
+                novo = codigo_turma(curso.codigo, num, tipo)
+                if obj is None or novo != obj.codigo:
+                    d["codigo"] = novo
+                    if vazio("nome") or (obj is not None and d.get("nome") == obj.nome):
+                        from app.api.registro import TIPOS_OFERTA
+                        rot = next((t["rotulo"].split(" – ", 1)[1] for t in TIPOS_OFERTA if t["valor"] == tipo), tipo)
+                        turno = db.get(Turno, int(d.get("turno_id") or (obj.turno_id if obj else 0) or 0)) if (d.get("turno_id") or (obj and obj.turno_id)) else None
+                        d["nome"] = f"{curso.nome} {num}" + (f" – {rot}" if rot else "") + (f" ({turno.nome})" if turno else "")
+        if obj is None and vazio("codigo") and vazio("_numero"):
+            raise EntradaInvalida("Informe o número da turma (o código é montado com a sigla do curso e o tipo de oferta).")
+        un = d.get("unidade_id") or (obj.unidade_id if obj else None)
+        if un and obj is None and (vazio("data_inicio") or vazio("data_fim") or vazio("calendario_id")):
+            from datetime import date as _date
+            cals = db.scalars(select(Calendario).where(Calendario.unidade_id == int(un), Calendario.ativo.is_(True))
+                              .order_by(Calendario.data_inicio)).all()
+            ini = _date.fromisoformat(str(d["data_inicio"])[:10]) if not vazio("data_inicio") else None
+            cal = next((c for c in cals if ini and c.data_inicio <= ini <= c.data_fim), None) or \
+                next((c for c in cals if c.data_fim >= _date.today()), cals[-1] if cals else None)
+            if cal:
+                if vazio("calendario_id"):
+                    d["calendario_id"] = cal.id
+                if vazio("data_inicio"):
+                    d["data_inicio"] = cal.data_inicio.isoformat()
+                if vazio("data_fim"):
+                    d["data_fim"] = cal.data_fim.isoformat()
+    return d
+
+
+# ============================================================================ instrutor: UCs e disponibilidade no próprio cadastro
+def _dados_instrutor(db: Session | None, inst) -> dict:
+    from app.models import DisponibilidadeInstrutor, Turno
+    if db is None:
+        return {}
+    comps = db.scalars(select(CompetenciaInstrutor).where(CompetenciaInstrutor.instrutor_id == inst.id, CompetenciaInstrutor.ativo.is_(True))).all()
+    disp = db.scalars(select(DisponibilidadeInstrutor).where(DisponibilidadeInstrutor.instrutor_id == inst.id)).all()
+    turnos = db.scalars(select(Turno).where(Turno.unidade_id == inst.unidade_id, Turno.ativo.is_(True))).all()
+    t_ids = [t.id for t in turnos if any(x.hora_inicio <= t.hora_inicio and x.hora_fim >= t.hora_fim for x in disp)]
+    janelas = {(t.hora_inicio, t.hora_fim) for t in turnos}
+    return {"ucs_competencia": [{"uc_id": c.uc_id, "nivel": c.nivel} for c in comps],
+            "disp_turnos": t_ids, "disp_dias": sorted({x.dia_semana for x in disp}),
+            "disp_personalizada": any((x.hora_inicio, x.hora_fim) not in janelas for x in disp)}
+
+
+def _gravar_instrutor(db: Session, inst, dados: dict):
+    from app.models import DisponibilidadeInstrutor, Turno
+    if dados.get("ucs_competencia") is not None:
+        quer = {int(x["uc_id"]): (x.get("nivel") or "pleno") for x in dados["ucs_competencia"] if x.get("uc_id")}
+        atuais = {c.uc_id: c for c in db.scalars(select(CompetenciaInstrutor).where(CompetenciaInstrutor.instrutor_id == inst.id))}
+        for uc_id, c in atuais.items():
+            if uc_id not in quer:
+                c.ativo = False
+        for uc_id, nivel in quer.items():
+            if uc_id in atuais:
+                atuais[uc_id].ativo, atuais[uc_id].nivel = True, nivel
+            else:
+                if db.get(UnidadeCurricular, uc_id) is None:
+                    raise EntradaInvalida("UC inexistente.")
+                db.add(CompetenciaInstrutor(instrutor_id=inst.id, uc_id=uc_id, nivel=nivel, ativo=True))
+    if dados.get("disp_turnos") is not None:
+        dias = [int(x) for x in (dados.get("disp_dias") if dados.get("disp_dias") is not None else [0, 1, 2, 3, 4])]
+        db.execute(delete(DisponibilidadeInstrutor).where(DisponibilidadeInstrutor.instrutor_id == inst.id))
+        for tid in dados["disp_turnos"]:
+            t = db.get(Turno, int(tid))
+            if t is None or t.unidade_id != inst.unidade_id:
+                raise EntradaInvalida("Turno inválido para a unidade do instrutor.")
+            for dia in dias:
+                db.add(DisponibilidadeInstrutor(instrutor_id=inst.id, dia_semana=dia, hora_inicio=t.hora_inicio, hora_fim=t.hora_fim))
+    db.flush()
+
+
+@router.get("/cadastros-apoio/ucs-por-area")
+def ucs_por_area(areas: str = "", unidade_id: int | None = None, todas: bool = False, db: Session = Depends(get_db), ctx: Contexto = Depends(get_contexto)):
+    """UCs dos cursos das áreas escolhidas (para marcar o que o instrutor ministra)."""
+    ctx.exigir("cadastros.ler")
+    from app.models import Area
+    ids = [int(x) for x in areas.split(",") if x.strip()]
+    q = select(Curso).where(Curso.ativo.is_(True))
+    if todas and unidade_id:
+        q = q.where(Curso.area_id.in_(select(Area.id).where(Area.unidade_id == unidade_id)))
+    elif not todas:
+        q = q.where(Curso.area_id.in_(ids or [-1]))
+    nomes_area = {a.id: a.nome for a in db.scalars(select(Area))}
+    res = []
+    for c in db.scalars(q.order_by(Curso.nome)):
+        ms = db.scalars(select(MatrizCurricular).where(MatrizCurricular.curso_id == c.id, MatrizCurricular.ativo.is_(True)).order_by(MatrizCurricular.id)).all()
+        for m in ms:
+            ucs = db.scalars(select(UnidadeCurricular).where(UnidadeCurricular.matriz_id == m.id, UnidadeCurricular.ativo.is_(True))
+                             .order_by(UnidadeCurricular.sequencia, UnidadeCurricular.codigo)).all()
+            if ucs:
+                res.append({"curso_id": c.id, "curso": f"{c.codigo} – {c.nome}" + (f" (matriz {m.versao})" if len(ms) > 1 else ""),
+                            "area": nomes_area.get(c.area_id), "ucs": [{"id": u.id, "codigo": u.codigo, "nome": u.nome, "ch": u.carga_horaria_total,
+                                                                        "certificacao": u.certificacao_exigida} for u in ucs]})
+    return res
+
+
+@router.get("/cadastros-apoio/codigo-turma")
+def previa_codigo_turma(curso_id: int, numero: str = "", tipo: str = "", db: Session = Depends(get_db), ctx: Contexto = Depends(get_contexto)):
+    ctx.exigir("cadastros.ler")
+    curso = db.get(Curso, curso_id)
+    if curso is None:
+        raise NaoEncontrado("Curso não encontrado.")
+    cod = codigo_turma(curso.codigo, numero, tipo) if numero else None
+    existe = bool(cod and db.scalar(select(func.count()).select_from(Turma).where(Turma.codigo == cod)))
+    m = _matriz_padrao(db, curso.id)
+    return {"codigo": cod, "existe": existe, "sigla": curso.codigo, "matriz": m.versao if m else None}
+
+
 @router.get("/meta/entidades")
 def meta(ctx: Contexto = Depends(get_contexto)):
     return [{"chave": k, "rotulo": c["rotulo"], "grupo": c["grupo"], "campos": campos(k), "busca": c["busca"],
@@ -288,6 +457,8 @@ def _aplicar_extras(db: Session, ent: str, obj, dados: dict):
                 raise ConflitoValidacao(f"A área {area.nome} é de outra unidade.")
             db.add(M(**{chave: obj.id, "area_id": aid}))
         db.flush()
+    if ent == "instrutores":
+        _gravar_instrutor(db, obj, dados)
     if ent == "ucs" and "tipos_ambiente_ids" in dados and dados["tipos_ambiente_ids"] is not None:
         db.execute(delete(UCTipoAmbiente).where(UCTipoAmbiente.uc_id == obj.id))
         for tid in dados["tipos_ambiente_ids"]:
@@ -300,6 +471,7 @@ def _aplicar_extras(db: Session, ent: str, obj, dados: dict):
 def criar(ent: str, dados: dict = Body(...), db: Session = Depends(get_db), ctx: Contexto = Depends(get_contexto)):
     ctx.exigir("cadastros.editar")
     cfg = _cfg(ent)
+    dados = _derivar(db, ent, dados)
     vals = converter(ent, dados, parcial=False)
     obj = cfg["model"](**vals)
     _verificar_escopo(ctx, ent, obj)
@@ -332,6 +504,7 @@ def atualizar(ent: str, id_: str, dados: dict = Body(...), db: Session = Depends
     if dados.get("atualizado_em") and hasattr(obj, "atualizado_em") and obj.atualizado_em and \
             str(obj.atualizado_em.isoformat())[:19] != str(dados["atualizado_em"])[:19]:
         raise ConflitoConcorrencia("Este registro foi alterado por outro usuário. Recarregue antes de salvar.")
+    dados = _derivar(db, ent, dados, obj)
     vals = converter(ent, dados, parcial=True)
     _regras_especificas(db, ent, obj, vals, novo=False)
     antes = auditoria.snapshot(obj)

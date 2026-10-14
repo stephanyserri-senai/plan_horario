@@ -3,6 +3,8 @@ import { NavLink, Navigate, Route, Routes, useNavigate } from "react-router-dom"
 import { api } from "./api";
 import { Campo, Erro, EstadoCenario, Modal } from "./components/ui";
 import { useApp } from "./contexto";
+import { supabase } from "./auth";
+import Perfil from "./components/Perfil";
 import { principalDoSemestre, rotuloVersao, semestreDe, semestres, versoesDoSemestre } from "./semestre";
 import Acompanhamento from "./pages/Acompanhamento";
 import Auditoria from "./pages/Auditoria";
@@ -75,17 +77,25 @@ function SeletorSemestre() {
 }
 
 function TrocarSenha({ fechar }: { fechar: () => void }) {
-  const { aviso } = useApp();
+  const { aviso, auth } = useApp();
+  const sb = auth?.modo === "supabase";
   const [f, setF] = useState({ atual: "", nova: "", conf: "" });
   const [erro, setErro] = useState<any>(null);
   const salvar = async () => {
     setErro(null);
+    if (f.nova.length < 8) return setErro(new Error("A nova senha deve ter ao menos 8 caracteres."));
     if (f.nova !== f.conf) return setErro(new Error("A confirmação não confere com a nova senha."));
-    try { await api.post("/api/auth/senha", { senha_atual: f.atual, nova_senha: f.nova }); aviso("Senha alterada."); fechar(); } catch (e) { setErro(e); }
+    try {
+      if (sb) {
+        const { error } = await supabase()!.auth.updateUser({ password: f.nova });
+        if (error) throw new Error(error.message);
+      } else await api.post("/api/auth/senha", { senha_atual: f.atual, nova_senha: f.nova });
+      aviso("Senha alterada."); fechar();
+    } catch (e) { setErro(e); }
   };
   return (
     <Modal titulo="Alterar minha senha" aberto fechar={fechar}>
-      <Campo rotulo="Senha atual"><input type="password" autoComplete="current-password" value={f.atual} onChange={(e) => setF({ ...f, atual: e.target.value })} /></Campo>
+      {!sb && <Campo rotulo="Senha atual"><input type="password" autoComplete="current-password" value={f.atual} onChange={(e) => setF({ ...f, atual: e.target.value })} /></Campo>}
       <Campo rotulo="Nova senha" ajuda="Mínimo de 8 caracteres."><input type="password" autoComplete="new-password" value={f.nova} onChange={(e) => setF({ ...f, nova: e.target.value })} /></Campo>
       <Campo rotulo="Confirme a nova senha"><input type="password" autoComplete="new-password" value={f.conf} onChange={(e) => setF({ ...f, conf: e.target.value })} /></Campo>
       <Erro erro={erro} />
@@ -121,7 +131,7 @@ function BuscaGlobal() {
 }
 
 export default function App() {
-  const { usuario, sair, pode, definirSenha, auth } = useApp();
+  const { usuario, pode, definirSenha } = useApp();
   const [menuAberto, setMenuAberto] = useState(false);
   const [trocarSenha, setTrocarSenha] = useState(false);
   if (definirSenha) return <DefinirSenha />;
@@ -149,11 +159,7 @@ export default function App() {
           <button className="btn-icone menu-mobile" aria-label="Abrir menu" onClick={() => setMenuAberto(!menuAberto)}>☰</button>
           <SeletorSemestre />
           <BuscaGlobal />
-          <div className="usuario">
-            <span>{usuario.nome} <small>({usuario.perfil})</small></span>
-            {auth?.modo !== "supabase" && <button className="btn-link" onClick={() => setTrocarSenha(true)}>Alterar senha</button>}
-            <button className="btn" onClick={sair}>Sair</button>
-          </div>
+          <Perfil trocarSenha={() => setTrocarSenha(true)} />
         </header>
         {trocarSenha && <TrocarSenha fechar={() => setTrocarSenha(false)} />}
         <main>

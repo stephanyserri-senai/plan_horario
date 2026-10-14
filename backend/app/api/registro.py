@@ -52,11 +52,15 @@ ENTIDADES: dict[str, dict] = {
     "recursos_ambientes": {"model": RecursoAmbiente, "rotulo": "Equipamentos instalados em ambientes", "grupo": "Ambientes", "label": "{recurso_id}", "busca": []},
     "turmas": {"model": Turma, "rotulo": "Turmas", "grupo": "Acadêmico", "label": "{codigo} – {nome}", "busca": ["codigo", "nome"], "unidade_col": "unidade_id", "obrigatorios": ["area_id"],
                "dias": ["dias_possiveis"], "ocultar": ["simulacao_id"],
+               "extras": {"_numero": {"tipo": "string", "rotulo": "Número da turma"},
+                          "_tipo_oferta": {"tipo": "oferta", "rotulo": "Tipo de oferta"}},
                "opcoes": {"situacao": ["planejada", "em_andamento", "concluida", "cancelada"]}},
     "turma_ucs": {"model": TurmaUC, "rotulo": "Ofertas (turma × UC)", "grupo": "Acadêmico", "label": "{turma_id}/{uc_id}", "busca": [],
                   "opcoes": {"situacao": ["prevista", "ofertada", "em_execucao", "concluida", "pendente", "cancelada"]}},
     "instrutores": {"model": Instrutor, "rotulo": "Instrutores", "grupo": "Instrutores", "label": "{nome} ({matricula})", "busca": ["nome", "matricula", "areas_competencia"],
-                    "unidade_col": "unidade_id", "obrigatorios": ["area_id"], "extras": {"areas_ids": {"tipo": "multiref", "ref": "areas", "rotulo": "Outras áreas em que também atua"}}, "pessoais": ["email"], "opcoes": {"situacao": ["ativo", "afastado", "ferias", "desligado"]}},
+                    "unidade_col": "unidade_id", "obrigatorios": ["area_id"], "extras": {"areas_ids": {"tipo": "multiref", "ref": "areas", "rotulo": "Outras áreas em que também atua"},
+                               "ucs_competencia": {"tipo": "competencias", "rotulo": "UCs que ministra"},
+                               "disp_turnos": {"tipo": "disponibilidade", "rotulo": "Quando pode dar aula"}}, "pessoais": ["email"], "opcoes": {"situacao": ["ativo", "afastado", "ferias", "desligado"]}},
     "instrutor_unidades": {"model": InstrutorUnidade, "rotulo": "Unidades de atuação", "grupo": "Instrutores", "label": "{unidade_id}", "busca": [],
                            "pk": ["instrutor_id", "unidade_id"]},
     "competencias": {"model": CompetenciaInstrutor, "rotulo": "Matriz de competências", "grupo": "Instrutores", "label": "{instrutor_id}/{uc_id}",
@@ -64,6 +68,47 @@ ENTIDADES: dict[str, dict] = {
     "habilitacoes": {"model": HabilitacaoInstrutor, "rotulo": "Habilitações e certificações", "grupo": "Instrutores", "label": "{nome}", "busca": ["nome"]},
     "disponibilidade_instrutores": {"model": DisponibilidadeInstrutor, "rotulo": "Disponibilidade de instrutores", "grupo": "Instrutores",
                                     "label": "{dia_semana}", "busca": [], "dia": ["dia_semana"]},
+}
+
+# Tipos de oferta usados no código da turma (sigla do curso + número + tipo, ex.: ELT-12-HTC).
+TIPOS_OFERTA = [
+    {"valor": "HTC", "rotulo": "HTC – Habilitação técnica"},
+    {"valor": "AIT", "rotulo": "AIT – Aprendizagem industrial técnica"},
+    {"valor": "AIB", "rotulo": "AIB – Aprendizagem industrial básica"},
+    {"valor": "EMP", "rotulo": "EMP – Turma para empresa"},
+    {"valor": "QUA", "rotulo": "QUA – Qualificação profissional"},
+    {"valor": "APE", "rotulo": "APE – Aperfeiçoamento"},
+    {"valor": "ESP", "rotulo": "ESP – Especialização técnica"},
+]
+
+# Formulários enxutos: o que aparece de cara, o que fica em "Mais opções" e (implícito) o que é
+# preenchido automaticamente a partir de outro cadastro (não aparece). Entidades sem entrada
+# mostram todos os campos.
+FORMULARIOS: dict[str, dict] = {
+    "cursos": {"principais": ["codigo", "nome", "area_id", "modalidade", "tipo", "carga_horaria_total"],
+               "avancados": ["situacao", "turnos_possiveis"],
+               "rotulos": {"codigo": "Sigla do curso (ex.: ELT)", "area_id": "Área", "tipo": "Tipo de curso"},
+               "ajuda": {"codigo": "Usada no código das turmas: ELT + número + tipo de oferta = ELT-12-HTC.",
+                         "area_id": "A unidade é a da área."}},
+    "matrizes": {"principais": ["curso_id", "versao", "vigencia_inicio", "situacao"], "avancados": ["matriz_origem_id"]},
+    "ucs": {"principais": ["matriz_id", "codigo", "nome", "carga_horaria_total", "encontros_semanais", "tipos_ambiente_ids", "sequencia", "certificacao_exigida"],
+            "avancados": ["modulo", "ch_teorica", "ch_pratica", "capacidade_min", "capacidade_max", "divide_grupos", "prioridade", "competencias", "restricoes_pedagogicas"],
+            "rotulos": {"encontros_semanais": "Dias de aula por semana", "sequencia": "Ordem na matriz", "certificacao_exigida": "Certificação exigida do instrutor"},
+            "ajuda": {"carga_horaria_total": "Em hora-aula. Cada dia de aula ocupa o turno inteiro (4 aulas)."}},
+    "ambientes": {"principais": ["codigo", "nome", "unidade_id", "tipo_ambiente_id", "todas_areas", "area_id", "areas_ids", "capacidade_fisica", "predio", "acessivel", "situacao"],
+                  "avancados": ["capacidade_operacional", "localizacao", "tempo_preparacao_min", "maquinas", "requisitos_seguranca"],
+                  "rotulos": {"capacidade_fisica": "Lugares", "capacidade_operacional": "Alunos recomendados (padrão: igual aos lugares)",
+                              "tipo_ambiente_id": "Tipo de sala"}},
+    "turmas": {"principais": ["curso_id", "_numero", "_tipo_oferta", "turno_id", "qtd_alunos", "data_inicio", "data_fim", "dias_possiveis"],
+               "avancados": ["matriz_id", "nome", "num_grupos", "prioridade", "necessidades_acessibilidade", "restricoes", "situacao"],
+               "rotulos": {"dias_possiveis": "Dias de aula", "matriz_id": "Versão da matriz (padrão: a vigente do curso)",
+                           "nome": "Nome (padrão: gerado a partir do curso)"},
+               "ajuda": {"_numero": "Só o número: o código fica sigla do curso + número + tipo (ex.: ELT-12-HTC).",
+                         "data_inicio": "Padrão: início do semestre selecionado."}},
+    "instrutores": {"principais": ["matricula", "nome", "email", "unidade_id", "todas_areas", "area_id", "areas_ids", "carga_horaria_contratual",
+                                   "limite_ch_letiva", "turno_preferencial_id", "situacao", "ucs_competencia", "disp_turnos"],
+                    "avancados": ["max_horas_dia", "intervalo_minimo_h", "areas_competencia", "restricoes_deslocamento"],
+                    "rotulos": {"areas_competencia": "Formação e especialidades"}},
 }
 
 # tabela -> chave da entidade (para referências)
@@ -124,6 +169,26 @@ def tipo_coluna(col) -> str:
 
 
 def campos(chave: str) -> list[dict]:
+    """Campos com a seção do formulário: principal, avancado ou auto (preenchido a partir de outro cadastro)."""
+    res = _campos(chave)
+    form = FORMULARIOS.get(chave)
+    if not form:
+        for f in res:
+            f["secao"] = "principal"
+        return res
+    ordem = {n: i for i, n in enumerate(form["principais"] + form.get("avancados", []))}
+    for f in res:
+        f["secao"] = "principal" if f["nome"] in form["principais"] else "avancado" if f["nome"] in form.get("avancados", []) else "auto"
+        if f["nome"] in form.get("rotulos", {}):
+            f["rotulo"] = form["rotulos"][f["nome"]]
+        if f["nome"] in form.get("ajuda", {}):
+            f["ajuda"] = form["ajuda"][f["nome"]]
+        if f["tipo"] == "oferta":
+            f["opcoes"] = TIPOS_OFERTA
+    return sorted(res, key=lambda f: ordem.get(f["nome"], 999))
+
+
+def _campos(chave: str) -> list[dict]:
     cfg = ENTIDADES[chave]
     res = []
     for col in cfg["model"].__table__.columns:

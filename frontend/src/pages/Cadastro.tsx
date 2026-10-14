@@ -4,8 +4,10 @@ import { api, baixar, dataBR, DIAS, qs } from "../api";
 import { Abas, Badge, Campo, Erro, fmt, Modal, Pagina, Paginacao, Tabela, useCarregar } from "../components/ui";
 import { useApp } from "../contexto";
 import { invalidarOpcoes, rotuloDe, useOpcoes } from "../hooks";
+import { CompetenciasUCs, DisponibilidadeTurnos, PreviaCodigoTurma } from "../components/CamposEspeciais";
 
-export type CampoMeta = { nome: string; tipo: string; obrigatorio: boolean; somente_leitura: boolean; rotulo: string; ref?: string; opcoes?: any[]; pessoal?: boolean };
+export type CampoMeta = { nome: string; tipo: string; obrigatorio: boolean; somente_leitura: boolean; rotulo: string; ref?: string; opcoes?: any[]; pessoal?: boolean;
+  secao?: "principal" | "avancado" | "auto"; ajuda?: string };
 export type EntMeta = { chave: string; rotulo: string; grupo: string; campos: CampoMeta[]; busca: string[]; inativavel: boolean; fixa?: boolean; pk: string[] };
 
 let metaCache: Promise<EntMeta[]> | null = null;
@@ -17,7 +19,7 @@ export function useMeta() {
 
 const RELACIONADOS: Record<string, string[]> = {
   turmas: ["turmas", "turma_ucs"],
-  instrutores: ["instrutores", "competencias", "disponibilidade_instrutores", "habilitacoes", "instrutor_unidades"],
+  instrutores: ["instrutores", "habilitacoes", "competencias", "disponibilidade_instrutores"],
   ucs: ["ucs", "uc_recursos", "uc_prerequisitos"],
   cursos: ["cursos", "matrizes", "ucs", "uc_prerequisitos"],
   ambientes: ["ambientes", "tipos_ambiente", "disponibilidade_ambientes", "recursos_ambientes"],
@@ -28,13 +30,13 @@ const RELACIONADOS: Record<string, string[]> = {
 
 // Explicação curta, em linguagem simples, mostrada no topo de cada cadastro.
 const AJUDA: Record<string, string> = {
-  turmas: "Cada turma pertence a um curso/matriz. Ao criar a turma, as unidades curriculares da matriz são incluídas automaticamente na aba “Turma × UC” (é o que será programado).",
+  turmas: "Escolha o curso e digite só o número e o tipo de oferta (HTC, AIT, AIB, EMP…): o código (ex.: ELT-12-HTC), o nome, a área, a unidade e a matriz vêm do curso, e as UCs da matriz entram sozinhas na aba “Turma × UC”.",
   turma_ucs: "Disciplinas que cada turma vai cursar. Indique aqui instrutor ou sala preferidos, se houver.",
-  instrutores: "Cadastre o instrutor e, nas abas ao lado, o que ele pode ministrar (Competências) e quando está disponível (Disponibilidade). Sem competência cadastrada o sistema não o escala.",
+  instrutores: "No próprio cadastro: escolha a área e marque as UCs que o instrutor ministra (aparecem as UCs dos cursos da área) e os turnos e dias em que pode dar aula. As abas ao lado mostram a visão geral.",
   competencias: "Quais unidades curriculares cada instrutor está habilitado a ministrar.",
   disponibilidade_instrutores: "Dias e horários em que cada instrutor pode dar aula. Sem registros, considera-se disponível em todo o horário de funcionamento.",
   ucs: "Disciplinas da matriz: carga horária, quantas aulas por semana e o tipo de sala exigido (ex.: laboratório de informática).",
-  cursos: "Cursos ofertados e suas matrizes curriculares (versões do currículo).",
+  cursos: "Cursos ofertados (a sigla, ex.: ELT, vira o início do código das turmas), suas matrizes curriculares e UCs. A unidade do curso é a da área.",
   matrizes: "Versões do currículo de cada curso. Use “Nova versão” para copiar uma matriz existente.",
   ambientes: "Salas, laboratórios e oficinas: capacidade de alunos, tipo e equipamentos. O sistema só coloca a aula em sala compatível.",
   tipos_ambiente: "Categorias de sala (ex.: sala teórica, laboratório de informática) usadas para casar disciplina e sala.",
@@ -69,21 +71,48 @@ function valorCelula(c: CampoMeta, v: any) {
   return fmt(v);
 }
 
+const LARGOS = new Set(["multiref", "competencias", "disponibilidade"]);
+
+/** Formulário em seções: o essencial de cara, o resto em "Mais opções"; campos que vêm de outro cadastro não aparecem. */
 export function Formulario({ meta, valores, setValores }: { meta: EntMeta; valores: any; setValores: (v: any) => void }) {
   const set = (k: string, v: any) => setValores({ ...valores, [k]: v });
+  const setVarios = (o: Record<string, any>) => setValores({ ...valores, ...o });
+  const editaveis = meta.campos.filter((c) => !c.somente_leitura && !(c.nome === "id" && meta.pk.length === 1) && c.secao !== "auto"
+    && !(valores.todas_areas && (c.nome === "area_id" || c.nome === "areas_ids")));
+  const render = (c: CampoMeta) => {
+    if (c.tipo === "competencias") return <CompetenciasUCs key={c.nome} valores={valores} set={(v) => set("ucs_competencia", v)} />;
+    if (c.tipo === "disponibilidade") return <DisponibilidadeTurnos key={c.nome} valores={valores} setVarios={setVarios} />;
+    return <CampoEntrada key={c.nome} c={c} v={valores[c.nome]} set={(v) => set(c.nome, v)} unidadeId={valores.unidade_id}
+      excluir={c.nome === "areas_ids" ? valores.area_id : undefined} />;
+  };
+  const principais = editaveis.filter((c) => (c.secao || "principal") === "principal");
+  const avancados = editaveis.filter((c) => c.secao === "avancado");
   return (
-    <div className="form-grid">
-      {meta.campos.filter((c) => !c.somente_leitura && !(c.nome === "id" && meta.pk.length === 1)).map((c) => (
-        <CampoEntrada key={c.nome} c={c} v={valores[c.nome]} set={(v) => set(c.nome, v)} unidadeId={valores.unidade_id} />
-      ))}
-    </div>
+    <>
+      <div className="form-grid">{principais.filter((c) => !LARGOS.has(c.tipo)).map(render)}</div>
+      {meta.chave === "turmas" && <PreviaCodigoTurma valores={valores} />}
+      {principais.filter((c) => LARGOS.has(c.tipo)).map((c) => <div key={c.nome} className="campo-largo">{render(c)}</div>)}
+      {avancados.length > 0 && <details className="mais-opcoes">
+        <summary>Mais opções <small className="mudo">({avancados.length} campos opcionais)</small></summary>
+        <div className="form-grid">{avancados.filter((c) => !LARGOS.has(c.tipo)).map(render)}</div>
+        {avancados.filter((c) => LARGOS.has(c.tipo)).map((c) => <div key={c.nome} className="campo-largo">{render(c)}</div>)}
+      </details>}
+    </>
   );
 }
 
-function CampoEntrada({ c, v, set, unidadeId }: { c: CampoMeta; v: any; set: (v: any) => void; unidadeId?: any }) {
+/** Valores iniciais de um registro novo (ex.: turma já com as datas do semestre selecionado). */
+function novoPadrao(ent: string, cenario: any): any {
+  if (ent === "turmas") return { dias_possiveis: [0, 1, 2, 3, 4], data_inicio: cenario?.periodo_inicio || "", data_fim: cenario?.periodo_fim || "" };
+  if (ent === "instrutores") return { disp_dias: [0, 1, 2, 3, 4], disp_turnos: [], ucs_competencia: [] };
+  return {};
+}
+
+function CampoEntrada({ c, v, set, unidadeId, excluir }: { c: CampoMeta; v: any; set: (v: any) => void; unidadeId?: any; excluir?: any }) {
   const todas = useOpcoes(c.tipo === "ref" || c.tipo === "multiref" ? c.ref : null);
   // a área precisa ser da mesma unidade do cadastro
-  const ops = c.ref === "areas" && unidadeId ? todas.filter((o: any) => String(o.unidade_id) === String(unidadeId)) : todas;
+  const ops = (c.ref === "areas" && unidadeId ? todas.filter((o: any) => String(o.unidade_id) === String(unidadeId)) : todas)
+    .filter((o: any) => excluir == null || String(o.id) !== String(excluir));
   const rotulo = c.rotulo;
   let input;
   switch (c.tipo) {
@@ -104,6 +133,10 @@ function CampoEntrada({ c, v, set, unidadeId }: { c: CampoMeta; v: any; set: (v:
       break;
     case "text":
       input = <textarea rows={2} value={v ?? ""} onChange={(e) => set(e.target.value)} />;
+      break;
+    case "oferta":
+      input = <><input list={`lista-${c.nome}`} value={v ?? ""} placeholder="HTC, AIT, AIB, EMP…" onChange={(e) => set(e.target.value.toUpperCase())} />
+        <datalist id={`lista-${c.nome}`}>{(c.opcoes || []).map((o: any) => <option key={o.valor} value={o.valor}>{o.rotulo}</option>)}</datalist></>;
       break;
     case "enum":
       input = <select value={v ?? ""} onChange={(e) => set(e.target.value)}><option value="">—</option>{c.opcoes!.map((o) => <option key={o} value={o}>{o}</option>)}</select>;
@@ -129,13 +162,13 @@ function CampoEntrada({ c, v, set, unidadeId }: { c: CampoMeta; v: any; set: (v:
     default:
       input = <input type="text" value={v ?? ""} onChange={(e) => set(e.target.value)} />;
   }
-  return <Campo rotulo={rotulo + (c.pessoal ? " (dado pessoal)" : "")} obrigatorio={c.obrigatorio}>{input}</Campo>;
+  return <Campo rotulo={rotulo + (c.pessoal ? " (dado pessoal)" : "")} obrigatorio={c.obrigatorio || c.nome === "_numero"} ajuda={c.ajuda}>{input}</Campo>;
 }
 
 export function ListaEntidade({ ent }: { ent: string }) {
   const metas = useMeta();
   const meta = metas.find((m) => m.chave === ent);
-  const { pode, aviso } = useApp();
+  const { pode, aviso, cenario } = useApp();
   const [sp] = useSearchParams();
   const [q, setQ] = useState("");
   const [pagina, setPagina] = useState(1);
@@ -148,7 +181,7 @@ export function ListaEntidade({ ent }: { ent: string }) {
   useEffect(() => { setPagina(1); setFiltros((sp.get("id") ? { id: sp.get("id")! } : {}) as Record<string, string>); }, [ent, sp]);
   const lista = useCarregar(() => api.get(`/api/cadastros/${ent}${qs({ q, pagina, por_pagina: 25, ativo: meta?.inativavel ? ativo : "", ...filtros })}`),
     [ent, q, pagina, ativo, JSON.stringify(filtros), meta?.inativavel]);
-  const colunas = useMemo(() => (meta?.campos || []).filter((c) => !OCULTAR_LISTA.has(c.nome) && c.tipo !== "multiref").slice(0, 9).map((c) => ({
+  const colunas = useMemo(() => [...(meta?.campos || [])].sort((a, b) => Number(!["codigo", "matricula", "nome"].includes(a.nome)) - Number(!["codigo", "matricula", "nome"].includes(b.nome))).filter((c) => !OCULTAR_LISTA.has(c.nome) && !LARGOS.has(c.tipo) && !c.nome.startsWith("_") && c.tipo !== "oferta").slice(0, 9).map((c) => ({
     chave: c.nome, rotulo: c.rotulo, render: (l: any) => valorCelula(c, l[c.nome]),
   })), [meta]);
   const refsFiltro = (meta?.campos || []).filter((c) => c.tipo === "ref" || c.tipo === "enum").slice(0, 3);
@@ -160,6 +193,8 @@ export function ListaEntidade({ ent }: { ent: string }) {
       const novo = edicao.__novo;
       const corpo = { ...edicao };
       delete corpo.__novo;
+      if (!corpo.__disp) { delete corpo.disp_turnos; delete corpo.disp_dias; }  // só regrava a disponibilidade se foi alterada
+      delete corpo.__disp;
       if (novo) await api.post(`/api/cadastros/${ent}`, corpo);
       else await api.put(`/api/cadastros/${ent}/${idDe(meta, edicao)}`, corpo);
       invalidarOpcoes(ent);
@@ -194,7 +229,7 @@ export function ListaEntidade({ ent }: { ent: string }) {
         )}
         {refsFiltro.map((c) => <FiltroRef key={c.nome} c={c} valor={filtros[c.nome] || ""} mudar={(v) => { setFiltros({ ...filtros, [c.nome]: v }); setPagina(1); }} />)}
         {filtros.id && <button className="chip" onClick={() => setFiltros({})}>Registro #{filtros.id} ✕</button>}
-        {editavel && !meta.fixa && <button className="btn btn-primario" onClick={() => { setErro(null); setEdicao({ __novo: true }); }}>+ Novo</button>}
+        {editavel && !meta.fixa && <button className="btn btn-primario" onClick={() => { setErro(null); setEdicao({ __novo: true, ...novoPadrao(ent, cenario) }); }}>+ Novo</button>}
         {meta.fixa && <span className="sub">🔒 Cadastro fixo da instituição: não é possível incluir, excluir ou renomear.</span>}
       </div>
       {lista.erro && <div className="erro-box">{lista.erro}</div>}
