@@ -144,7 +144,7 @@ def situacao_carga_horaria(db: Session, cenario_id: int | None, tuc: TurmaUC) ->
         "uc_codigo": uc.codigo, "uc_nome": uc.nome, "situacao_cadastro": tuc.situacao, "estado_planejamento": estado,
         "total_h": total_h, "realizada_h": round(realizada_min / 60, 2), "programada_h": round(programada_min / 60, 2),
         "restante_h": round(restante_h, 2), "horas_por_encontro": round(horas_encontro, 2),
-        "encontros_necessarios": encontros_necessarios, "encontros_semanais": uc.encontros_semanais,
+        "encontros_necessarios": encontros_necessarios, "encontros_semanais": uc.encontros_semanais, "duracao_bloco_periodos": uc.duracao_bloco_periodos,
         "data_inicio": (tuc.data_inicio or turma.data_inicio).isoformat(),
         "data_limite": (tuc.data_limite or turma.data_fim).isoformat(),
         "prerequisitos": prereqs, "divide_grupos": grupos_div, "num_grupos": turma.num_grupos,

@@ -1,0 +1,228 @@
+import { useState } from "react";
+import { api, dataBR, qs } from "../api";
+import { Abas, Badge, Campo, Card, Erro, EstadoCenario, Json, Modal, OcorrenciasLista, Pagina, Tabela, useCarregar } from "../components/ui";
+import { useApp } from "../contexto";
+import { useOpcoes } from "../hooks";
+
+const PROXIMOS: Record<string, { estado: string; rotulo: string; acao: string }[]> = {
+  em_elaboracao: [{ estado: "em_validacao", rotulo: "Enviar para validação", acao: "cenarios.editar" }],
+  em_validacao: [{ estado: "aguardando_aprovacao", rotulo: "Solicitar aprovação", acao: "cenarios.editar" }, { estado: "em_elaboracao", rotulo: "Voltar à elaboração", acao: "cenarios.editar" }],
+  aguardando_aprovacao: [{ estado: "aprovado", rotulo: "Aprovar", acao: "cenarios.aprovar" }, { estado: "em_elaboracao", rotulo: "Reprovar (devolver)", acao: "cenarios.aprovar" }],
+  aprovado: [{ estado: "publicado", rotulo: "Publicar", acao: "cenarios.publicar" }],
+  publicado: [],
+};
+
+export default function Planejamento() {
+  const [aba, setAba] = useState("cenarios");
+  return (
+    <Pagina titulo="Planejamento" descricao="Cenários, ciclo de aprovação e publicação, matriz de oferta, validação, versões e comparações.">
+      <Abas abas={[{ id: "cenarios", rotulo: "Cenários" }, { id: "oferta", rotulo: "Matriz de oferta" }, { id: "validacao", rotulo: "Validação" },
+        { id: "versoes", rotulo: "Versões" }, { id: "comparar", rotulo: "Comparar cenários" }]} ativa={aba} mudar={setAba} />
+      {aba === "cenarios" && <Cenarios />}
+      {aba === "oferta" && <Oferta />}
+      {aba === "validacao" && <Validacao />}
+      {aba === "versoes" && <Versoes />}
+      {aba === "comparar" && <Comparar />}
+    </Pagina>
+  );
+}
+
+function Cenarios() {
+  const { cenarios, recarregarCenarios, setCenarioId, pode, aviso, cenario } = useApp();
+  const [novo, setNovo] = useState<any | null>(null);
+  const [erro, setErro] = useState<any>(null);
+  const [impacto, setImpacto] = useState<any | null>(null);
+  const unidades = useOpcoes("unidades");
+  const transicionar = async (c: any, estado: string) => {
+    const motivo = estado === "em_elaboracao" || estado === "publicado" ? prompt("Motivo / observação:") ?? undefined : undefined;
+    try {
+      const r = await api.post(`/api/cenarios/${c.id}/transicao`, { estado, motivo, lock_version: c.lock_version });
+      aviso(`Cenário agora está “${r.estado}” (versão ${r.versao}).`);
+    } catch (e: any) { setErro(e); }
+    recarregarCenarios();
+  };
+  return (
+    <>
+      <div className="filtros">
+        {pode("cenarios.criar") && <button className="btn btn-primario" onClick={() => setNovo({ nome: "", periodo_inicio: "", periodo_fim: "" })}>+ Novo cenário</button>}
+      </div>
+      <Erro erro={erro} />
+      <Tabela colunas={[
+        { chave: "nome", rotulo: "Cenário", render: (c: any) => <><b>{c.nome}</b>{c.id === cenario?.id && <Badge tipo="ok">em uso</Badge>}<br /><small>{c.descricao}</small></> },
+        { chave: "tipo", rotulo: "Tipo" }, { chave: "estado", rotulo: "Estado", render: (c: any) => <EstadoCenario estado={c.estado} /> },
+        { chave: "versao", rotulo: "Versão", alinhar: "dir" }, { chave: "aulas", rotulo: "Aulas", alinhar: "dir" },
+        { chave: "periodo", rotulo: "Período", render: (c: any) => `${dataBR(c.periodo_inicio)} – ${dataBR(c.periodo_fim)}` },
+        { chave: "resultado_validacao", rotulo: "Validação", render: (c: any) => c.resultado_validacao ? <>{c.resultado_validacao.bloqueios ? <Badge tipo="bloqueio">{c.resultado_validacao.bloqueios}</Badge> : <Badge tipo="ok">0 bloqueios</Badge>} <Badge tipo="alerta">{c.resultado_validacao.alertas}</Badge></> : "—" },
+        { chave: "acoes", rotulo: "Ações", render: (c: any) => (
+          <div className="acoes-linha">
+            <button className="btn-link" onClick={() => setCenarioId(c.id)}>Usar</button>
+            {pode("cenarios.criar") && <button className="btn-link" onClick={async () => { const nome = prompt("Nome da cópia:", `${c.nome} (cópia)`); if (!nome) return;
+              try { const n = await api.post("/api/cenarios", { nome, copiar_de: c.id }); await recarregarCenarios(); setCenarioId(n.id); aviso("Cenário copiado."); } catch (e) { setErro(e); } }}>Copiar</button>}
+            {c.tipo !== "simulacao" && (PROXIMOS[c.estado] || []).filter((p) => pode(p.acao)).map((p) => (
+              <button key={p.estado} className="btn-link" onClick={() => transicionar(c, p.estado)}>{p.rotulo}</button>))}
+            {["publicado", "aprovado"].includes(c.estado) && pode("cenarios.criar") && <button className="btn-link" onClick={async () => {
+              const nome = prompt("Nome da proposta de alteração:", `Proposta – ${c.nome}`); if (!nome) return;
+              try { const n = await api.post(`/api/cenarios/${c.id}/proposta`, { nome }); await recarregarCenarios(); setCenarioId(n.id); aviso("Proposta criada: edite-a na grade, valide e submeta à aprovação."); } catch (e) { setErro(e); } }}>Propor alteração</button>}
+            {c.tipo === "proposta" && <button className="btn-link" onClick={async () => setImpacto(await api.get(`/api/cenarios/${c.id}/impacto`))}>Impacto</button>}
+            {!["publicado", "aprovado"].includes(c.estado) && pode("cenarios.editar") && <button className="btn-link" onClick={async () => { if (!confirm("Arquivar cenário?")) return; await transicionar(c, "arquivado"); }}>Arquivar</button>}
+          </div>) },
+      ]} linhas={cenarios} />
+      <Modal titulo="Novo cenário" aberto={!!novo} fechar={() => setNovo(null)}>
+        {novo && <>
+          <Campo rotulo="Nome" obrigatorio><input value={novo.nome} onChange={(e) => setNovo({ ...novo, nome: e.target.value })} /></Campo>
+          <Campo rotulo="Unidade (vazio = institucional)"><select value={novo.unidade_id ?? ""} onChange={(e) => setNovo({ ...novo, unidade_id: e.target.value || null })}>
+            <option value="">Institucional</option>{unidades.map((u) => <option key={u.id} value={u.id}>{u.rotulo}</option>)}</select></Campo>
+          <Campo rotulo="Período letivo — início"><input type="date" value={novo.periodo_inicio} onChange={(e) => setNovo({ ...novo, periodo_inicio: e.target.value })} /></Campo>
+          <Campo rotulo="Período letivo — fim"><input type="date" value={novo.periodo_fim} onChange={(e) => setNovo({ ...novo, periodo_fim: e.target.value })} /></Campo>
+          <Campo rotulo="Descrição"><textarea value={novo.descricao ?? ""} onChange={(e) => setNovo({ ...novo, descricao: e.target.value })} /></Campo>
+          <div className="rodape-modal"><button className="btn btn-primario" onClick={async () => {
+            try { const c = await api.post("/api/cenarios", novo); await recarregarCenarios(); setCenarioId(c.id); setNovo(null); } catch (e) { setErro(e); setNovo(null); }
+          }}>Criar</button></div>
+        </>}
+      </Modal>
+      <Modal titulo="Impacto da proposta em relação ao cenário publicado" aberto={!!impacto} fechar={() => setImpacto(null)} largo>
+        {impacto && <>
+          <p>{impacto.adicionadas} aula(s) adicionada(s), {impacto.removidas} removida(s), {impacto.alteradas} alterada(s).</p>
+          <p><b>Turmas afetadas:</b> {impacto.recursos_afetados.turmas.join(", ") || "—"} · <b>Instrutores:</b> {impacto.recursos_afetados.instrutores.join(", ") || "—"} · <b>Ambientes:</b> {impacto.recursos_afetados.ambientes.join(", ") || "—"}</p>
+          <Json dados={impacto.detalhes.alteradas.slice(0, 50)} />
+        </>}
+      </Modal>
+    </>
+  );
+}
+
+function Oferta() {
+  const { cenario } = useApp();
+  const [turma, setTurma] = useState("");
+  const [explicacao, setExplicacao] = useState<any | null>(null);
+  const turmas = useOpcoes("turmas");
+  const d = useCarregar<any[]>(() => cenario ? api.get(`/api/planejamento/oferta${qs({ cenario_id: cenario.id, turma_id: turma })}`) : Promise.resolve([]), [cenario?.id, turma]);
+  return (
+    <>
+      <div className="filtros"><select aria-label="Turma" value={turma} onChange={(e) => setTurma(e.target.value)}><option value="">Todas as turmas</option>{turmas.map((t) => <option key={t.id} value={t.id}>{t.rotulo}</option>)}</select></div>
+      {d.carregando && <p role="status">Calculando…</p>}
+      <Tabela colunas={[
+        { chave: "turma_codigo", rotulo: "Turma" }, { chave: "uc", rotulo: "UC", render: (l: any) => <>{l.uc_codigo} – {l.uc_nome}</> },
+        { chave: "estado_planejamento", rotulo: "Situação", render: (l: any) => <Badge tipo={l.estado_planejamento === "programada_integralmente" ? "ok" : l.estado_planejamento === "pendente_alocacao" ? "alerta" : "info"}>{l.estado_planejamento.replaceAll("_", " ")}</Badge> },
+        { chave: "total_h", rotulo: "Total (h)", alinhar: "dir" }, { chave: "realizada_h", rotulo: "Realizada", alinhar: "dir" }, { chave: "programada_h", rotulo: "Programada", alinhar: "dir" },
+        { chave: "restante_h", rotulo: "Restante", alinhar: "dir" }, { chave: "encontros_necessarios", rotulo: "Encontros nec.", alinhar: "dir" },
+        { chave: "data_limite", rotulo: "Prazo", render: (l: any) => dataBR(l.data_limite) },
+        { chave: "inst", rotulo: "Instrutores elegíveis", render: (l: any) => l.instrutores_elegiveis.length ? l.instrutores_elegiveis.map((i: any) => i.nome).join(", ") : <Badge tipo="bloqueio">nenhum</Badge> },
+        { chave: "amb", rotulo: "Ambientes compatíveis", render: (l: any) => l.ambientes_compativeis.length ? l.ambientes_compativeis.map((a: any) => a.codigo).join(", ") : <Badge tipo="bloqueio">nenhum</Badge> },
+        { chave: "por", rotulo: "", render: (l: any) => l.restante_h > 0 && <button className="btn-link" onClick={async () => setExplicacao(await api.get(`/api/recomendacoes/nao_alocacao${qs({ cenario_id: cenario!.id, turma_uc_id: l.turma_uc_id })}`))}>Por que está pendente?</button> },
+      ]} linhas={d.dados || []} chave={(l) => l.turma_uc_id} />
+      <Modal titulo="Recomendação explicável" aberto={!!explicacao} fechar={() => setExplicacao(null)} largo>{explicacao && <Recomendacao r={explicacao} />}</Modal>
+    </>
+  );
+}
+
+export function Recomendacao({ r }: { r: any }) {
+  return (
+    <div className="recomendacao">
+      <h3>{r.pergunta}</h3>
+      {r.problema && <p><b>Problema identificado:</b> {r.problema}</p>}
+      {r.recurso_limitante && <p><b>Recurso limitante:</b> {r.recurso_limitante}</p>}
+      <details open><summary>Dados utilizados</summary><Json dados={r.dados_utilizados} /></details>
+      {Array.isArray(r.alternativas) && r.alternativas.length > 0 && <div><b>Alternativas propostas:</b>
+        <ul>{r.alternativas.map((a: any, i: number) => <li key={i}>{a.descricao || a.tipo || a.gargalo || JSON.stringify(a).slice(0, 200)}
+          {Array.isArray(a.itens) && <ul>{a.itens.slice(0, 10).map((it: any, k: number) => <li key={k}>{typeof it === "string" ? it : `${dataBR(it.data)} ${it.inicio}–${it.fim}: ${it.instrutores?.join(", ")} · ${it.ambientes?.join(", ")}`}</li>)}</ul>}
+          {Array.isArray(a.ambientes_compativeis_ociosos) && a.ambientes_compativeis_ociosos.length > 0 && <div>Ambientes compatíveis ociosos: {a.ambientes_compativeis_ociosos.map((x: any) => `${x.codigo} (${x.horas_ociosas} h)`).join(", ")}</div>}
+        </li>)}</ul></div>}
+      {r.restricoes_atendidas && <p><b>Restrições atendidas:</b> {r.restricoes_atendidas}</p>}
+      {r.impacto && <p><b>Impacto estimado:</b> {r.impacto}</p>}
+      {(r.antes || r.depois) && <div className="grid-2"><Card titulo="Antes"><Json dados={r.antes} /></Card><Card titulo="Depois"><Json dados={r.depois} /></Card></div>}
+      {r.limitacoes && <p className="sub"><b>Limitações e ressalvas:</b> {r.limitacoes}</p>}
+    </div>
+  );
+}
+
+function Validacao() {
+  const { cenario, aviso } = useApp();
+  const v = useCarregar<any>(() => cenario ? api.get(`/api/cenarios/${cenario.id}/validacoes`) : Promise.resolve(null), [cenario?.id]);
+  const [sev, setSev] = useState("");
+  const [rodando, setRodando] = useState(false);
+  const oc = (v.dados?.ocorrencias || []).filter((o: any) => !sev || o.severidade === sev);
+  return (
+    <>
+      <div className="filtros">
+        <button className="btn btn-primario" disabled={rodando} onClick={async () => { setRodando(true); try { const r = await api.post(`/api/cenarios/${cenario!.id}/validar`); aviso(`Validação: ${r.resumo.bloqueios} bloqueio(s), ${r.resumo.alertas} alerta(s).`); v.recarregar(); } finally { setRodando(false); } }}>
+          {rodando ? "Validando…" : "Validar cenário agora"}</button>
+        <select aria-label="Severidade" value={sev} onChange={(e) => setSev(e.target.value)}><option value="">Todas as severidades</option>
+          {["bloqueio", "alerta", "preferencia", "recomendacao"].map((s) => <option key={s}>{s}</option>)}</select>
+      </div>
+      {v.dados?.validacao && <p className="sub">Última validação em {new Date(v.dados.validacao.executado_em).toLocaleString("pt-BR")}: {v.dados.validacao.total_bloqueios} bloqueio(s),
+        {" "}{v.dados.validacao.total_alertas} alerta(s), {v.dados.validacao.total_preferencias} preferência(s) não atendida(s), {v.dados.validacao.total_recomendacoes} recomendação(ões).</p>}
+      <Tabela colunas={[{ chave: "severidade", rotulo: "Severidade", render: (o: any) => <Badge tipo={o.severidade} /> }, { chave: "regra", rotulo: "Regra" },
+        { chave: "descricao", rotulo: "Descrição" }, { chave: "data", rotulo: "Data", render: (o: any) => dataBR(o.data) },
+        { chave: "recurso", rotulo: "Recurso", render: (o: any) => o.recurso_tipo ? `${o.recurso_tipo} #${o.recurso_id}` : "" }, { chave: "alocacao_id", rotulo: "Aula" }]}
+        linhas={oc.slice(0, 500)} vazio="Nenhuma ocorrência." />
+    </>
+  );
+}
+
+function Versoes() {
+  const { cenario, pode, aviso, recarregarCenarios } = useApp();
+  const vs = useCarregar<any[]>(() => cenario ? api.get(`/api/cenarios/${cenario.id}/versoes`) : Promise.resolve([]), [cenario?.id]);
+  const [sel, setSel] = useState<number[]>([]);
+  const [comp, setComp] = useState<any | null>(null);
+  return (
+    <>
+      <div className="filtros">
+        {pode("cenarios.editar") && <button className="btn" onClick={async () => { await api.post(`/api/cenarios/${cenario!.id}/versoes`, { motivo: prompt("Motivo:") || "registro manual" }); vs.recarregar(); }}>Registrar versão agora</button>}
+        <button className="btn" disabled={sel.length !== 2} onClick={async () => setComp(await api.get(`/api/versoes/comparar?a=${sel[0]}&b=${sel[1]}`))}>Comparar 2 selecionadas</button>
+      </div>
+      <Tabela colunas={[{ chave: "sel", rotulo: "", render: (v: any) => <input type="checkbox" aria-label={`Selecionar versão ${v.numero}`} checked={sel.includes(v.id)} onChange={(e) => setSel(e.target.checked ? [...sel, v.id].slice(-2) : sel.filter((x) => x !== v.id))} /> },
+        { chave: "numero", rotulo: "Versão" }, { chave: "estado", rotulo: "Estado", render: (v: any) => <EstadoCenario estado={v.estado} /> }, { chave: "motivo", rotulo: "Motivo" },
+        { chave: "criado_em", rotulo: "Quando", render: (v: any) => new Date(v.criado_em).toLocaleString("pt-BR") }, { chave: "aulas", rotulo: "Aulas", alinhar: "dir" },
+        { chave: "oc", rotulo: "Ocupação amb. %", render: (v: any) => v.indicadores?.taxa_ocupacao_ambientes_pct },
+        { chave: "r", rotulo: "", render: (v: any) => pode("cenarios.restaurar") && <button className="btn-link" onClick={async () => {
+          if (!confirm(`Restaurar a versão ${v.numero}? Em cenários publicados/aprovados é criado um novo cenário.`)) return;
+          try { const r = await api.post(`/api/versoes/${v.id}/restaurar`, {}); aviso(`Restaurado: ${r.aulas} aulas; ${r.validacao.bloqueios} bloqueio(s) na revalidação.`); recarregarCenarios(); vs.recarregar(); } catch (e: any) { aviso(e.message, "erro"); }
+        }}>Restaurar</button> }]} linhas={vs.dados || []} />
+      <Modal titulo="Comparação entre versões" aberto={!!comp} fechar={() => setComp(null)} largo>
+        {comp && <>
+          <p>v{comp.versao_a.numero} → v{comp.versao_b.numero}: <b>{comp.adicionadas}</b> adicionada(s), <b>{comp.removidas}</b> removida(s), <b>{comp.alteradas}</b> alterada(s).</p>
+          <div className="grid-2"><Card titulo={`Indicadores v${comp.versao_a.numero}`}><Json dados={comp.versao_a.indicadores} /></Card><Card titulo={`Indicadores v${comp.versao_b.numero}`}><Json dados={comp.versao_b.indicadores} /></Card></div>
+          <Json dados={comp.recursos_afetados} />
+        </>}
+      </Modal>
+    </>
+  );
+}
+
+function Comparar() {
+  const { cenarios } = useApp();
+  const [sel, setSel] = useState<number[]>([]);
+  const [r, setR] = useState<any | null>(null);
+  const [erro, setErro] = useState<any>(null);
+  return (
+    <>
+      <p className="sub">Todos os cenários são avaliados com o mesmo conjunto de pesos (escala documentada: pontos = peso × valor bruto por semana; menor é melhor).</p>
+      <div className="checks">{cenarios.map((c) => <label key={c.id}><input type="checkbox" checked={sel.includes(c.id)} onChange={(e) => setSel(e.target.checked ? [...sel, c.id] : sel.filter((x) => x !== c.id))} /> {c.nome} (v{c.versao})</label>)}</div>
+      <button className="btn btn-primario" disabled={sel.length < 2} onClick={async () => { setErro(null); try { setR(await api.post("/api/cenarios/comparar", { cenarios: sel })); } catch (e) { setErro(e); } }}>Comparar</button>
+      <Erro erro={erro} />
+      {r && <>
+        <Card titulo="Classificação">
+          <p>{r.criterio_ordenacao}</p>
+          <ol>{r.ranking.map((id: number) => { const c = r.cenarios.find((x: any) => x.cenario.id === id); return <li key={id}><b>{c.cenario.nome}</b> — {c.avaliacao.pontuacao_total} pontos · pendente {c.carga_pendente_h} h · bloqueios {c.validacao?.bloqueios ?? "não validado"}</li>; })}</ol>
+          <h3>Por que o 1º foi melhor que o 2º</h3>
+          <Tabela colunas={[{ chave: "descricao", rotulo: "Critério" }, { chave: "melhor", rotulo: "1º", alinhar: "dir" }, { chave: "segundo", rotulo: "2º", alinhar: "dir" }, { chave: "unidade", rotulo: "Unidade" }, { chave: "diferenca_pontos", rotulo: "Diferença (pontos)", alinhar: "dir" }]}
+            linhas={r.explicacao.por_criterio} vazio="Pontuações idênticas em todos os critérios." chave={(l) => l.criterio} />
+          <p>Diferenças de grade entre 1º e 2º: {r.diferencas_melhor_vs_segundo.adicionadas} adicionadas, {r.diferencas_melhor_vs_segundo.removidas} removidas, {r.diferencas_melhor_vs_segundo.alteradas} alteradas.</p>
+        </Card>
+        <div className="tabela-wrap"><table className="tabela"><thead><tr><th>Indicador</th>{r.cenarios.map((c: any) => <th key={c.cenario.id}>{c.cenario.nome}</th>)}</tr></thead>
+          <tbody>
+            {[["Pontuação total", (c: any) => c.avaliacao.pontuacao_total], ["Aulas", (c: any) => c.indicadores.aulas], ["Horas programadas", (c: any) => c.indicadores.horas_programadas],
+              ["Carga pendente (h)", (c: any) => c.carga_pendente_h], ["Ocupação ambientes %", (c: any) => c.indicadores.taxa_ocupacao_ambientes_pct],
+              ["Ocupação instrutores %", (c: any) => c.indicadores.ocupacao_media_instrutores_pct], ["Janelas instrutores (h)", (c: any) => c.indicadores.janelas_instrutores_h],
+              ["Deslocamentos", (c: any) => c.indicadores.deslocamentos], ["Bloqueios / alertas", (c: any) => c.validacao ? `${c.validacao.bloqueios} / ${c.validacao.alertas}` : "não validado"],
+              ["Tempo da última otimização (s)", (c: any) => c.ultima_execucao?.tempo_s ?? "—"], ["Status do solver", (c: any) => c.ultima_execucao?.status_solver ?? "—"],
+            ].map(([rot, f]: any) => <tr key={rot}><th>{rot}</th>{r.cenarios.map((c: any) => <td key={c.cenario.id}>{f(c)}</td>)}</tr>)}
+            {r.cenarios[0].avaliacao.criterios.map((cr: any, k: number) => <tr key={cr.criterio}><th>{cr.descricao} <small>({cr.unidade}; peso {cr.peso})</small></th>
+              {r.cenarios.map((c: any) => <td key={c.cenario.id}>{c.avaliacao.criterios[k].valor_bruto} <small>({c.avaliacao.criterios[k].pontos} pts)</small></td>)}</tr>)}
+          </tbody></table></div>
+        {r.cenarios.length > 0 && <p className="sub">Pesos utilizados: {Object.entries(r.pesos).map(([k, v]) => `${k}=${v}`).join(" · ")}</p>}
+      </>}
+    </>
+  );
+}

@@ -69,6 +69,32 @@ TABELA_ENTIDADE["matrizes_curriculares"] = "matrizes"
 TABELA_ENTIDADE["turma_uc"] = "turma_ucs"
 SOMENTE_LEITURA = {"id", "criado_em", "atualizado_em"}
 
+ROTULOS = {
+    "id": "ID", "codigo": "Código", "nome": "Nome", "situacao": "Situação", "ativo": "Ativo", "endereco": "Endereço", "responsavel": "Responsável",
+    "regras_operacionais": "Regras operacionais", "descricao": "Descrição", "hora_inicio": "Início", "hora_fim": "Fim", "dia_semana": "Dia da semana",
+    "dias_semana": "Dias da semana", "dias_letivos": "Dias letivos", "dias_possiveis": "Dias possíveis", "excepcional": "Horário excepcional",
+    "data_inicio": "Data de início", "data_fim": "Data de término", "data_limite": "Data-limite", "carga_horaria_total": "Carga horária total (h)",
+    "ch_teorica": "CH teórica (h)", "ch_pratica": "CH prática (h)", "ch_semanal_desejada": "CH semanal desejada (h)", "ch_realizada": "CH já realizada (h)",
+    "duracao_bloco_periodos": "Períodos por encontro", "encontros_semanais": "Encontros semanais", "sequencia": "Sequência", "competencias": "Competências",
+    "certificacao_exigida": "Certificação exigida", "capacidade_min": "Capacidade mínima", "capacidade_max": "Capacidade máxima",
+    "divide_grupos": "Divide em grupos", "aulas_consecutivas": "Aulas consecutivas", "restricoes_pedagogicas": "Restrições pedagógicas",
+    "prioridade": "Prioridade (1 = mais alta)", "capacidade_fisica": "Capacidade física", "capacidade_operacional": "Capacidade operacional",
+    "maquinas": "Máquinas instaladas", "requisitos_seguranca": "Requisitos de segurança", "acessivel": "Acessível", "tempo_preparacao_min": "Preparação entre aulas (min)",
+    "predio": "Prédio", "localizacao": "Localização", "quantidade_total": "Quantidade total", "movel": "Móvel (compartilhado)", "requer_reserva": "Requer reserva",
+    "qtd_alunos": "Alunos", "capacidade_prevista": "Capacidade prevista", "num_grupos": "Nº de grupos", "necessidades_acessibilidade": "Requer acessibilidade",
+    "restricoes": "Restrições", "matricula": "Matrícula", "email": "E-mail", "areas_competencia": "Áreas de competência",
+    "carga_horaria_contratual": "Carga contratual (h/sem)", "limite_ch_letiva": "Limite letivo (h/sem)", "max_horas_dia": "Máx. horas/dia",
+    "intervalo_minimo_h": "Descanso entre jornadas (h)", "restricoes_deslocamento": "Restrições de deslocamento", "nivel": "Nível de habilitação",
+    "condicoes": "Condições", "valido_ate": "Válido até", "alvo_tipo": "Tipo de alvo", "alvo_id": "ID do alvo", "inicio": "Início", "fim": "Fim",
+    "motivo": "Motivo", "tipo": "Tipo", "data": "Data", "versao": "Versão", "vigencia_inicio": "Início da vigência", "modalidade": "Modalidade",
+    "eixo_tecnologico": "Eixo tecnológico", "turnos_possiveis": "Turnos possíveis", "minutos": "Minutos", "ordem": "Ordem", "especializado": "Especializado",
+    "recurso_tipo": "Tipo de recurso", "quantidade": "Quantidade", "cidade": "Cidade", "modulo": "Módulo",
+}
+REFS = {"curso_id": "Curso", "matriz_id": "Matriz", "unidade_id": "Unidade", "calendario_id": "Calendário", "turno_id": "Turno", "turma_id": "Turma",
+        "uc_id": "Unidade curricular", "instrutor_id": "Instrutor", "ambiente_id": "Ambiente", "recurso_id": "Recurso", "tipo_ambiente_id": "Tipo de ambiente",
+        "prerequisito_id": "Pré-requisito", "origem_id": "Unidade de origem", "destino_id": "Unidade de destino", "matriz_origem_id": "Matriz de origem",
+        "instrutor_preferido_id": "Instrutor preferido", "turno_preferencial_id": "Turno preferencial"}
+
 
 def tipo_coluna(col) -> str:
     t = col.type
@@ -101,7 +127,8 @@ def campos(chave: str) -> list[dict]:
             continue
         f = {"nome": col.key, "tipo": tipo_coluna(col), "obrigatorio": not col.nullable and col.default is None and col.server_default is None
              and col.key not in SOMENTE_LEITURA and not (col.primary_key and col.key == "id"),
-             "somente_leitura": col.key in SOMENTE_LEITURA, "rotulo": col.key.replace("_", " ").capitalize()}
+             "somente_leitura": col.key in SOMENTE_LEITURA,
+             "rotulo": ROTULOS.get(col.key) or REFS.get(col.key) or col.key.replace("_", " ").capitalize()}
         fks = list(col.foreign_keys)
         if fks:
             f["tipo"] = "ref"
