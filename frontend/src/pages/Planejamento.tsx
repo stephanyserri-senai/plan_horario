@@ -3,7 +3,6 @@ import { api, dataBR, qs } from "../api";
 import { Abas, Badge, Campo, Card, Kpi, AntesDepois, Erro, EstadoCenario, Modal, ResumoTabela, rotulo, OcorrenciasLista, Pagina, Tabela, useCarregar } from "../components/ui";
 import { useApp } from "../contexto";
 import { useOpcoes } from "../hooks";
-import { PainelAcompanhamento } from "./Acompanhamento";
 import { BarraCH, FluxoCenario, LegendaCH } from "../components/Visual";
 
 const PROXIMOS: Record<string, { estado: string; rotulo: string; acao: string }[]> = {
@@ -15,14 +14,13 @@ const PROXIMOS: Record<string, { estado: string; rotulo: string; acao: string }[
 };
 
 export default function Planejamento() {
-  const [aba, setAba] = useState("acompanhamento");
+  const [aba, setAba] = useState("cenarios");
   const { cenario } = useApp();
   return (
-    <Pagina titulo="Planejamento" descricao="Acompanhe o andamento, cuide dos cenários (versões do planejamento), confira conflitos e compare alternativas.">
+    <Pagina titulo="Planejamento" descricao="Cuide dos cenários (versões do planejamento), confira conflitos e compare alternativas.">
       {cenario && <FluxoCenario estado={cenario.estado} />}
-      <Abas abas={[{ id: "acompanhamento", rotulo: "Acompanhamento" }, { id: "cenarios", rotulo: "Cenários e aprovação" }, { id: "oferta", rotulo: "Turma × UC (detalhe)" },
+      <Abas abas={[{ id: "cenarios", rotulo: "Cenários e aprovação" }, { id: "oferta", rotulo: "Turma × UC (detalhe)" },
         { id: "validacao", rotulo: "Conferir conflitos" }, { id: "versoes", rotulo: "Histórico de versões" }, { id: "comparar", rotulo: "Comparar cenários" }]} ativa={aba} mudar={setAba} />
-      {aba === "acompanhamento" && <PainelAcompanhamento />}
       {aba === "cenarios" && <Cenarios />}
       {aba === "oferta" && <Oferta />}
       {aba === "validacao" && <Validacao />}
