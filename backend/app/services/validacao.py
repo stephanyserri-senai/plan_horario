@@ -22,6 +22,8 @@ from sqlalchemy.orm import Session
 
 from app.models import (
     Alocacao,
+    Area,
+    Curso,
     AlocacaoRecurso,
     Ambiente,
     Bloqueio,
@@ -159,6 +161,10 @@ class BaseDados:
     def periodos_turno(self, turno_id, dia_semana):
         from app.services.regras_aula import periodos_do_turno
         return self._memo(("per_turno", turno_id, dia_semana), lambda: periodos_do_turno(self.db, turno_id, dia_semana))
+
+    def areas_recurso(self, obj):
+        from app.services.areas import areas_do_recurso
+        return self._memo(("areas", type(obj).__name__, obj.id), lambda: areas_do_recurso(self.db, obj))
 
     def disponibilidade_instrutor(self, instrutor_id):
         return self._memo(("disp_i", instrutor_id), lambda: self.db.scalars(
@@ -459,6 +465,17 @@ def validar_aula(b: BaseDados, a: AulaProposta, ignorar: set[int] | None = None)
                 f"A turma {turma.codigo}{'' if a.grupo is None else f' (grupo {a.grupo})'} já tem aula em {_desc_hora(s.inicio, s.fim)} (aula #{s.id}).",
                 "turma", turma.id, [s.id])
 
+    # --- regras acadêmicas (área e competência): admitem exceção justificada do tipo "regra_academica"
+    academica = excecao_tipo == "regra_academica"
+    curso_turma = b.get(Curso, turma.curso_id)
+    area_turma = turma.area_id or (curso_turma.area_id if curso_turma else None)
+
+    from app.services.areas import atende_area
+
+    def nome_area(aid):
+        ar = b.get(Area, aid)
+        return ar.nome if ar else "?"
+
     # --- instrutor
     if instrutor is None:
         add(ALERTA, "SEM_INSTRUTOR", "Aula sem instrutor definido: pendente de alocação.")
@@ -468,7 +485,10 @@ def validar_aula(b: BaseDados, a: AulaProposta, ignorar: set[int] | None = None)
         # (8) habilitação
         comp = b.competencia(instrutor.id, uc.id)
         if comp is None:
-            add(BLOQUEIO, "INSTRUTOR_NAO_HABILITADO", f"{instrutor.nome} não possui competência cadastrada para a UC {uc.codigo} – {uc.nome}.", "instrutor", instrutor.id)
+            if academica:
+                add(ALERTA, "EXCECAO_REGRA_ACADEMICA", f"{instrutor.nome} sem competência cadastrada para {uc.codigo}, por exceção justificada #{excecao.id}: {excecao.justificativa}", "instrutor", instrutor.id)
+            else:
+                add(BLOQUEIO, "INSTRUTOR_NAO_HABILITADO", f"{instrutor.nome} não possui competência cadastrada para a UC {uc.codigo} – {uc.nome}.", "instrutor", instrutor.id)
         elif comp.valido_ate and comp.valido_ate < d:
             add(BLOQUEIO, "INSTRUTOR_NAO_HABILITADO", f"A habilitação de {instrutor.nome} para {uc.codigo} venceu em {comp.valido_ate:%d/%m/%Y}.", "instrutor", instrutor.id)
         elif comp.nivel == "em_formacao":
@@ -479,6 +499,11 @@ def validar_aula(b: BaseDados, a: AulaProposta, ignorar: set[int] | None = None)
             habs = [h for h in b.habilitacoes(instrutor.id) if h.nome.strip().lower() == uc.certificacao_exigida.strip().lower()]
             if not habs or all(h.valido_ate and h.valido_ate < d for h in habs):
                 add(BLOQUEIO, "CERTIFICACAO_AUSENTE", f"A UC {uc.codigo} exige a certificação '{uc.certificacao_exigida}', ausente ou vencida para {instrutor.nome}.", "instrutor", instrutor.id)
+        if not atende_area(*b.areas_recurso(instrutor), area_turma):
+            if academica:
+                add(ALERTA, "EXCECAO_REGRA_ACADEMICA", f"{instrutor.nome} ({nome_area(instrutor.area_id)}) em turma de {nome_area(area_turma)}, por exceção justificada #{excecao.id}: {excecao.justificativa}", "instrutor", instrutor.id)
+            else:
+                add(BLOQUEIO, "INSTRUTOR_OUTRA_AREA", f"{instrutor.nome} é da área {nome_area(instrutor.area_id)} e a turma {turma.codigo} é da área {nome_area(area_turma)}.", "instrutor", instrutor.id)
         if unidade_aula not in b.unidades_instrutor(instrutor):
             add(BLOQUEIO, "INSTRUTOR_UNIDADE", f"{instrutor.nome} não está autorizado a atuar nesta unidade.", "instrutor", instrutor.id)
         # (5) disponibilidade
@@ -532,9 +557,14 @@ def validar_aula(b: BaseDados, a: AulaProposta, ignorar: set[int] | None = None)
         tipos = b.tipos_uc(uc)
         tipo_amb = b.get(TipoAmbiente, ambiente.tipo_ambiente_id)
         if tipos and ambiente.tipo_ambiente_id not in tipos:
-            add(BLOQUEIO, "AMBIENTE_INCOMPATIVEL", f"A UC {uc.codigo} exige ambiente do(s) tipo(s) {sorted(tipos)}; {ambiente.codigo} é '{tipo_amb.nome if tipo_amb else '?'}'.", "ambiente", ambiente.id)
+            add(BLOQUEIO, "AMBIENTE_INCOMPATIVEL", f"A UC {uc.codigo} exige {' ou '.join(sorted((b.get(TipoAmbiente, t).nome if b.get(TipoAmbiente, t) else str(t)) for t in tipos))}; {ambiente.codigo} é '{tipo_amb.nome if tipo_amb else '?'}'.", "ambiente", ambiente.id)
         elif tipo_amb and tipo_amb.especializado and tipos and any(not (b.get(TipoAmbiente, t).especializado) for t in tipos):
             add(RECOMENDACAO, "ESPECIALIZADO_DESNECESSARIO", f"{ambiente.codigo} é especializado, mas a UC {uc.codigo} aceita ambiente convencional.", "ambiente", ambiente.id)
+        if tipo_amb and tipo_amb.especializado and not atende_area(*b.areas_recurso(ambiente), area_turma):
+            if academica:
+                add(ALERTA, "EXCECAO_REGRA_ACADEMICA", f"Laboratório {ambiente.codigo} ({nome_area(ambiente.area_id)}) usado por turma de {nome_area(area_turma)}, por exceção justificada #{excecao.id}.", "ambiente", ambiente.id)
+            else:
+                add(BLOQUEIO, "AMBIENTE_OUTRA_AREA", f"O laboratório {ambiente.codigo} é da área {nome_area(ambiente.area_id)} e a turma {turma.codigo} é da área {nome_area(area_turma)}.", "ambiente", ambiente.id)
         if turma.necessidades_acessibilidade and not ambiente.acessivel:
             add(BLOQUEIO, "ACESSIBILIDADE", f"A turma {turma.codigo} requer ambiente acessível; {ambiente.codigo} não é.", "ambiente", ambiente.id)
         # (7) capacidade

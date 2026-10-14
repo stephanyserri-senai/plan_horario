@@ -21,7 +21,7 @@ from app.models import CenarioPlanejamento, PeriodoHorario, Turma, TurmaUC, Turn
 from app.services import gargalos as g_srv
 from app.services import indicadores, objetivo
 from app.services.calendario import Calendarios, combinar
-from app.services.planejamento import ambientes_compativeis, instrutores_elegiveis, situacao_carga_horaria
+from app.services.planejamento import ambientes_compativeis, area_da_turma, instrutores_elegiveis, situacao_carga_horaria
 from app.services.validacao import BLOQUEIO, AulaProposta, BaseDados, validar_aula
 
 REGRAS_INSTRUTOR = {"INSTRUTOR_SOBREPOSICAO", "INSTRUTOR_FORA_DISPONIBILIDADE", "INSTRUTOR_SEM_DISPONIBILIDADE", "JORNADA_DIARIA",
@@ -49,7 +49,7 @@ def explicar_nao_alocacao(db: Session, cenario_id: int, turma_uc_id: int, grupo:
     turma = db.get(Turma, tuc.turma_id)
     uc = db.get(UnidadeCurricular, tuc.uc_id)
     info = situacao_carga_horaria(db, cenario_id, tuc)
-    elegiveis = instrutores_elegiveis(db, uc, turma.unidade_id)
+    elegiveis = instrutores_elegiveis(db, uc, turma.unidade_id, area_id=area_da_turma(db, turma))
     ambs = ambientes_compativeis(db, uc, turma, grupo is not None)
     seg = _semana_referencia(db, turma, tuc)
     b = BaseDados(db, cenario_id).precarregar()

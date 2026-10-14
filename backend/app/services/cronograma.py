@@ -86,6 +86,7 @@ def cronograma(db: Session, cenario_id: int, unidade_id: int | None = None, area
             "total_h": info["total_h"], "realizada_h": info["realizada_h"], "programada_h": info["programada_h"], "restante_h": restante,
             "sem_horario": sem_horario, "folga_dias": folga, "atrasado": fim > limite, "critico": fim > limite or folga <= limiar_folga,
             "caminho_critico": False, "instrutores": sorted(instrutores.get(tuc.id, [])), "depende_de": [],
+            "turma_codigo": turma.codigo, "curso_nome": curso.nome,
             "_area": area, "_curso": curso, "_turma": turma,
         })
 
@@ -109,6 +110,12 @@ def cronograma(db: Session, cenario_id: int, unidade_id: int | None = None, area
             pres = [por_uc[p] for p in prereq.get(it["uc_id"], ()) if p in por_uc]
             if pres:
                 fila.append(max(pres, key=lambda x: x["fim"]))
+
+    # dependências violadas: UC que começa antes de o pré-requisito terminar
+    por_id = {it["id"]: it for it in itens_uc}
+    for it in itens_uc:
+        it["dependencia_violada"] = [por_id[d]["codigo"] for d in it["depende_de"] if por_id[d]["fim"] >= it["inicio"]]
+        it["turma_uc_id"] = int(it["id"].split(":")[1])
 
     # agregados: turma, curso, área
     grupos: dict[str, dict] = {}

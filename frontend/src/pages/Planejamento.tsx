@@ -3,6 +3,22 @@ import { api, dataBR, qs } from "../api";
 import { Abas, Badge, Campo, Card, Kpi, AntesDepois, Erro, EstadoCenario, Modal, ResumoTabela, rotulo, OcorrenciasLista, Pagina, Tabela, useCarregar } from "../components/ui";
 import { useApp } from "../contexto";
 import { useOpcoes } from "../hooks";
+import { semestreDe, semestres as listarSemestres } from "../semestre";
+
+function opcoesSemestre(): string[] {
+  const a = new Date().getFullYear();
+  return [a - 1, a, a + 1].flatMap((x) => [`${x}/1`, `${x}/2`]);
+}
+function proximoSemestre(cenarios: any[]): string {
+  const ex = new Set(listarSemestres(cenarios));
+  return opcoesSemestre().find((sm) => !ex.has(sm) && sm >= `${new Date().getFullYear()}/${new Date().getMonth() < 6 ? 1 : 2}`) || opcoesSemestre()[3];
+}
+/** Datas sugeridas (editáveis): 1º semestre de fevereiro a junho; 2º de agosto a dezembro. */
+function novoSemestre(sem: string) {
+  const [a, n] = sem.split("/");
+  return { _sem: sem, nome: `Planejamento ${sem}`, unidade_id: null,
+    periodo_inicio: n === "1" ? `${a}-02-02` : `${a}-08-03`, periodo_fim: n === "1" ? `${a}-06-30` : `${a}-12-18` };
+}
 import { BarraCH, FluxoCenario, LegendaCH } from "../components/Visual";
 
 const PROXIMOS: Record<string, { estado: string; rotulo: string; acao: string }[]> = {
@@ -17,9 +33,9 @@ export default function Planejamento() {
   const [aba, setAba] = useState("cenarios");
   const { cenario } = useApp();
   return (
-    <Pagina titulo="Planejamento" descricao="Cuide dos cenários (versões do planejamento), confira conflitos e compare alternativas.">
+    <Pagina titulo="Semestres e aprovação" descricao="Crie o semestre, acompanhe a aprovação e a publicação, confira conflitos e compare versões.">
       {cenario && <FluxoCenario estado={cenario.estado} />}
-      <Abas abas={[{ id: "cenarios", rotulo: "Cenários e aprovação" }, { id: "oferta", rotulo: "Turma × UC (detalhe)" },
+      <Abas abas={[{ id: "cenarios", rotulo: "Semestres e aprovação" }, { id: "oferta", rotulo: "Turma × UC (detalhe)" },
         { id: "validacao", rotulo: "Conferir conflitos" }, { id: "versoes", rotulo: "Histórico de versões" }, { id: "comparar", rotulo: "Comparar cenários" }]} ativa={aba} mudar={setAba} />
       {aba === "cenarios" && <Cenarios />}
       {aba === "oferta" && <Oferta />}
@@ -47,18 +63,20 @@ function Cenarios() {
   return (
     <>
       <div className="filtros">
-        {pode("cenarios.criar") && <button className="btn btn-primario" onClick={() => setNovo({ nome: "", periodo_inicio: "", periodo_fim: "" })}>+ Novo cenário</button>}
+        {pode("cenarios.criar") && <button className="btn btn-primario" onClick={() => setNovo(novoSemestre(proximoSemestre(cenarios)))}>+ Novo semestre</button>}
+        <span className="sub">Cada semestre tem uma versão em edição. Quando publicada, alterações viram uma "proposta de alteração" do mesmo semestre — você continua escolhendo só o semestre no topo.</span>
       </div>
       <Erro erro={erro} />
       <Tabela colunas={[
-        { chave: "nome", rotulo: "Cenário", render: (c: any) => <><b>{c.nome}</b>{c.id === cenario?.id && <Badge tipo="ok">em uso</Badge>}<br /><small>{c.descricao}</small></> },
-        { chave: "tipo", rotulo: "Tipo" }, { chave: "estado", rotulo: "Estado", render: (c: any) => <EstadoCenario estado={c.estado} /> },
+        { chave: "sem", rotulo: "Semestre", render: (c: any) => <b>{semestreDe(c)}</b> },
+        { chave: "nome", rotulo: "Planejamento", render: (c: any) => <>{c.nome}{c.id === cenario?.id && <> <Badge tipo="ok">aberto</Badge></>}<br /><small>{c.descricao}</small></> },
+        { chave: "tipo", rotulo: "Tipo", render: (c: any) => ({ base: "Planejamento", proposta: "Proposta de alteração", simulacao: "Simulação", copia: "Cópia" } as any)[c.tipo] || c.tipo }, { chave: "estado", rotulo: "Estado", render: (c: any) => <EstadoCenario estado={c.estado} /> },
         { chave: "versao", rotulo: "Versão", alinhar: "dir" }, { chave: "aulas", rotulo: "Aulas", alinhar: "dir" },
         { chave: "periodo", rotulo: "Período", render: (c: any) => `${dataBR(c.periodo_inicio)} – ${dataBR(c.periodo_fim)}` },
         { chave: "resultado_validacao", rotulo: "Validação", render: (c: any) => c.resultado_validacao ? <>{c.resultado_validacao.bloqueios ? <Badge tipo="bloqueio">{c.resultado_validacao.bloqueios}</Badge> : <Badge tipo="ok">0 bloqueios</Badge>} <Badge tipo="alerta">{c.resultado_validacao.alertas}</Badge></> : "—" },
         { chave: "acoes", rotulo: "Ações", render: (c: any) => (
           <div className="acoes-linha">
-            <button className="btn-link" onClick={() => setCenarioId(c.id)}>Usar</button>
+            <button className="btn-link" onClick={() => setCenarioId(c.id)}>Abrir</button>
             {pode("cenarios.criar") && <button className="btn-link" onClick={async () => { const nome = prompt("Nome da cópia:", `${c.nome} (cópia)`); if (!nome) return;
               try { const n = await api.post("/api/cenarios", { nome, copiar_de: c.id }); await recarregarCenarios(); setCenarioId(n.id); aviso("Cenário copiado."); } catch (e) { setErro(e); } }}>Copiar</button>}
             {c.tipo !== "simulacao" && (PROXIMOS[c.estado] || []).filter((p) => pode(p.acao)).map((p) => (
@@ -70,16 +88,19 @@ function Cenarios() {
             {!["publicado", "aprovado"].includes(c.estado) && pode("cenarios.editar") && <button className="btn-link" onClick={async () => { if (!confirm("Arquivar cenário?")) return; await transicionar(c, "arquivado"); }}>Arquivar</button>}
           </div>) },
       ]} linhas={cenarios} />
-      <Modal titulo="Novo cenário" aberto={!!novo} fechar={() => setNovo(null)}>
+      <Modal titulo="Novo semestre" aberto={!!novo} fechar={() => setNovo(null)}>
         {novo && <>
-          <Campo rotulo="Nome" obrigatorio><input value={novo.nome} onChange={(e) => setNovo({ ...novo, nome: e.target.value })} /></Campo>
-          <Campo rotulo="Unidade (vazio = institucional)"><select value={novo.unidade_id ?? ""} onChange={(e) => setNovo({ ...novo, unidade_id: e.target.value || null })}>
-            <option value="">Institucional</option>{unidades.map((u) => <option key={u.id} value={u.id}>{u.rotulo}</option>)}</select></Campo>
+          <Campo rotulo="Semestre" obrigatorio><select value={novo._sem} onChange={(e) => setNovo({ ...novoSemestre(e.target.value), unidade_id: novo.unidade_id })}>
+            {opcoesSemestre().map((sm) => <option key={sm} value={sm}>{sm}</option>)}</select></Campo>
+          <Campo rotulo="Nome"><input value={novo.nome} onChange={(e) => setNovo({ ...novo, nome: e.target.value })} /></Campo>
+          <Campo rotulo="Unidade" ajuda="Vazio = as duas unidades no mesmo planejamento."><select value={novo.unidade_id ?? ""} onChange={(e) => setNovo({ ...novo, unidade_id: e.target.value || null })}>
+            <option value="">Todas as unidades</option>{unidades.map((u) => <option key={u.id} value={u.id}>{u.rotulo}</option>)}</select></Campo>
           <Campo rotulo="Período letivo — início"><input type="date" value={novo.periodo_inicio} onChange={(e) => setNovo({ ...novo, periodo_inicio: e.target.value })} /></Campo>
           <Campo rotulo="Período letivo — fim"><input type="date" value={novo.periodo_fim} onChange={(e) => setNovo({ ...novo, periodo_fim: e.target.value })} /></Campo>
           <Campo rotulo="Descrição"><textarea value={novo.descricao ?? ""} onChange={(e) => setNovo({ ...novo, descricao: e.target.value })} /></Campo>
           <div className="rodape-modal"><button className="btn btn-primario" onClick={async () => {
-            try { const c = await api.post("/api/cenarios", novo); await recarregarCenarios(); setCenarioId(c.id); setNovo(null); } catch (e) { setErro(e); setNovo(null); }
+            const { _sem, ...dados } = novo;
+            try { const c = await api.post("/api/cenarios", dados); await recarregarCenarios(); setCenarioId(c.id); setNovo(null); aviso(`Semestre ${_sem} criado e aberto.`); } catch (e) { setErro(e); setNovo(null); }
           }}>Criar</button></div>
         </>}
       </Modal>
@@ -131,6 +152,7 @@ function Alternativa({ a }: { a: any }) {
   if (a.gargalo) return null; // tratado em tabela própria
   return (
     <li>{a.descricao || rotulo(a.tipo || "")}
+      {Array.isArray(a.itens) && itens.length === 0 && <div className="chips"><span className="mudo">nenhum</span></div>}
       {itens.length > 0 && typeof itens[0] === "string" && <div className="chips">{itens.map((x: string) => <span key={x} className="chip">{x}</span>)}</div>}
       {itens.length > 0 && typeof itens[0] === "object" && <Tabela colunas={[{ chave: "data", rotulo: "Dia", render: (it: any) => dataBR(it.data) }, { chave: "h", rotulo: "Horário", render: (it: any) => `${it.inicio}–${it.fim}` },
         { chave: "i", rotulo: "Instrutores livres", render: (it: any) => it.instrutores?.join(", ") }, { chave: "a", rotulo: "Salas livres", render: (it: any) => it.ambientes?.join(", ") }]}

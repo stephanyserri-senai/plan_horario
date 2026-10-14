@@ -381,9 +381,13 @@ def rejeitar_sugestao(d: dict = Body(...), ctx: Contexto = Depends(requer("aloca
 
 
 @router.post("/excecoes")
-def autorizar_excecao(d: dict = Body(...), ctx: Contexto = Depends(requer("excecoes.autorizar")), db: Session = Depends(get_db)):
-    if d.get("tipo") not in ("feriado_bloqueio", "carga_horaria") or len(d.get("justificativa", "").strip()) < 10:
-        raise EntradaInvalida("Informe o tipo (feriado_bloqueio | carga_horaria) e uma justificativa (mín. 10 caracteres).")
+def autorizar_excecao(d: dict = Body(...), ctx: Contexto = Depends(get_contexto), db: Session = Depends(get_db)):
+    """Exceções documentadas. Regras acadêmicas (instrutor/laboratório de outra área, instrutor sem competência
+    cadastrada) podem ser justificadas por quem aloca aulas; feriado/bloqueio e carga horária exigem autorização."""
+    tipo = d.get("tipo")
+    if tipo not in ("feriado_bloqueio", "carga_horaria", "regra_academica") or len(d.get("justificativa", "").strip()) < 10:
+        raise EntradaInvalida("Informe o tipo e uma justificativa (mínimo de 10 caracteres).")
+    ctx.exigir("alocacoes.editar" if tipo == "regra_academica" else "excecoes.autorizar")
     e = ExcecaoAutorizada(tipo=d["tipo"], justificativa=d["justificativa"].strip(), autorizado_por_id=ctx.id)
     db.add(e)
     db.flush()
@@ -553,7 +557,7 @@ def primeiros_passos(cenario_id: int | None = None, ctx: Contexto = Depends(get_
         {"chave": "ucs", "titulo": "Cadastrar unidades curriculares (disciplinas)", "qtd": cont(UnidadeCurricular), "link": "/cadastros/ucs"},
         {"chave": "instrutores", "titulo": "Cadastrar instrutores e o que cada um pode ministrar", "qtd": cont(Instrutor), "link": "/cadastros/instrutores"},
         {"chave": "turmas", "titulo": "Cadastrar turmas (com as disciplinas a ofertar)", "qtd": min(turmas, turma_ucs), "link": "/cadastros/turmas"},
-        {"chave": "cenario", "titulo": "Criar o cenário (período letivo a planejar)", "qtd": cont(CenarioPlanejamento), "link": "/planejamento"},
+        {"chave": "cenario", "titulo": "Criar o semestre a planejar", "qtd": cont(CenarioPlanejamento), "link": "/planejamento"},
         {"chave": "grade", "titulo": "Gerar os horários", "qtd": alocs, "link": "/geracao"},
     ]
     for p in passos:
@@ -567,3 +571,72 @@ def cronograma_gantt(cenario_id: int, unidade_id: int | None = None, area_id: in
     """Dados do gráfico de Gantt (área → curso → turma → UC) com folgas e caminho crítico."""
     from app.services.cronograma import cronograma
     return cronograma(db, cenario_id, unidade_id, area_id, curso_id, ctx.unidades)
+
+
+
+# ============================================================================ sugestões para alocação manual
+EXCECIONAVEIS = {"INSTRUTOR_OUTRA_AREA", "INSTRUTOR_NAO_HABILITADO", "AMBIENTE_OUTRA_AREA"}
+
+
+@router.get("/sugestoes/aula")
+def sugestoes_aula(turma_uc_id: int, data: date, periodo_inicio_id: int, num_periodos: int, cenario_id: int, grupo: int | None = None,
+                   alocacao_id: int | None = None, ctx: Contexto = Depends(requer("alocacoes.ler")), db: Session = Depends(get_db)):
+    """Instrutores e ambientes para uma aula, avaliados pela MESMA validação central e ordenados por aderência:
+    recomendados (mesma área, competência, livres) → só com exceção justificada (outra área / sem competência)
+    → indisponíveis (conflito de horário, disponibilidade, certificação etc., sem exceção possível)."""
+    from app.models import Area, CompetenciaInstrutor
+    from app.services.alocacao import resolver_horario
+    from app.services.areas import areas_do_recurso
+    from app.services.planejamento import area_da_turma
+    from app.services.validacao import AulaProposta, BaseDados, validar_aula
+    tuc = db.get(TurmaUC, turma_uc_id)
+    if tuc is None:
+        raise NaoEncontrado("Turma×UC inexistente.")
+    turma = db.get(Turma, tuc.turma_id)
+    uc = db.get(UnidadeCurricular, tuc.uc_id)
+    ini, fim, mins = resolver_horario(db, turma, aloc.DadosAula(turma_uc_id=tuc.id, data=data, periodo_inicio_id=periodo_inicio_id, num_periodos=num_periodos))
+    area_turma = area_da_turma(db, turma)
+    areas = {a.id: a.nome for a in db.scalars(select(Area))}
+    b = BaseDados(db, cenario_id)
+    ignorar = {alocacao_id} if alocacao_id else set()
+    semana = data - timedelta(days=data.weekday())
+
+    def avaliar(**kw):
+        oc = validar_aula(b, AulaProposta(turma_uc_id=tuc.id, inicio=ini, fim=fim, minutos_aula=mins, grupo=grupo, origem="sugestao", **kw), ignorar)
+        return oc
+
+    def classificar(oc, tipo):
+        proprios = [o for o in oc if o.recurso_tipo == tipo and o.severidade == "bloqueio"]
+        if not proprios:
+            return "recomendado", []
+        if all(o.regra in EXCECIONAVEIS for o in proprios):
+            return "excecao", [o.descricao for o in proprios]
+        return "indisponivel", [o.descricao for o in proprios if o.regra not in EXCECIONAVEIS] or [o.descricao for o in proprios]
+
+    comps = {c.instrutor_id: c for c in db.scalars(select(CompetenciaInstrutor).where(CompetenciaInstrutor.uc_id == uc.id, CompetenciaInstrutor.ativo.is_(True)))}
+    instrutores = []
+    for i in db.scalars(select(Instrutor).where(Instrutor.ativo.is_(True), Instrutor.unidade_id == turma.unidade_id)):
+        grupo_i, motivos = classificar(avaliar(instrutor_id=i.id), "instrutor")
+        carga = db.scalar(select(func.coalesce(func.sum(Alocacao.minutos_aula), 0)).where(
+            Alocacao.cenario_id == cenario_id, Alocacao.instrutor_id == i.id, Alocacao.status != "cancelada",
+            Alocacao.data >= semana, Alocacao.data < semana + timedelta(days=7))) / 60
+        comp = comps.get(i.id)
+        todas, ars = areas_do_recurso(db, i)
+        mesma = bool(area_turma) and (area_turma in ars)
+        pontos = (3 if comp and comp.nivel == "pleno" else 1 if comp else 0) + (2 if mesma else 1 if todas else 0) - carga / 40
+        instrutores.append({"id": i.id, "nome": i.nome, "area": "todas as áreas" if todas else ", ".join(sorted(areas[x] for x in ars if x in areas)) or None,
+                            "mesma_area": mesma,
+                            "competencia": comp.nivel if comp else None, "carga_semana_h": round(carga, 1), "limite_h": float(i.limite_ch_letiva),
+                            "grupo": grupo_i, "motivos": motivos, "_p": pontos})
+    ambientes = []
+    for a in db.scalars(select(Ambiente).where(Ambiente.ativo.is_(True), Ambiente.unidade_id == turma.unidade_id)):
+        grupo_a, motivos = classificar(avaliar(ambiente_id=a.id), "ambiente")
+        todas, ars = areas_do_recurso(db, a)
+        ambientes.append({"id": a.id, "codigo": a.codigo, "nome": a.nome, "capacidade": a.capacidade_operacional,
+                          "area": "todas as áreas" if todas else ", ".join(sorted(areas[x] for x in ars if x in areas)) or None,
+                          "grupo": grupo_a, "motivos": motivos,
+                          "_p": (2 if area_turma in ars else 1 if todas else 0) - abs(a.capacidade_operacional - turma.qtd_alunos) / 100})
+    ordem = {"recomendado": 0, "excecao": 1, "indisponivel": 2}
+    for lst in (instrutores, ambientes):
+        lst.sort(key=lambda x: (ordem[x["grupo"]], -x.pop("_p")))
+    return {"area_turma": areas.get(area_turma), "horario": f"{ini:%H:%M}–{fim:%H:%M}", "instrutores": instrutores, "ambientes": ambientes}

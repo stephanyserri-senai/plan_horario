@@ -331,22 +331,34 @@ def _converter(tipo: str, linha: dict, mapa: dict) -> tuple[dict, list[str]]:
     return vals, erros
 
 
-def _area(r, v: dict, d: dict, E: list, A: list, obrigatoria: bool = True):
-    """Coluna 'área': nome ou código de uma das áreas fixas, da mesma unidade do registro."""
-    if not v.get("area"):
+def _area(r, v: dict, d: dict, E: list, A: list, obrigatoria: bool = True, multiplas: bool = False):
+    """Coluna 'área': nome ou código de uma das áreas fixas, da mesma unidade do registro.
+    Para instrutores e ambientes aceita várias (separadas por ';' ou ',') — a primeira é a principal —
+    ou 'TODAS' (atende todas as áreas)."""
+    texto = (v.get("area") or "").strip()
+    if not texto:
         if obrigatoria:
             A.append("área não informada: defina-a depois em Cadastros (coluna 'area', ex.: AUTOMAÇÃO, LOGÍSTICA)")
         return
-    achada = r.area(v["area"])
-    if not achada:
-        E.append(f"área '{v['area']}' não existe (use uma das áreas fixas da unidade)")
+    if multiplas and norm(texto) in ("todas", "todas_as_areas", "todas as areas"):
+        d["todas_areas"] = True
         return
-    area_id, unidade_area = achada
-    if d.get("unidade_id") and d["unidade_id"] != unidade_area:
-        E.append(f"a área '{v['area']}' não pertence à unidade informada")
-        return
-    d["area_id"] = area_id
-    d.setdefault("unidade_id", unidade_area)
+    nomes = [x.strip() for x in re.split(r"[;,|]+", texto) if x.strip()] if multiplas else [texto]
+    ids = []
+    for nome in nomes:
+        achada = r.area(nome)
+        if not achada:
+            E.append(f"área '{nome}' não existe (use uma das áreas fixas da unidade)")
+            return
+        area_id, unidade_area = achada
+        if d.get("unidade_id") and d["unidade_id"] != unidade_area:
+            E.append(f"a área '{nome}' não pertence à unidade informada")
+            return
+        d.setdefault("unidade_id", unidade_area)
+        ids.append(area_id)
+    d["area_id"] = ids[0]
+    if multiplas:
+        d["_areas"] = ids[1:]
 
 
 def _preparar(db: Session, r: Resolvedor, tipo: str, v: dict) -> tuple[dict | None, object | None, list[str], list[str]]:
@@ -426,7 +438,7 @@ def _preparar(db: Session, r: Resolvedor, tipo: str, v: dict) -> tuple[dict | No
         uid = r.unidade(v["unidade_codigo"]) or E.append(f"unidade '{v['unidade_codigo']}' não cadastrada")
         d = {k: v[k] for k in ("matricula", "nome", "email", "carga_horaria_contratual", "limite_ch_letiva", "areas_competencia") if v[k] is not None}
         d["unidade_id"] = uid
-        _area(r, v, d, E, A)
+        _area(r, v, d, E, A, multiplas=True)
         return d, db.scalars(select(Instrutor).where(Instrutor.matricula == v["matricula"])).first(), E, A
     if tipo == "competencias":
         iid, aviso = r.instrutor(v["matricula"])
@@ -454,7 +466,7 @@ def _preparar(db: Session, r: Resolvedor, tipo: str, v: dict) -> tuple[dict | No
                 d[k] = v[k]
         if d["capacidade_operacional"] and d["capacidade_fisica"] and d["capacidade_operacional"] > d["capacidade_fisica"]:
             E.append("capacidade operacional maior que a física")
-        _area(r, v, d, E, A)
+        _area(r, v, d, E, A, multiplas=True)
         return d, db.scalars(select(Ambiente).where(func.lower(Ambiente.codigo) == v["codigo"].lower())).first(), E, A
     if tipo == "disponibilidade_instrutores":
         iid, _ = r.instrutor(v["matricula"])
@@ -534,7 +546,7 @@ def gerar_previa(db: Session, ctx, nome: str, conteudo: bytes, tipo: str | None 
             mud = {k: v for k, v in _json(dados).items() if atual.get(k) != v}
             acao = "atualizar" if mud else "sem_alteracao"
         itens.append({"linha": n, "acao": acao, "erros": erros, "avisos": avisos, "valores": _json(vals), "dados": _json(dados),
-                      "tipos": (dados or {}).get("_tipos"), "existente_id": getattr(existente, "id", None) if existente is not None else None})
+                      "tipos": (dados or {}).get("_tipos"), "areas_extra": (dados or {}).get("_areas"), "existente_id": getattr(existente, "id", None) if existente is not None else None})
     anterior = db.scalars(select(Importacao).where(Importacao.arquivo_hash == h, Importacao.status == "confirmada")).first()
     resumo = {a: sum(1 for i in itens if i["acao"] == a) for a in ("criar", "atualizar", "sem_alteracao", "erro")}
     previa = {"planilhas": list(folhas), "planilha": planilha, "cabecalhos": cab, "campos": {k: {"tipo": t, "obrigatorio": o} for k, (t, o, _s) in SPECS[tipo]["campos"].items()},
@@ -606,6 +618,13 @@ def confirmar(db: Session, ctx, importacao_id: int, ignorar_erros: bool = False,
                 for tid in it["tipos"]:
                     if not db.get(UCTipoAmbiente, (obj.id, tid)):
                         db.add(UCTipoAmbiente(uc_id=obj.id, tipo_ambiente_id=tid))
+            if imp.tipo in ("instrutores", "ambientes") and it.get("areas_extra"):
+                from app.models import AmbienteArea, InstrutorArea
+                db.flush()
+                M, chave = (InstrutorArea, "instrutor_id") if imp.tipo == "instrutores" else (AmbienteArea, "ambiente_id")
+                for aid in it["areas_extra"]:
+                    if aid != obj.area_id and not db.get(M, (obj.id, aid)):
+                        db.add(M(**{chave: obj.id, "area_id": aid}))
             rel["avisos"] += [f"linha {it['linha']}: {a}" for a in it["avisos"]]
     imp.status = "confirmada"
     imp.confirmado_em = datetime.now()

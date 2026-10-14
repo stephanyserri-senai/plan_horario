@@ -16,8 +16,8 @@ from sqlalchemy import select, text
 from app.core.db import SessionLocal
 from app.core.estrutura import garantir_estrutura_fixa
 from app.models import (
-    Ambiente, Area, Calendario, CalendarioExcecao, CenarioPlanejamento, CompetenciaInstrutor, Curso, DisponibilidadeInstrutor,
-    HabilitacaoInstrutor, Instrutor, MatrizCurricular, Recurso, RecursoAmbiente, TipoAmbiente, Turma, TurmaUC, Turno, UCRecurso,
+    Ambiente, AmbienteArea, Area, Calendario, CalendarioExcecao, CenarioPlanejamento, CompetenciaInstrutor, Curso, DisponibilidadeInstrutor,
+    HabilitacaoInstrutor, Instrutor, InstrutorArea, MatrizCurricular, Recurso, RecursoAmbiente, TipoAmbiente, Turma, TurmaUC, Turno, UCRecurso,
     UCTipoAmbiente, Unidade, UnidadeCurricular,
 )
 
@@ -67,9 +67,10 @@ def carregar(db, ano: int = 2026):
     db.add_all(tipos.values())
     db.flush()
     amb = {
-        "S101": Ambiente(codigo=f"{PREFIXO}S101", nome="Sala 101", unidade_id=un.id, area_id=energ.id, tipo_ambiente_id=tipos["SALA"].id,
+        # salas de aula comuns atendem todas as áreas; laboratórios pertencem a uma área
+        "S101": Ambiente(codigo=f"{PREFIXO}S101", nome="Sala 101", unidade_id=un.id, todas_areas=True, tipo_ambiente_id=tipos["SALA"].id,
                          capacidade_fisica=40, capacidade_operacional=36),
-        "S102": Ambiente(codigo=f"{PREFIXO}S102", nome="Sala 102", unidade_id=un.id, area_id=autom.id, tipo_ambiente_id=tipos["SALA"].id,
+        "S102": Ambiente(codigo=f"{PREFIXO}S102", nome="Sala 102", unidade_id=un.id, todas_areas=True, tipo_ambiente_id=tipos["SALA"].id,
                          capacidade_fisica=40, capacidade_operacional=36),
         "LI1": Ambiente(codigo=f"{PREFIXO}LI1", nome="Lab. Informática 1", unidade_id=un.id, area_id=autom.id, tipo_ambiente_id=tipos["INFO"].id,
                         capacidade_fisica=32, capacidade_operacional=30),
@@ -78,6 +79,7 @@ def carregar(db, ano: int = 2026):
     }
     db.add_all(amb.values())
     db.flush()
+    db.add(AmbienteArea(ambiente_id=amb["LI1"].id, area_id=energ.id))  # laboratório compartilhado por duas áreas
     bancada = Recurso(codigo=f"{PREFIXO}BAN", nome="Bancadas de comandos", tipo="bancada_comandos", unidade_id=un.id, quantidade_total=8)
     db.add(bancada)
     db.flush()
@@ -124,6 +126,8 @@ def carregar(db, ano: int = 2026):
         i = Instrutor(matricula=mat_i, nome=nome, unidade_id=un.id, area_id=ar.id, carga_horaria_contratual=40, limite_ch_letiva=24, max_horas_dia=8)
         db.add(i)
         db.flush()
+        if mat_i == "DEMO-I06":
+            db.add(InstrutorArea(instrutor_id=i.id, area_id=energ.id))  # atua em duas áreas
         for c in comps:
             db.add(CompetenciaInstrutor(instrutor_id=i.id, uc_id=por_cod[c].id, nivel="pleno"))
         if "CMD" in comps:

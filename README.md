@@ -121,7 +121,7 @@ cd backend && PLAN_TEST_DATABASE_URL=postgresql+psycopg://plan:plan@localhost:54
 cd frontend && npm run typecheck && npm run build
 ```
 
-Resultado atual: **72 testes passando** contra PostgreSQL real (44 funcionais + 28 de publicação e operação na Vercel/Supabase; ver [TESTING.md](TESTING.md)). Os testes verificam o resultado e a integridade final no banco.
+Resultado atual: **74 testes passando** contra PostgreSQL real (46 funcionais + 28 de publicação e operação na Vercel/Supabase; ver [TESTING.md](TESTING.md)). Os testes verificam o resultado e a integridade final no banco.
 O CI (`.github/workflows/ci.yml`) executa a mesma suíte e o build do frontend.
 
 | Caso exigido (seção 20) | Teste |
@@ -167,6 +167,13 @@ O CI (`.github/workflows/ci.yml`) executa a mesma suíte e o build do frontend.
 * Criadas pela migração `0003` (e por `python -m app.seed`), com os turnos oficiais. A aplicação **não permite** incluir, excluir, inativar ou renomear unidades e áreas (API, telas e importação); só dados complementares da unidade (endereço, responsável) são editáveis.
 * Cursos, turmas, instrutores e ambientes exigem a **área**, que deve ser da mesma unidade do cadastro. A turma herda a área do curso; o curso sem unidade assume a unidade da área. Na importação, use a coluna `area` (nome ou código).
 * **Cronograma (Gantt)**: menu Planejamento → Cronograma. Área › curso › turma › UC, com prazos, folga, projeção do que ainda não tem horário e o caminho crítico de cada turma (UCs que definem a data de término, seguindo os pré-requisitos cadastrados).
+
+## Trabalho por semestre e alocação manual guiada
+
+* **Semestre no topo** (em vez de "cenário"): escolhe-se o semestre (ex.: 2026/2) e abre-se a versão em edição. O seletor de versão só aparece quando o semestre tem mais de uma (ex.: publicada + proposta de alteração). Semestre publicado → botão "Criar proposta de alteração" na própria grade/geração. "Semestres e aprovação → + Novo semestre" sugere nome e datas.
+* **Áreas múltiplas**: instrutores e ambientes têm área principal, "outras áreas em que também atua" ou "atende todas as áreas" (salas comuns). Na importação, a coluna `area` aceita `AUTOMAÇÃO; ENERGIAS` ou `TODAS`.
+* **Regras acadêmicas no servidor**: instrutor que não atende a área da turma (`INSTRUTOR_OUTRA_AREA`), sem competência cadastrada (`INSTRUTOR_NAO_HABILITADO`) ou laboratório especializado de outra área (`AMBIENTE_OUTRA_AREA`) são bloqueados — e só esses admitem **exceção justificada** (tipo `regra_academica`, registrada por quem aloca, auditada e exibida como alerta). Conflito de horário, disponibilidade, capacidade e certificação nunca admitem exceção.
+* **Sugestões** (`GET /api/sugestoes/aula`): instrutores e salas avaliados pela mesma validação central e ordenados em *recomendados* → *só com exceção* → *indisponíveis (com o motivo)*, por competência, área e carga da semana. O gerador automático usa somente recursos que atendem a área da turma.
 
 ## Regras de composição das aulas (padrão da instituição)
 

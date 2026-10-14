@@ -1,15 +1,39 @@
 import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { api, dataBR, qs } from "../api";
-import { Badge, Kpi, Pagina, Tabela, useCarregar } from "../components/ui";
+import { Badge, Kpi, Modal, Pagina, Tabela, useCarregar } from "../components/ui";
 import { useApp } from "../contexto";
 import { useOpcoes } from "../hooks";
+import { semestreDe } from "../semestre";
+import { Recomendacao } from "./Planejamento";
 
 type Item = {
   id: string; tipo: "area" | "curso" | "turma" | "uc"; pai: string | null; codigo: string; nome: string; inicio: string; fim: string;
   limite?: string | null; ultima_aula?: string | null; total_h: number; realizada_h: number; programada_h: number; restante_h: number;
   folga_dias?: number; critico?: boolean; atrasado?: boolean; sem_horario?: boolean; caminho_critico?: boolean; instrutores?: string[];
-  ucs?: number; ucs_criticas?: number; turma_id?: number;
+  ucs?: number; ucs_criticas?: number; turma_id?: number; turma_uc_id?: number; turma_codigo?: string; curso_nome?: string;
+  depende_de?: string[]; dependencia_violada?: string[]; uc_ref?: string;
 };
+
+/** Visão por instrutor: Instrutor › (turma · UC), a partir das UCs. */
+function porInstrutor(itens: Item[]): Item[] {
+  const grupos: Record<string, Item> = {};
+  const res: Item[] = [];
+  itens.filter((i) => i.tipo === "uc").forEach((u) => {
+    (u.instrutores?.length ? u.instrutores : ["Sem instrutor definido"]).forEach((nome) => {
+      const gid = `i:${nome}`;
+      const g = grupos[gid] ||= { id: gid, tipo: "area", pai: null, codigo: "", nome, inicio: u.inicio, fim: u.fim, total_h: 0, realizada_h: 0,
+        programada_h: 0, restante_h: 0, ucs: 0, ucs_criticas: 0 };
+      g.inicio = u.inicio < g.inicio ? u.inicio : g.inicio;
+      g.fim = u.fim > g.fim ? u.fim : g.fim;
+      g.ucs = (g.ucs || 0) + 1;
+      g.ucs_criticas = (g.ucs_criticas || 0) + (u.critico ? 1 : 0);
+      (["total_h", "realizada_h", "programada_h", "restante_h"] as const).forEach((k) => { g[k] += u[k]; });
+      res.push({ ...u, id: `${u.id}@${nome}`, uc_ref: u.id, pai: gid });
+    });
+  });
+  return [...Object.values(grupos).sort((a, b) => a.nome.localeCompare(b.nome)), ...res];
+}
 
 const DIA = 86400000;
 const dt = (s: string) => new Date(s + "T12:00");
@@ -28,13 +52,18 @@ export default function Cronograma() {
   const [tabela, setTabela] = useState(false);
   const [fechados, setFechados] = useState<Set<string>>(new Set());
   const [dica, setDica] = useState<{ it: Item; x: number; y: number } | null>(null);
+  const [agrupar, setAgrupar] = useState<"area" | "instrutor">("area");
+  const [sel, setSel] = useState<Item | null>(null);
+  const nav = useNavigate();
   const unidades = useOpcoes("unidades");
   const areas = useOpcoes("areas").filter((a: any) => !unidade || String(a.unidade_id) === unidade);
   const cursos = useOpcoes("cursos").filter((c: any) => (!unidade || String(c.unidade_id) === unidade) && (!area || String(c.area_id) === area));
   const d = useCarregar<any>(() => cenario ? api.get(`/api/cronograma${qs({ cenario_id: cenario.id, unidade_id: unidade, area_id: area, curso_id: curso })}`) : Promise.resolve(null),
     [cenario?.id, unidade, area, curso]);
 
-  const itens: Item[] = d.dados?.itens || [];
+  const brutos: Item[] = d.dados?.itens || [];
+  const itens: Item[] = useMemo(() => agrupar === "instrutor" ? porInstrutor(brutos) : brutos, [brutos, agrupar]);
+  const nivel = (i: Item) => agrupar === "instrutor" ? (i.tipo === "uc" ? 1 : 0) : NIVEL[i.tipo];
   const filhos = useMemo(() => {
     const m: Record<string, Item[]> = {};
     itens.forEach((i) => { const k = i.pai || "raiz"; (m[k] = m[k] || []).push(i); });
@@ -58,7 +87,7 @@ export default function Cronograma() {
   });
   percorrer("raiz");
 
-  if (!cenario) return <Pagina titulo="Cronograma"><p>Selecione um cenário no topo da página.</p></Pagina>;
+  if (!cenario) return <Pagina titulo="Cronograma"><p>Escolha o semestre no topo da página.</p></Pagina>;
   const r = d.dados?.resumo;
   // escala de tempo
   const datas = itens.flatMap((i) => [i.inicio, i.fim, i.limite].filter(Boolean) as string[]);
@@ -85,7 +114,7 @@ export default function Cronograma() {
   const recolherAte = (tipo: string) => setFechados(new Set(itens.filter((i) => NIVEL[i.tipo] >= NIVEL[tipo] && i.tipo !== "uc").map((i) => i.id)));
 
   return (
-    <Pagina titulo="Cronograma (Gantt)" descricao="Andamento de cada unidade curricular no tempo, agrupado por área, curso e turma, com prazos, folgas e o caminho crítico de cada turma.">
+    <Pagina titulo={`Cronograma (Gantt) — ${semestreDe(cenario)}`} descricao="Andamento de cada unidade curricular no tempo, por área, curso e turma (ou por instrutor), com prazos, folgas e o caminho crítico de cada turma. Clique numa barra para ver detalhes e ações.">
       {r && <div className="kpis">
         <Kpi rotulo="Turmas" valor={r.turmas} detalhe={r.inicio ? `${dataBR(r.inicio)} a ${dataBR(r.fim)}` : undefined} />
         <Kpi rotulo="Turmas atrasadas" valor={r.turmas_atrasadas} tom={r.turmas_atrasadas ? "erro" : "ok"} detalhe="terminam depois do prazo" />
@@ -100,16 +129,20 @@ export default function Cronograma() {
           <option value="">Todas as áreas</option>{areas.map((a) => <option key={a.id} value={a.id}>{a.rotulo}</option>)}</select>
         <select aria-label="Curso" value={curso} onChange={(e) => setCurso(e.target.value)}>
           <option value="">Todos os cursos</option>{cursos.map((c) => <option key={c.id} value={c.id}>{c.rotulo}</option>)}</select>
+        <select aria-label="Agrupar" value={agrupar} onChange={(e) => { setAgrupar(e.target.value as any); setFechados(new Set()); }}>
+          <option value="area">Agrupar: área › curso › turma</option><option value="instrutor">Agrupar: instrutor</option></select>
         <select aria-label="Escala" value={zoom} onChange={(e) => setZoom(e.target.value as any)}><option value="semanas">Escala: semanas</option><option value="meses">Escala: meses</option></select>
         <label><input type="checkbox" checked={soCriticos} onChange={(e) => setSoCriticos(e.target.checked)} /> Só o que é crítico</label>
         <button className="btn" onClick={() => setFechados(new Set())}>Expandir tudo</button>
-        <button className="btn" onClick={() => recolherAte("turma")}>Recolher turmas</button>
+        <button className="btn" onClick={() => agrupar === "instrutor" ? setFechados(new Set(itens.filter((i) => i.tipo !== "uc").map((i) => i.id))) : recolherAte("turma")}>
+          {agrupar === "instrutor" ? "Recolher instrutores" : "Recolher turmas"}</button>
         <button className="btn" onClick={() => setTabela(!tabela)}>{tabela ? "Ver gráfico" : "Ver como tabela"}</button>
+        <button className="btn" onClick={() => baixarCSV(brutos)}>Baixar CSV</button>
       </div>
       <div className="legenda gantt-legenda" aria-hidden="true">
         <span><i className="realizada" /> Realizada</span><span><i className="programada" /> Com horário</span><span><i className="falta" /> Projeção (sem horário)</span>
         <span><b className="leg-prazo">▼</b> Prazo</span><span><b className="leg-hoje">│</b> Hoje</span>
-        <span><b className="faixa-erro">⚠</b> Crítica (atrasada ou folga ≤ {d.dados?.limiar_folga_dias ?? 7} dias)</span><span><b>◆</b> Caminho crítico da turma</span>
+        <span><b className="faixa-erro">⚠</b> Crítica (atrasada ou folga ≤ {d.dados?.limiar_folga_dias ?? 7} dias)</span><span><b>◆</b> Caminho crítico da turma</span><span><b className="faixa-erro">→</b> Pré-requisito</span>
       </div>
       {d.carregando && !d.dados && <p role="status">Montando o cronograma…</p>}
       {d.erro && <div className="erro-box">{d.erro}</div>}
@@ -136,6 +169,7 @@ export default function Cronograma() {
           </div>
           <div className="gantt-corpo">
             {hoje && <div className="gantt-hoje" style={{ left: 320 + x(hoje) }} title={`Hoje: ${dataBR(hoje)}`} />}
+            <Dependencias linhas={linhas} x={x} px={px} largura={largura} />
             {linhas.map((i) => {
               const grupo = i.tipo !== "uc";
               const x0 = x(i.inicio), x1 = x(i.fim) + px;
@@ -146,11 +180,15 @@ export default function Cronograma() {
               const tem = (filhos[i.id] || []).length > 0;
               return (
                 <div key={i.id} className={`gantt-linha nivel-${i.tipo}`}>
-                  <div className="gantt-rot" style={{ paddingLeft: 8 + NIVEL[i.tipo] * 16 }}>
+                  <div className="gantt-rot" style={{ paddingLeft: 8 + nivel(i) * 16 }}>
                     {tem ? <button className="gantt-caret" aria-label={fechados.has(i.id) ? "Expandir" : "Recolher"} aria-expanded={!fechados.has(i.id)} onClick={() => alternar(i.id)}>{fechados.has(i.id) ? "▸" : "▾"}</button> : <span className="gantt-caret" />}
                     <span className="gantt-nome" title={`${ROTULO_TIPO[i.tipo]}: ${i.codigo} ${i.nome}`}>
                       {i.caminho_critico && <b title="Caminho crítico da turma">◆ </b>}
-                      {i.tipo === "uc" || i.tipo === "turma" ? <b>{i.codigo}</b> : null} {i.tipo === "turma" ? "" : i.nome}
+                      {agrupar === "instrutor" && i.tipo === "uc" ? <small className="mudo">{i.turma_codigo} · </small> : null}
+                      {i.tipo === "uc" ? <span className="gantt-link" role="button" tabIndex={0} onClick={() => setSel(i)}
+                          onKeyDown={(e) => e.key === "Enter" && setSel(i)}><b>{i.codigo}</b> {i.nome}</span>
+                        : <>{i.tipo === "turma" ? <b>{i.codigo}</b> : null} {i.tipo === "turma" ? "" : i.nome}</>}
+                      {i.dependencia_violada?.length ? <span className="faixa-erro" title={`Começa antes de terminar: ${i.dependencia_violada.join(", ")}`}> ⚠ pré-req.</span> : null}
                     </span>
                     {i.atrasado ? <span className="gantt-st faixa-erro">⚠ atrasada</span> : i.critico ? <span className="gantt-st faixa-erro">⚠ {i.folga_dias ?? ""}{i.folga_dias != null ? " d" : " crítica"}</span>
                       : grupo && i.ucs_criticas ? <span className="gantt-st faixa-alerta">{i.ucs_criticas} crít.</span> : null}
@@ -160,6 +198,7 @@ export default function Cronograma() {
                     <div className={`gantt-barra ${grupo ? "grupo" : "uc"} ${!grupo && i.critico ? "critico" : ""} ${grupo && i.atrasado ? "atrasado" : ""} ${i.caminho_critico ? "cam" : ""}`}
                       style={{ left: x0, width: Math.max(x1 - x0, 3) }}
                       onMouseMove={(e) => setDica({ it: i, x: e.clientX, y: e.clientY })} onMouseLeave={() => setDica(null)}
+                      onClick={() => i.tipo === "uc" && setSel(i)}
                       role="img" aria-label={`${i.codigo} ${i.nome}: ${dataBR(i.inicio)} a ${dataBR(i.fim)}${i.limite ? `, prazo ${dataBR(i.limite)}` : ""}${i.critico ? ", crítica" : ""}`}>
                       {!grupo && <>
                         <span className="seg programada" style={{ width: sol }} />
@@ -186,6 +225,75 @@ export default function Cronograma() {
         {dica.it.atrasado ? <div className="faixa-erro">⚠ Termina depois do prazo</div> : dica.it.critico ? <div className="faixa-erro">⚠ Folga pequena até o prazo</div> : null}
       </div>}
       {d.dados && <p className="sub">{d.dados.explicacao}</p>}
+      <Modal titulo={sel ? `${sel.turma_codigo} · ${sel.codigo} ${sel.nome}` : ""} aberto={!!sel} fechar={() => setSel(null)} largo>
+        {sel && <DetalheUC it={sel} cenarioId={cenario.id} irGrade={() => nav(`/grade?turma=${sel.turma_id}`)} irGerar={() => nav("/geracao")} />}
+      </Modal>
     </Pagina>
   );
+}
+
+/** Setas de pré-requisito (do fim do pré-requisito ao início da UC). Vermelha quando a UC começa antes de ele terminar. */
+function Dependencias({ linhas, x, px, largura }: { linhas: Item[]; x: (s: string) => number; px: number; largura: number }) {
+  const idx: Record<string, number> = {};
+  linhas.forEach((l, i) => { idx[l.uc_ref || l.id] = i; });
+  const setas: { d: string; ruim: boolean }[] = [];
+  linhas.forEach((l, i) => (l.depende_de || []).forEach((dep) => {
+    const j = idx[dep];
+    if (j === undefined) return;
+    const pre = linhas[j];
+    const x1 = x(pre.fim) + px, y1 = j * 30 + 15, x2 = x(l.inicio), y2 = i * 30 + 15;
+    const meio = Math.max(x1 + 6, Math.min(x2 - 6, x1 + 12));
+    setas.push({ d: `M${x1},${y1} H${meio} V${y2} H${x2}`, ruim: (l.dependencia_violada || []).includes(pre.codigo) });
+  }));
+  if (!setas.length) return null;
+  return (
+    <svg className="gantt-deps" width={largura} height={linhas.length * 30} style={{ left: 320 }} aria-hidden="true">
+      <defs><marker id="seta" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="currentColor" /></marker></defs>
+      {setas.map((s, k) => <path key={k} d={s.d} className={s.ruim ? "ruim" : ""} markerEnd="url(#seta)" />)}
+    </svg>
+  );
+}
+
+function DetalheUC({ it, cenarioId, irGrade, irGerar }: { it: Item; cenarioId: number; irGrade: () => void; irGerar: () => void }) {
+  const [rec, setRec] = useState<any | null>(null);
+  const [carregando, setCarregando] = useState(false);
+  return (
+    <div className="explicacao">
+      <p>
+        {it.atrasado ? <Badge tipo="bloqueio">atrasada</Badge> : it.critico ? <Badge tipo="alerta">crítica</Badge> : <Badge tipo="ok">no prazo</Badge>}{" "}
+        {it.caminho_critico && <Badge tipo="info">◆ define o término da turma</Badge>}
+      </p>
+      <Tabela colunas={[{ chave: "k", rotulo: "" }, { chave: "v", rotulo: "", alinhar: "dir" }]} chave={(l) => l.k} linhas={[
+        { k: "Curso / turma", v: `${it.curso_nome || ""} · ${it.turma_codigo}` },
+        { k: "Período", v: `${dataBR(it.inicio)} → ${dataBR(it.fim)}${it.sem_horario ? " (término projetado)" : ""}` },
+        { k: "Prazo", v: `${dataBR(it.limite)} · folga ${it.folga_dias} dia(s)` },
+        { k: "Carga horária", v: `${n1(it.realizada_h)} h realizadas · ${n1(it.programada_h)} h com horário · ${n1(it.restante_h)} h sem horário (de ${n1(it.total_h)} h)` },
+        { k: "Instrutores", v: it.instrutores?.join(", ") || "—" },
+        ...(it.dependencia_violada?.length ? [{ k: "Pré-requisito", v: `⚠ começa antes de terminar ${it.dependencia_violada.join(", ")}` }] : []),
+      ]} />
+      <div className="acoes">
+        <button className="btn" onClick={irGrade}>Ver na grade</button>
+        {it.restante_h > 0.01 && <button className="btn" disabled={carregando} onClick={async () => {
+          setCarregando(true);
+          try { setRec(await api.get(`/api/recomendacoes/nao_alocacao${qs({ cenario_id: cenarioId, turma_uc_id: it.turma_uc_id })}`)); } finally { setCarregando(false); }
+        }}>{carregando ? "Analisando…" : "Por que está sem horário?"}</button>}
+        {it.restante_h > 0.01 && <button className="btn btn-primario" onClick={irGerar}>Gerar horários</button>}
+      </div>
+      {rec && <Recomendacao r={rec} />}
+    </div>
+  );
+}
+
+function baixarCSV(itens: Item[]) {
+  const cab = ["Turma", "Curso", "UC", "Nome", "Início", "Término", "Projetado", "Prazo", "Folga (dias)", "Situação", "Caminho crítico", "Total (h)", "Sem horário (h)", "Instrutores"];
+  const esc = (v: any) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const linhas = itens.filter((i) => i.tipo === "uc").map((i) => [i.turma_codigo, i.curso_nome, i.codigo, i.nome, i.inicio, i.fim, i.sem_horario ? "sim" : "não",
+    i.limite, i.folga_dias, i.atrasado ? "atrasada" : i.critico ? "crítica" : "no prazo", i.caminho_critico ? "sim" : "não", i.total_h, i.restante_h,
+    (i.instrutores || []).join(", ")].map(esc).join(";"));
+  const blob = new Blob(["\ufeff" + [cab.map(esc).join(";"), ...linhas].join("\n")], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "cronograma.csv";
+  a.click();
+  URL.revokeObjectURL(a.href);
 }

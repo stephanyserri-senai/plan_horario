@@ -257,3 +257,13 @@ details.avancado summary { cursor: pointer; color: var(--primaria); }
   padding: 8px 10px; font-size: .8rem; box-shadow: 0 4px 16px rgba(0,0,0,.18); pointer-events: none; display: grid; gap: 2px; }
 .gantt-legenda { flex-wrap: wrap; margin-bottom: 8px; }
 .leg-prazo { font-size: .7rem; } .leg-hoje { color: var(--alerta); }
+
+.excecao-box { display: grid; gap: 6px; background: var(--alerta-bg); color: var(--texto); border-left: 4px solid var(--alerta); border-radius: 8px; padding: 10px 12px; margin: 8px 0; }
+.excecao-box .btn { justify-self: start; }
+
+.gantt-deps { position: absolute; top: 0; pointer-events: none; z-index: 1; color: var(--mudo); overflow: visible; }
+.gantt-deps path { fill: none; stroke: currentColor; stroke-width: 1.5; opacity: .7; }
+.gantt-deps path.ruim { stroke: var(--erro); color: var(--erro); opacity: 1; }
+.gantt-link { background: none; border: none; padding: 0; color: inherit; cursor: pointer; font: inherit; text-align: left; }
+.gantt-link:hover { text-decoration: underline; }
+.gantt-barra.uc { cursor: pointer; }

@@ -40,6 +40,12 @@ def serializar(obj, ent: str, ctx: Contexto | None = None) -> dict:
                 d[k] = None
     if ent == "ucs":
         d["tipos_ambiente_ids"] = [t.id for t in obj.tipos_ambiente]
+    if ent in ("instrutores", "ambientes") and getattr(obj, "id", None):
+        from sqlalchemy.orm import object_session
+        from app.models import AmbienteArea, InstrutorArea
+        M, col = (InstrutorArea, InstrutorArea.instrutor_id) if ent == "instrutores" else (AmbienteArea, AmbienteArea.ambiente_id)
+        sess = object_session(obj)
+        d["areas_ids"] = sorted(sess.scalars(select(M.area_id).where(col == obj.id)).all()) if sess else []
     try:
         d["_rotulo"] = cfg["label"].format(**{k: ("" if v is None else v) for k, v in d.items()})
     except (KeyError, IndexError):
@@ -134,8 +140,8 @@ def _regras_especificas(db: Session, ent: str, obj, dados: dict, novo: bool):
             if curso and curso.area_id:
                 obj.area_id = dados["area_id"] = curso.area_id  # turma herda a área do curso
         area_id = dados.get("area_id", obj.area_id)
-        if novo and "area_id" in cfg.get("obrigatorios", []) and not area_id:
-            raise EntradaInvalida("Informe a área tecnológica (ex.: AUTOMAÇÃO, LOGÍSTICA).")
+        if novo and "area_id" in cfg.get("obrigatorios", []) and not area_id and not dados.get("todas_areas"):
+            raise EntradaInvalida("Informe a área tecnológica (ex.: AUTOMAÇÃO, LOGÍSTICA) ou marque que atende todas as áreas.")
         if area_id:
             area = db.get(Area, int(area_id))
             if area is None:
@@ -270,6 +276,18 @@ def obter(ent: str, id_: str, db: Session = Depends(get_db), ctx: Contexto = Dep
 
 
 def _aplicar_extras(db: Session, ent: str, obj, dados: dict):
+    if ent in ("instrutores", "ambientes") and dados.get("areas_ids") is not None:
+        from app.models import AmbienteArea, Area, InstrutorArea
+        M, col, chave = (InstrutorArea, InstrutorArea.instrutor_id, "instrutor_id") if ent == "instrutores" else (AmbienteArea, AmbienteArea.ambiente_id, "ambiente_id")
+        db.execute(delete(M).where(col == obj.id))
+        for aid in {int(x) for x in dados["areas_ids"] if x} - {obj.area_id}:
+            area = db.get(Area, aid)
+            if area is None:
+                raise EntradaInvalida("Área inexistente.")
+            if area.unidade_id != obj.unidade_id:
+                raise ConflitoValidacao(f"A área {area.nome} é de outra unidade.")
+            db.add(M(**{chave: obj.id, "area_id": aid}))
+        db.flush()
     if ent == "ucs" and "tipos_ambiente_ids" in dados and dados["tipos_ambiente_ids"] is not None:
         db.execute(delete(UCTipoAmbiente).where(UCTipoAmbiente.uc_id == obj.id))
         for tid in dados["tipos_ambiente_ids"]:

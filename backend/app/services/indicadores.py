@@ -35,7 +35,7 @@ from app.models import (
     VersaoPlanejamento,
 )
 from app.services.calendario import Calendarios, combinar, minutos
-from app.services.planejamento import instrutores_elegiveis, situacao_carga_horaria
+from app.services.planejamento import area_da_turma, instrutores_elegiveis, situacao_carga_horaria
 
 DIAS = ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"]
 
@@ -325,7 +325,7 @@ def turmas_ucs(db: Session, cenario_id: int, data_referencia: date | None = None
         dist = defaultdict(float)
         for a in aulas:
             dist[DIAS[a.data.weekday()]] += a.minutos_aula / 60
-        elegiveis = instrutores_elegiveis(db, uc, turma.unidade_id, data_referencia)
+        elegiveis = instrutores_elegiveis(db, uc, turma.unidade_id, data_referencia, area_da_turma(db, turma))
         nomes_inst = {i.id: i.nome for i in db.scalars(select(Instrutor).where(Instrutor.id.in_({x.instrutor_id for x in aulas if x.instrutor_id})))} if aulas else {}
         info.update({
             "turma_nome": turma.nome, "instrutores": sorted(set(nomes_inst.values())),

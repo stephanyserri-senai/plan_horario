@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { addDias, api, baixar, dataBR, DIAS_CURTOS, iso, qs, segundaDe } from "../api";
 import { Alternativas, Badge, Campo, Erro, Modal, OcorrenciasLista, Pagina, Selecao, Tabela, useCarregar } from "../components/ui";
+import { AvisoSomenteLeitura } from "../components/AvisoSomenteLeitura";
 import { useApp } from "../contexto";
 import { useOpcoes } from "../hooks";
 import { Diferenca } from "./Cadastro";
@@ -109,7 +110,7 @@ export default function Grade() {
     aulas.recarregar();
   };
 
-  if (!cenario) return <Pagina titulo="Grade horária"><p>Selecione ou crie um cenário.</p></Pagina>;
+  if (!cenario) return <Pagina titulo="Grade horária"><p>Escolha ou crie o semestre no topo da página.</p></Pagina>;
   return (
     <Pagina titulo="Grade horária" descricao="Todas as formas de alocação (formulário, arrastar e soltar, cópia, importação e gerador) usam o mesmo serviço central de validação."
       acoes={<>
@@ -118,7 +119,7 @@ export default function Grade() {
         {pode("exportacao.executar") && <button className="btn" onClick={() => baixar(`/api/exportar/grade${qs({ cenario_id: cenario.id, formato: "pdf", semana: iso(semana),
           filtro: alvo && ["turma", "instrutor", "ambiente", "turno"].includes(modo) ? modo : "", filtro_id: alvo })}`, "grade_semana.pdf")}>PDF da semana</button>}
       </>}>
-      {!editavel && <p className="aviso-inline"><Badge tipo="info">Somente leitura</Badge> O cenário está “{cenario.estado}”. Alterações em horários publicados exigem uma proposta de alteração (Planejamento).</p>}
+      {!editavel && <AvisoSomenteLeitura />}
       <div className="filtros">
         <select aria-label="Visualização" value={modo} onChange={(e) => { setModo(e.target.value); setAlvo(""); setSp({}); }}>
           {MODOS.map((m) => <option key={m.id} value={m.id}>{m.rotulo}</option>)}
@@ -138,7 +139,7 @@ export default function Grade() {
         return <>
           {outras.length > 0 && <p className="aviso-inline">{outras.length} aula(s) desta semana são de outra unidade e não aparecem nesta grade.{" "}
             <button className="btn-link" onClick={() => { setUnidade(String(outras[0].unidade_id)); setUnidadeManual(true); }}>Mostrar a unidade {unidades.find((u) => String(u.id) === String(outras[0].unidade_id))?.rotulo || ""}</button></p>}
-          {foraDoPeriodo && <p className="aviso-inline">Esta semana está fora do período do cenário ({dataBR(cenario.periodo_inicio)} a {dataBR(cenario.periodo_fim)}).{" "}
+          {foraDoPeriodo && <p className="aviso-inline">Esta semana está fora do período do semestre ({dataBR(cenario.periodo_inicio)} a {dataBR(cenario.periodo_fim)}).{" "}
             <button className="btn-link" onClick={() => setSemana(segundaDe(new Date(cenario.periodo_inicio + "T12:00")))}>Ir para a primeira semana</button></p>}
         </>;
       })()}
@@ -259,17 +260,29 @@ export function FormAula({ inicial, cenarioId, unidadeId, periodos, fechar }: { 
   const oferta = useCarregar<any[]>(() => f.turma_id ? api.get(`/api/planejamento/oferta${qs({ cenario_id: cenarioId, turma_id: f.turma_id })}`) : Promise.resolve([]), [f.turma_id]);
   const excecoes = useCarregar<any[]>(() => api.get("/api/excecoes"), []);
   const tuc = (oferta.dados || []).find((o) => String(o.turma_uc_id) === String(f.turma_uc_id));
+  // sugestões avaliadas pela validação central para o horário escolhido
+  const podeSugerir = f.turma_uc_id && f.data && f.periodo_inicio_id && f.num_periodos;
+  const sug = useCarregar<any>(() => podeSugerir ? api.get(`/api/sugestoes/aula${qs({ cenario_id: cenarioId, turma_uc_id: f.turma_uc_id, data: f.data,
+    periodo_inicio_id: f.periodo_inicio_id, num_periodos: f.num_periodos, grupo: f.grupo, alocacao_id: f.alocacao_id })}`) : Promise.resolve(null),
+    [f.turma_uc_id, f.data, f.periodo_inicio_id, f.num_periodos, f.grupo]);
+  const [justificativa, setJustificativa] = useState("");
+  const instSel = sug.dados?.instrutores?.find((i: any) => String(i.id) === String(f.instrutor_id));
+  const ambSel = sug.dados?.ambientes?.find((a: any) => String(a.id) === String(f.ambiente_id));
+  const regrasErro: string[] = (erro?.detalhes?.ocorrencias || []).filter((o: any) => o.severidade === "bloqueio").map((o: any) => o.regra);
+  const precisaExcecao = (instSel?.grupo === "excecao" || ambSel?.grupo === "excecao" ||
+    (regrasErro.length > 0 && regrasErro.every((r) => EXCECIONAVEIS.includes(r)))) && !f.excecao_id;
   useEffect(() => { if (tuc && !inicial.num_periodos && !inicial.hora_inicio) setF((x: any) => ({ ...x, num_periodos: tuc.periodos_sugeridos || tuc.periodos_por_encontro || tuc.duracao_bloco_periodos || x.num_periodos })); }, [tuc?.turma_uc_id]);
   const set = (k: string, v: any) => setF((x: any) => ({ ...x, [k]: v }));
-  const corpo = () => {
+  const corpoBase = () => {
     const c: any = { ...f, cenario_id: cenarioId };
     if (c.periodo_inicio_id) { delete c.hora_inicio; delete c.hora_fim; }
     if (c.recorrente) { c.dia_semana = (new Date(c.data + "T12:00").getDay() + 6) % 7; }
     return c;
   };
-  const enviar = async (somenteValidar: boolean) => {
+  const enviar = async (somenteValidar: boolean, extra: any = {}) => {
     setErro(null);
     setValidacao(null);
+    const corpo = () => ({ ...corpoBase(), ...extra });
     try {
       if (f.alocacao_id) {
         const r = await api.put(`/api/alocacoes/${f.alocacao_id}`, { ...corpo(), versao: f.versao, motivo: f.motivo });
@@ -284,6 +297,15 @@ export function FormAula({ inicial, cenarioId, unidadeId, periodos, fechar }: { 
       }
     } catch (e) { setErro(e); }
   };
+  const salvarComExcecao = async () => {
+    if (justificativa.trim().length < 10) return setErro(new Error("Escreva a justificativa (mínimo de 10 caracteres)."));
+    try {
+      const e = await api.post("/api/excecoes", { tipo: "regra_academica", justificativa: justificativa.trim() });
+      setF((x: any) => ({ ...x, excecao_id: e.id }));
+      excecoes.recarregar();
+      await enviar(false, { excecao_id: e.id });
+    } catch (e) { setErro(e); }
+  };
   const aplicarAlternativa = (alt: any) => setF((x: any) => ({ ...x, ...alt, ...(alt.periodo_inicio_id ? { hora_inicio: undefined, hora_fim: undefined } : {}) }));
   return (
     <Modal titulo={f.alocacao_id ? "Editar aula" : "Nova aula"} aberto fechar={() => fechar(false)} largo>
@@ -294,13 +316,20 @@ export function FormAula({ inicial, cenarioId, unidadeId, periodos, fechar }: { 
         </Campo>
         {tuc?.divide_grupos && <Campo rotulo="Grupo"><select value={f.grupo ?? ""} onChange={(e) => set("grupo", e.target.value)}><option value="">Turma inteira</option>
           {Array.from({ length: tuc.num_grupos }, (_, i) => <option key={i} value={i + 1}>Grupo {i + 1}</option>)}</select></Campo>}
-        <Campo rotulo="Instrutor" ajuda="Somente instrutores habilitados pela matriz de competências.">
-          <Selecao valor={f.instrutor_id} mudar={(v) => set("instrutor_id", v)} vazio="(pendente)"
-            opcoes={(tuc?.instrutores_elegiveis || []).map((i: any) => ({ id: i.id, rotulo: `${i.nome}${i.nivel !== "pleno" ? ` (${i.nivel})` : ""}` }))} />
+        <Campo rotulo="Instrutor" ajuda={sug.dados ? `Ordenados por aderência à turma (área ${sug.dados.area_turma || "não definida"}): competência, área e carga da semana.`
+            : "Escolha UC, data e período para ver as sugestões avaliadas pelas regras."}>
+          {sug.dados ? <SelecaoSugerida valor={f.instrutor_id} mudar={(v) => set("instrutor_id", v)} itens={sug.dados.instrutores}
+              rotulo={(i: any) => `${i.nome}${i.area ? ` · ${i.area}` : ""}${i.competencia ? ` · ${i.competencia}` : " · sem competência"} · ${i.carga_semana_h}/${i.limite_h} h na semana`} />
+            : <Selecao valor={f.instrutor_id} mudar={(v) => set("instrutor_id", v)} vazio="(pendente)"
+              opcoes={(tuc?.instrutores_elegiveis || []).map((i: any) => ({ id: i.id, rotulo: `${i.nome}${i.nivel !== "pleno" ? ` (${i.nivel})` : ""}` }))} />}
+          {instSel && instSel.grupo !== "recomendado" && <small className={instSel.grupo === "indisponivel" ? "faixa-erro" : "faixa-alerta"}>{instSel.motivos.join(" ")}</small>}
         </Campo>
-        <Campo rotulo="Ambiente" ajuda="Somente ambientes tecnicamente compatíveis (tipo, capacidade, acessibilidade, equipamentos).">
-          <Selecao valor={f.ambiente_id} mudar={(v) => set("ambiente_id", v)} vazio="(pendente)"
-            opcoes={(tuc?.ambientes_compativeis || []).map((a: any) => ({ id: a.id, rotulo: `${a.codigo} – cap. ${a.capacidade_operacional}/${a.capacidade_fisica}${Object.keys(a.requer_recursos_moveis || {}).length ? " (requer reserva de equipamento)" : ""}` }))} />
+        <Campo rotulo="Sala / laboratório" ajuda={sug.dados ? "Ordenados por aderência: área, compatibilidade e capacidade." : "Somente ambientes tecnicamente compatíveis (tipo, capacidade, acessibilidade, equipamentos)."}>
+          {sug.dados ? <SelecaoSugerida valor={f.ambiente_id} mudar={(v) => set("ambiente_id", v)} itens={sug.dados.ambientes}
+              rotulo={(a: any) => `${a.codigo} – ${a.nome}${a.area ? ` · ${a.area}` : ""} · cap. ${a.capacidade}`} />
+            : <Selecao valor={f.ambiente_id} mudar={(v) => set("ambiente_id", v)} vazio="(pendente)"
+              opcoes={(tuc?.ambientes_compativeis || []).map((a: any) => ({ id: a.id, rotulo: `${a.codigo} – cap. ${a.capacidade_operacional}/${a.capacidade_fisica}${Object.keys(a.requer_recursos_moveis || {}).length ? " (requer reserva de equipamento)" : ""}` }))} />}
+          {ambSel && ambSel.grupo !== "recomendado" && <small className={ambSel.grupo === "indisponivel" ? "faixa-erro" : "faixa-alerta"}>{ambSel.motivos.join(" ")}</small>}
         </Campo>
         <Campo rotulo="Data" obrigatorio><input type="date" value={f.data || ""} onChange={(e) => set("data", e.target.value)} /></Campo>
         <Campo rotulo="Período inicial"><select value={f.periodo_inicio_id ?? ""} onChange={(e) => setF({ ...f, periodo_inicio_id: e.target.value, hora_inicio: undefined, hora_fim: undefined })}>
@@ -330,6 +359,12 @@ export function FormAula({ inicial, cenarioId, unidadeId, periodos, fechar }: { 
       </div>
       {validacao && (validacao.length ? <OcorrenciasLista ocorrencias={validacao} /> : <p><Badge tipo="ok">Sem conflitos</Badge> A aula pode ser gravada.</p>)}
       <Erro erro={erro} ocultarAlternativas />
+      {precisaExcecao && <div className="excecao-box">
+        <b>Esta escolha foge da regra acadêmica</b> (outra área ou sem competência cadastrada). Se for realmente necessária, registre a justificativa:
+        a aula fica marcada como exceção, aparece em "Conferir conflitos" e no histórico (auditoria).
+        <textarea rows={2} placeholder="Ex.: instrutor titular afastado; substituição combinada com a coordenação até 30/09." value={justificativa} onChange={(e) => setJustificativa(e.target.value)} />
+        <button className="btn" onClick={salvarComExcecao}>Registrar exceção e salvar</button>
+      </div>}
       {erro?.detalhes?.alternativas && <Alternativas alt={erro.detalhes.alternativas} aplicar={aplicarAlternativa} />}
       <div className="rodape-modal">
         <button className="btn" onClick={() => fechar(false)}>Cancelar</button>
@@ -337,5 +372,21 @@ export function FormAula({ inicial, cenarioId, unidadeId, periodos, fechar }: { 
         <button className="btn btn-primario" onClick={() => enviar(false)}>Salvar</button>
       </div>
     </Modal>
+  );
+}
+
+const EXCECIONAVEIS = ["INSTRUTOR_OUTRA_AREA", "INSTRUTOR_NAO_HABILITADO", "AMBIENTE_OUTRA_AREA"];
+
+/** Lista em 3 grupos: recomendados, só com exceção justificada, indisponíveis (desabilitados, com o motivo). */
+function SelecaoSugerida({ valor, mudar, itens, rotulo }: { valor: any; mudar: (v: string) => void; itens: any[]; rotulo: (i: any) => string }) {
+  const grupo = (g: string) => itens.filter((i) => i.grupo === g);
+  return (
+    <select value={valor ?? ""} onChange={(e) => mudar(e.target.value)}>
+      <option value="">(pendente)</option>
+      {grupo("recomendado").length > 0 && <optgroup label="✔ Recomendados">{grupo("recomendado").map((i) => <option key={i.id} value={i.id}>{rotulo(i)}</option>)}</optgroup>}
+      {grupo("excecao").length > 0 && <optgroup label="⚠ Só com exceção justificada">{grupo("excecao").map((i) => <option key={i.id} value={i.id}>{rotulo(i)}</option>)}</optgroup>}
+      {grupo("indisponivel").length > 0 && <optgroup label="⛔ Indisponíveis neste horário">{grupo("indisponivel").map((i) => (
+        <option key={i.id} value={i.id} disabled>{rotulo(i)} — {(i.motivos[0] || "").slice(0, 70)}</option>))}</optgroup>}
+    </select>
   );
 }

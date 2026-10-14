@@ -3,6 +3,7 @@ import { NavLink, Navigate, Route, Routes, useNavigate } from "react-router-dom"
 import { api } from "./api";
 import { Campo, Erro, EstadoCenario, Modal } from "./components/ui";
 import { useApp } from "./contexto";
+import { principalDoSemestre, rotuloVersao, semestreDe, semestres, versoesDoSemestre } from "./semestre";
 import Acompanhamento from "./pages/Acompanhamento";
 import Auditoria from "./pages/Auditoria";
 import Cadastro from "./pages/Cadastro";
@@ -27,7 +28,7 @@ const MENU: { grupo: string; itens: Item[] }[] = [
     { para: "/cronograma", rotulo: "Cronograma (Gantt)", icone: "▬", acao: "indicadores.ler" },
     { para: "/grade", rotulo: "Grade horária", icone: "▤", acao: "alocacoes.ler" },
     { para: "/geracao", rotulo: "Gerar horários", icone: "⚙", acao: "alocacoes.ler" },
-    { para: "/planejamento", rotulo: "Cenários e aprovação", icone: "☰", acao: "alocacoes.ler" },
+    { para: "/planejamento", rotulo: "Semestres e aprovação", icone: "☰", acao: "alocacoes.ler" },
     { para: "/simulador", rotulo: "Simular nova turma", icone: "◇", acao: "simulacao.executar" },
     { para: "/gargalos", rotulo: "Capacidade e gargalos", icone: "⚠", acao: "indicadores.ler" },
     { para: "/relatorios", rotulo: "Relatórios", icone: "⎙", acao: "exportacao.executar" },
@@ -49,6 +50,28 @@ const MENU: { grupo: string; itens: Item[] }[] = [
     { para: "/auditoria", rotulo: "Auditoria", icone: "🕮", acao: "auditoria.ler" },
   ] },
 ];
+
+/** Trabalho por semestre: escolhe-se o semestre; a versão só aparece quando há mais de uma (ex.: publicada + proposta). */
+function SeletorSemestre() {
+  const { cenarios, cenario, setCenarioId } = useApp();
+  const nav = useNavigate();
+  const sems = semestres(cenarios);
+  const atual = cenario ? semestreDe(cenario) : "";
+  const versoes = versoesDoSemestre(cenarios, atual);
+  if (!cenario) return <div className="seletor-cenario"><button className="btn btn-primario" onClick={() => nav("/planejamento")}>+ Criar o primeiro semestre</button></div>;
+  return (
+    <div className="seletor-cenario">
+      <label htmlFor="sem">Semestre</label>
+      <select id="sem" value={cenario.tipo === "simulacao" ? "" : atual} onChange={(e) => { const p = principalDoSemestre(cenarios, e.target.value); if (p) setCenarioId(p.id); }}>
+        {cenario.tipo === "simulacao" && <option value="">Simulação: {cenario.nome}</option>}
+        {sems.map((s) => <option key={s} value={s}>{s}</option>)}
+      </select>
+      {versoes.length > 1 && cenario.tipo !== "simulacao" && <select aria-label="Versão do semestre" value={cenario.id} onChange={(e) => setCenarioId(Number(e.target.value))}>
+        {versoes.map((c) => <option key={c.id} value={c.id}>{rotuloVersao(c)}</option>)}</select>}
+      <EstadoCenario estado={cenario.estado} />
+    </div>
+  );
+}
 
 function TrocarSenha({ fechar }: { fechar: () => void }) {
   const { aviso } = useApp();
@@ -97,7 +120,7 @@ function BuscaGlobal() {
 }
 
 export default function App() {
-  const { usuario, sair, pode, cenarios, cenario, setCenarioId, definirSenha, auth } = useApp();
+  const { usuario, sair, pode, definirSenha, auth } = useApp();
   const [menuAberto, setMenuAberto] = useState(false);
   const [trocarSenha, setTrocarSenha] = useState(false);
   if (definirSenha) return <DefinirSenha />;
@@ -123,15 +146,7 @@ export default function App() {
       <div className="principal">
         <header className="topo">
           <button className="btn-icone menu-mobile" aria-label="Abrir menu" onClick={() => setMenuAberto(!menuAberto)}>☰</button>
-          <div className="seletor-cenario">
-            <label htmlFor="cen" title="O cenário é o período letivo/versão de planejamento em que você está trabalhando.">Cenário</label>
-            <select id="cen" value={cenario?.id ?? ""} onChange={(e) => setCenarioId(Number(e.target.value))}>
-              {cenarios.filter((c) => c.estado !== "arquivado" || c.id === cenario?.id).map((c) => (
-                <option key={c.id} value={c.id}>{c.tipo === "simulacao" ? "[Simulação] " : c.tipo === "proposta" ? "[Proposta] " : ""}{c.nome} (v{c.versao})</option>
-              ))}
-            </select>
-            {cenario && <EstadoCenario estado={cenario.estado} />}
-          </div>
+          <SeletorSemestre />
           <BuscaGlobal />
           <div className="usuario">
             <span>{usuario.nome} <small>({usuario.perfil})</small></span>

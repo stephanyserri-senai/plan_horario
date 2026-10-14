@@ -42,7 +42,7 @@ from app.models import (
 from app.models.planejamento import TODOS_GRUPOS
 from app.services import auditoria
 from app.services.calendario import Calendarios, bloco_de_periodos, combinar, minutos
-from app.services.planejamento import ambientes_compativeis, instrutores_elegiveis, periodos_por_encontro
+from app.services.planejamento import ambientes_compativeis, area_da_turma, instrutores_elegiveis, periodos_por_encontro
 from app.services.regras_aula import credito_bloco, credito_periodo, periodos_do_turno, periodos_para_fechar, regras_aula
 from app.services.validacao import AulaProposta, BaseDados, SessaoExistente, carga_horaria_minutos, possui_bloqueio, validar_aula
 from app.solver.contrato import (
@@ -237,7 +237,7 @@ def montar_entrada(db: Session, cenario: CenarioPlanejamento, escopo: dict, peso
         df = min(turma.data_fim, tuc.data_limite or turma.data_fim)
         if df < di:
             continue
-        insts = instrutores_elegiveis(db, uc, turma.unidade_id, di)
+        insts = instrutores_elegiveis(db, uc, turma.unidade_id, di, area_da_turma(db, turma))
         ambs = ambientes_compativeis(db, uc, turma, dividir)
         ps_unidade = [p for p in periodos if p.unidade_id == turma.unidade_id and (not turma.turno_id or p.turno_id == turma.turno_id)]
         mpp = (sum(credito_periodo(regras, p) for p in ps_unidade) / len(ps_unidade)) if ps_unidade else 50

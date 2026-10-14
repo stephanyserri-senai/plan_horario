@@ -98,18 +98,91 @@ def test_importacao_com_area_e_unidades_fixas(db, cli, mundo):
     from app.models import Instrutor
     from app.services import importacao
     m = mundo
-    csv_ = ("matricula;nome;unidade;area\nM1;Ana;BEIRA-MAR;Automação\nM2;Bia;BEIRA-MAR;LOGÍSTICA\nM3;Caio;PORTO;dds/ti\nM4;Duda;PORTO;\n").encode()
+    csv_ = ("matricula;nome;unidade;area\nM1;Ana;BEIRA-MAR;Automação\nM2;Bia;BEIRA-MAR;LOGÍSTICA\nM3;Caio;PORTO;dds/ti\nM4;Duda;PORTO;\n"
+            "M5;Edu;BEIRA-MAR;Energias, Mecânica\nM6;Fabi;PORTO;TODAS\n").encode()
     imp = importacao.gerar_previa(db, m.ctx, "instrutores.csv", csv_, tipo="instrutores")
     db.commit()
     itens = imp.previa["itens"]
-    assert [i["acao"] for i in itens] == ["criar", "erro", "criar", "criar"]
+    assert [i["acao"] for i in itens] == ["criar", "erro", "criar", "criar", "criar", "criar"]
     assert "não pertence à unidade" in itens[1]["erros"][0]
     assert any("área não informada" in a for a in itens[3].get("avisos", []))
     importacao.confirmar(db, m.ctx, imp.id, ignorar_erros=True)
     db.commit()
     ana = db.scalar(select(Instrutor).where(Instrutor.matricula == "M1"))
     assert db.get(Area, ana.area_id).codigo == "AUTOMACAO"
+    from app.services.areas import areas_do_recurso
+    edu = db.scalar(select(Instrutor).where(Instrutor.matricula == "M5"))
+    assert {db.get(Area, x).codigo for x in areas_do_recurso(db, edu)[1]} == {"ENERGIAS", "MECANICA"}
+    assert db.scalar(select(Instrutor).where(Instrutor.matricula == "M6")).todas_areas
     # unidades: não se cria nova pela importação
     imp2 = importacao.gerar_previa(db, m.ctx, "unidades.csv", "codigo;nome\nNOVA;Unidade Nova\nPORTO;Unidade Porto\n".encode(), tipo="unidades")
     db.commit()
     assert [i["acao"] for i in imp2.previa["itens"]][0] == "erro"
+
+
+def test_area_bloqueia_alocacao_manual_e_aceita_excecao_justificada(db, cli, mundo):
+    """Instrutor de outra área é bloqueado; com exceção justificada (regra acadêmica) vira alerta.
+    Conflito de horário nunca admite exceção. Sugestões ordenam por aderência."""
+    m = mundo
+    autom = db.scalar(select(Area).where(Area.codigo == "AUTOMACAO"))
+    energ = db.scalar(select(Area).where(Area.codigo == "ENERGIAS"))
+    m.t1.area_id = autom.id
+    m.i1.area_id = energ.id   # i1 tem competência em A, mas é de outra área
+    m.i2.area_id = autom.id   # i2: mesma área e competente em A
+    db.commit()
+    corpo = {"cenario_id": m.cen.id, "turma_uc_id": m.tuc(db, m.t1, m.uc_a).id, "data": SEG.isoformat(), "periodo_inicio_id": m.periodos[0].id,
+             "num_periodos": 2, "instrutor_id": m.i1.id, "ambiente_id": m.s1.id}
+    r = cli.post("/api/alocacoes", json=corpo)
+    assert r.status_code == 409 and any(o["regra"] == "INSTRUTOR_OUTRA_AREA" for o in r.json()["detalhes"]["ocorrencias"])
+    # sugestões: i2 recomendado, i1 só com exceção, i3 (sem competência e sem área) com exceção
+    sug = cli.get("/api/sugestoes/aula", params={k: corpo[k] for k in ("cenario_id", "turma_uc_id", "data", "periodo_inicio_id", "num_periodos")}).json()
+    grupos = {i["nome"]: i["grupo"] for i in sug["instrutores"]}
+    assert grupos["Instrutor 2"] == "recomendado" and grupos["Instrutor 1"] == "excecao"
+    assert sug["instrutores"][0]["nome"] == "Instrutor 2" and sug["area_turma"] == "AUTOMAÇÃO"
+    # exceção justificada pelo próprio planejador
+    assert cli.post("/api/excecoes", json={"tipo": "regra_academica", "justificativa": "curta"}).status_code == 422
+    exc = cli.post("/api/excecoes", json={"tipo": "regra_academica", "justificativa": "Instrutor titular afastado; substituição aprovada pela coordenação."}).json()
+    r = cli.post("/api/alocacoes", json={**corpo, "excecao_id": exc["id"]})
+    assert r.status_code == 200, r.text
+    assert any(o["regra"] == "EXCECAO_REGRA_ACADEMICA" for o in r.json()["ocorrencias"])
+    # o mesmo instrutor no mesmo horário em outra turma: conflito, sem exceção possível
+    corpo2 = {**corpo, "turma_uc_id": m.tuc(db, m.t2, m.uc_a).id, "ambiente_id": m.s2.id, "excecao_id": exc["id"]}
+    r2 = cli.post("/api/alocacoes", json=corpo2)
+    assert r2.status_code == 409 and any(o["regra"] == "INSTRUTOR_SOBREPOSICAO" for o in r2.json()["detalhes"]["ocorrencias"])
+    sug2 = cli.get("/api/sugestoes/aula", params={k: corpo2[k] for k in ("cenario_id", "turma_uc_id", "data", "periodo_inicio_id", "num_periodos")}).json()
+    assert {i["nome"]: i["grupo"] for i in sug2["instrutores"]}["Instrutor 1"] == "indisponivel"
+
+
+def test_multiplas_areas_e_todas_as_areas(db, cli, mundo):
+    """Instrutor/ambiente com várias áreas ou com 'todas as áreas' atende turmas dessas áreas."""
+    m = mundo
+    beira = db.scalar(select(Unidade).where(Unidade.codigo == "BEIRA-MAR"))
+    autom, energ, mec = (db.scalar(select(Area).where(Area.codigo == c)) for c in ("AUTOMACAO", "ENERGIAS", "MECANICA"))
+    base = {"unidade_id": beira.id, "carga_horaria_contratual": 40, "limite_ch_letiva": 20, "max_horas_dia": 8, "intervalo_minimo_h": 11,
+            "situacao": "ativo", "ativo": True}
+    r = cli.post("/api/cadastros/instrutores", json={**base, "matricula": "MA1", "nome": "Multi", "area_id": energ.id, "areas_ids": [autom.id]})
+    assert r.status_code == 200 and r.json()["areas_ids"] == [autom.id]
+    assert cli.post("/api/cadastros/instrutores", json={**base, "matricula": "TA1", "nome": "Todas", "todas_areas": True}).status_code == 200
+    from app.models import Instrutor
+    from app.services.areas import recurso_atende
+    multi = db.scalar(select(Instrutor).where(Instrutor.matricula == "MA1"))
+    todas = db.scalar(select(Instrutor).where(Instrutor.matricula == "TA1"))
+    assert recurso_atende(db, multi, autom.id) and recurso_atende(db, multi, energ.id) and not recurso_atende(db, multi, mec.id)
+    assert recurso_atende(db, todas, mec.id)
+    # na validação: o instrutor de várias áreas não é bloqueado na turma de AUTOMAÇÃO
+    autom.unidade_id = energ.unidade_id = m.unidade.id  # (no mundo de teste, a unidade é U1)
+    m.t1.area_id = autom.id
+    m.i1.area_id = energ.id
+    db.commit()
+    corpo = {"cenario_id": m.cen.id, "turma_uc_id": m.tuc(db, m.t1, m.uc_a).id, "data": SEG.isoformat(), "periodo_inicio_id": m.periodos[0].id,
+             "num_periodos": 2, "instrutor_id": m.i1.id, "ambiente_id": m.s1.id}
+    def ocorrencias():
+        r = cli.post("/api/alocacoes", json={**corpo, "somente_validar": True}).json()
+        return r.get("ocorrencias") or r.get("detalhes", {}).get("ocorrencias", [])
+    oc = ocorrencias()
+    assert any(o["regra"] == "INSTRUTOR_OUTRA_AREA" for o in oc)
+    i1 = cli.get(f"/api/cadastros/instrutores/{m.i1.id}").json()
+    r = cli.put(f"/api/cadastros/instrutores/{m.i1.id}", json={"areas_ids": [autom.id], "atualizado_em": i1["atualizado_em"]})
+    assert r.status_code == 200 and r.json()["areas_ids"] == [autom.id], r.text
+    oc = ocorrencias()
+    assert not any(o["regra"] == "INSTRUTOR_OUTRA_AREA" for o in oc)

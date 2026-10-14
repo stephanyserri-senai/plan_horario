@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.models import (
     Alocacao,
     Ambiente,
+    Curso,
     CompetenciaInstrutor,
     HabilitacaoInstrutor,
     Instrutor,
@@ -19,12 +20,14 @@ from app.models import (
     PeriodoHorario,
     Recurso,
     RecursoAmbiente,
+    TipoAmbiente,
     Turma,
     TurmaUC,
     UCPrerequisito,
     UCRecurso,
     UnidadeCurricular,
 )
+from app.services.areas import recurso_atende
 from app.services.calendario import minutos
 
 
@@ -49,8 +52,17 @@ def periodos_por_encontro(db: Session, turma: Turma, uc: UnidadeCurricular) -> i
     return uc.duracao_bloco_periodos
 
 
-def instrutores_elegiveis(db: Session, uc: UnidadeCurricular, unidade_id: int, na_data: date | None = None) -> list[dict]:
-    """Elegibilidade pela matriz de competências (nunca por seleção manual)."""
+def area_da_turma(db: Session, turma) -> int | None:
+    """Área da turma (ou, se não informada, a do curso)."""
+    if getattr(turma, "area_id", None):
+        return turma.area_id
+    curso = db.get(Curso, turma.curso_id) if getattr(turma, "curso_id", None) else None
+    return curso.area_id if curso else None
+
+
+def instrutores_elegiveis(db: Session, uc: UnidadeCurricular, unidade_id: int, na_data: date | None = None, area_id: int | None = None) -> list[dict]:
+    """Elegibilidade pela matriz de competências (nunca por seleção manual) e, se informada,
+    pela área da turma (instrutor sem área definida é aceito)."""
     na_data = na_data or date.today()
     q = (
         select(Instrutor, CompetenciaInstrutor)
@@ -63,6 +75,8 @@ def instrutores_elegiveis(db: Session, uc: UnidadeCurricular, unidade_id: int, n
     for inst, comp in db.execute(q):
         if comp.valido_ate and comp.valido_ate < na_data:
             continue
+        if area_id and not recurso_atende(db, inst, area_id):
+            continue
         unidades = {inst.unidade_id, *db.scalars(select(InstrutorUnidade.unidade_id).where(InstrutorUnidade.instrutor_id == inst.id))}
         if unidade_id not in unidades:
             continue
@@ -73,7 +87,7 @@ def instrutores_elegiveis(db: Session, uc: UnidadeCurricular, unidade_id: int, n
                 (HabilitacaoInstrutor.valido_ate.is_(None)) | (HabilitacaoInstrutor.valido_ate >= na_data)))
             if not ok:
                 continue
-        res.append({"id": inst.id, "nome": inst.nome, "matricula": inst.matricula, "nivel": comp.nivel})
+        res.append({"id": inst.id, "nome": inst.nome, "matricula": inst.matricula, "nivel": comp.nivel, "area_id": inst.area_id})
     return res
 
 
@@ -88,8 +102,12 @@ def ambientes_compativeis(db: Session, uc: UnidadeCurricular, turma: Turma, grup
                                               Recurso.ativo.is_(True), Recurso.situacao == "disponivel")):
         moveis[r.tipo] += r.quantidade_total
     res = []
+    area_turma = area_da_turma(db, turma)
+    especializados = {t.id for t in db.scalars(select(TipoAmbiente).where(TipoAmbiente.especializado.is_(True)))}
     for amb in db.scalars(select(Ambiente).where(Ambiente.unidade_id == turma.unidade_id, Ambiente.ativo.is_(True),
                                                  Ambiente.situacao == "operacional")):
+        if amb.tipo_ambiente_id in especializados and not recurso_atende(db, amb, area_turma):
+            continue  # laboratório especializado que não atende a área da turma
         if tipos and amb.tipo_ambiente_id not in tipos:
             continue
         if tamanho > amb.capacidade_fisica:
@@ -177,7 +195,7 @@ def matriz_oferta(db: Session, cenario_id: int | None, turma_ids: list[int] | No
         if detalhar:
             uc = db.get(UnidadeCurricular, tuc.uc_id)
             turma = db.get(Turma, tuc.turma_id)
-            info["instrutores_elegiveis"] = instrutores_elegiveis(db, uc, turma.unidade_id)
+            info["instrutores_elegiveis"] = instrutores_elegiveis(db, uc, turma.unidade_id, area_id=area_da_turma(db, turma))
             info["ambientes_compativeis"] = ambientes_compativeis(db, uc, turma, info["divide_grupos"])
         res.append(info)
     return res

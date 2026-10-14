@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { principalDoSemestre, semestreAtual, semestres } from "./semestre";
 import { api, token } from "./api";
 import { carregarConfigAuth, supabase, tipoLinkInicial, type ConfigAuth } from "./auth";
 
@@ -119,8 +120,9 @@ export function Provedor({ children }: { children: ReactNode }) {
     await carregarUsuario();
   };
   const pode = (a: string) => !!usuario?.acoes.includes(a);
-  const cenario = cenarios.find((c) => c.id === cenarioId) || cenarios.find((c) => c.estado === "publicado") ||
-    cenarios.find((c) => c.tipo !== "simulacao") || null;
+  // sem escolha salva: abre o semestre atual (ou o mais recente) na versão em edição
+  const cenario = cenarios.find((c) => c.id === cenarioId) || principalDoSemestre(cenarios, semestreAtual()) ||
+    principalDoSemestre(cenarios, semestres(cenarios)[0] || "") || cenarios.find((c) => c.tipo !== "simulacao") || null;
   const setCenarioId = (id: number) => { setCid(id); try { localStorage.setItem("plan_cenario", String(id)); } catch { /* ignore */ } };
 
   if (!carregado) return <div className="carregando" role="status">Carregando…</div>;

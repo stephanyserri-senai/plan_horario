@@ -31,7 +31,7 @@ from app.models import (
     UnidadeCurricular,
 )
 from app.services import auditoria, cenarios, gargalos, indicadores, otimizacao
-from app.services.planejamento import ambientes_compativeis, instrutores_elegiveis, minutos_por_periodo, periodos_por_encontro
+from app.services.planejamento import ambientes_compativeis, area_da_turma, instrutores_elegiveis, minutos_por_periodo, periodos_por_encontro
 
 
 def _ucs_da_oferta(db: Session, p: dict) -> list[UnidadeCurricular]:
@@ -83,7 +83,7 @@ def simular_agregada(db: Session, p: dict, cenario_base_id: int) -> dict:
         for uc in ucs:
             grupos = fake.num_grupos if (uc.divide_grupos and fake.num_grupos > 1) else 1
             ambs = ambientes_compativeis(db, uc, fake, grupos > 1)
-            insts = instrutores_elegiveis(db, uc, p["unidade_id"], d0)
+            insts = instrutores_elegiveis(db, uc, p["unidade_id"], d0, area_da_turma(db, fake))
             ini, fim = janelas[uc.id]
             encontros = p.get("encontros_semanais") or uc.encontros_semanais
             for g in range(grupos):
@@ -105,7 +105,7 @@ def simular_agregada(db: Session, p: dict, cenario_base_id: int) -> dict:
     compat_por_uc = []
     for uc in ucs:
         ambs = ambientes_compativeis(db, uc, fake, uc.divide_grupos and fake.num_grupos > 1)
-        insts = instrutores_elegiveis(db, uc, p["unidade_id"], d0)
+        insts = instrutores_elegiveis(db, uc, p["unidade_id"], d0, area_da_turma(db, fake))
         compat_por_uc.append({"uc": uc.codigo, "nome": uc.nome, "ambientes_compativeis": [a["codigo"] for a in ambs],
                               "instrutores_habilitados": [i["nome"] for i in insts]})
     if deficit_novo <= 0.01 and all(c["ambientes_compativeis"] and c["instrutores_habilitados"] for c in compat_por_uc):

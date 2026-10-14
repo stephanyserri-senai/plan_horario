@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, dataBR } from "../api";
 import { Badge, Campo, Card, Erro, Modal, Pagina, rotulo, Tabela, useCarregar } from "../components/ui";
 import { StatusProcessamento } from "../components/Processamento";
+import { AvisoSomenteLeitura } from "../components/AvisoSomenteLeitura";
 import { useApp } from "../contexto";
 import { useOpcoes } from "../hooks";
 import { Recomendacao } from "./Planejamento";
@@ -45,7 +46,7 @@ export default function Geracao() {
     return () => { clearInterval(t); recarregarCenarios(); };
   }, [emAndamento]);
   const conj = (params.dados || []).find((p) => String(p.id) === paramId) || (params.dados || []).find((p) => p.padrao);
-  if (!cenario) return <Pagina titulo="Gerar horários"><p>Selecione um cenário no topo da página.</p></Pagina>;
+  if (!cenario) return <Pagina titulo="Gerar horários"><p>Escolha o semestre no topo da página.</p></Pagina>;
   const editavel = ["em_elaboracao", "em_validacao"].includes(cenario.estado);
   const executar = async () => {
     setErro(null);
@@ -62,7 +63,7 @@ export default function Geracao() {
       <div className="grid-2">
         <Card titulo="1. O que deseja gerar?">
           <Campo rotulo="Gerar horários para"><select value={escopo.tipo} onChange={(e) => setEscopo({ ...escopo, tipo: e.target.value, ids: [] })}>
-            <option value="pendentes">Somente as aulas que ainda não têm horário (recomendado)</option><option value="instituicao">Todas as turmas do cenário</option>
+            <option value="pendentes">Somente as aulas que ainda não têm horário (recomendado)</option><option value="instituicao">Todas as turmas do semestre</option>
             <option value="unidade">Unidades específicas</option><option value="curso">Cursos específicos</option><option value="turno">Turnos específicos</option><option value="turma">Turmas específicas</option></select></Campo>
           {ENT[escopo.tipo] && <Campo rotulo="Selecione (Ctrl/⌘ + clique para escolher vários)"><select multiple size={5} value={escopo.ids} onChange={(e) => setEscopo({ ...escopo, ids: [...e.target.selectedOptions].map((o) => o.value) })}>
             {ops.map((o) => <option key={o.id} value={o.id}>{o.rotulo}</option>)}</select></Campo>}
@@ -80,7 +81,7 @@ export default function Geracao() {
           <Erro erro={erro} />
           {pode("otimizacao.executar") ? <button className="btn btn-primario btn-grande" disabled={emAndamento || !editavel} onClick={executar}>
             {emAndamento ? "Gerando horários…" : "Gerar horários"}</button> : <p className="mudo">Seu perfil pode consultar, mas não gerar horários.</p>}
-          {!editavel && <p className="aviso-inline">Este cenário está “{cenario.estado.replace(/_/g, " ")}” e não pode ser alterado. Em <b>Planejamento → Cenários</b>, crie uma cópia para gerar novos horários.</p>}
+          {!editavel && <AvisoSomenteLeitura />}
         </Card>
         <Card titulo="Como o sistema escolhe a melhor grade">
           <p className="sub">Regras obrigatórias (nunca são quebradas): nenhum conflito de turma, instrutor ou sala; instrutor habilitado; sala compatível e com capacidade; disponibilidades, feriados e bloqueios respeitados.</p>
@@ -90,7 +91,7 @@ export default function Geracao() {
           <p className="sub">A importância de cada critério pode ser ajustada em Configurações.</p>
         </Card>
       </div>
-      <Card titulo="2. Resultados das gerações deste cenário">
+      <Card titulo="2. Resultados das gerações deste semestre">
         <Tabela colunas={[{ chave: "criado_em", rotulo: "Solicitada em", render: (e: any) => new Date(e.criado_em).toLocaleString("pt-BR") },
           { chave: "escopo", rotulo: "Para", render: (e: any) => ESCOPO[e.escopo.tipo] || e.escopo.tipo },
           { chave: "status", rotulo: "Situação", render: (e: any) => <Badge tipo={SITUACAO[e.status]?.[0] || "info"}>{SITUACAO[e.status]?.[1] || e.status}</Badge> },

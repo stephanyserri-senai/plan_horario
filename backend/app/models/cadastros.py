@@ -22,6 +22,7 @@ from sqlalchemy import (
     Time,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -274,6 +275,7 @@ class Ambiente(TimestampMixin, Base):
     nome: Mapped[str] = mapped_column(String(200))
     unidade_id: Mapped[int] = mapped_column(ForeignKey("unidades.id"), index=True)
     area_id: Mapped[int | None] = mapped_column(ForeignKey("areas.id"), index=True)
+    todas_areas: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))  # atende qualquer área
     predio: Mapped[str | None] = mapped_column(String(100))
     localizacao: Mapped[str | None] = mapped_column(String(200))
     tipo_ambiente_id: Mapped[int] = mapped_column(ForeignKey("tipos_ambiente.id"), index=True)
@@ -390,6 +392,7 @@ class Instrutor(TimestampMixin, Base):
     email: Mapped[str | None] = mapped_column(String(200))  # dado pessoal: visível só a perfis autorizados
     unidade_id: Mapped[int] = mapped_column(ForeignKey("unidades.id"), index=True)
     area_id: Mapped[int | None] = mapped_column(ForeignKey("areas.id"), index=True)
+    todas_areas: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))  # atende qualquer área
     areas_competencia: Mapped[str | None] = mapped_column(Text)
     carga_horaria_contratual: Mapped[float] = mapped_column(Numeric(5, 2), default=40)
     limite_ch_letiva: Mapped[float] = mapped_column(Numeric(5, 2), default=30)
@@ -455,3 +458,17 @@ class Configuracao(Base):
     valor: Mapped[dict] = mapped_column(JSONB)
     descricao: Mapped[str | None] = mapped_column(Text)
     atualizado_em: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class InstrutorArea(Base):
+    """Outras áreas (além da principal) em que o instrutor também atua."""
+    __tablename__ = "instrutor_areas"
+    instrutor_id: Mapped[int] = mapped_column(ForeignKey("instrutores.id", ondelete="CASCADE"), primary_key=True)
+    area_id: Mapped[int] = mapped_column(ForeignKey("areas.id"), primary_key=True)
+
+
+class AmbienteArea(Base):
+    """Outras áreas (além da principal) que podem usar o ambiente."""
+    __tablename__ = "ambiente_areas"
+    ambiente_id: Mapped[int] = mapped_column(ForeignKey("ambientes.id", ondelete="CASCADE"), primary_key=True)
+    area_id: Mapped[int] = mapped_column(ForeignKey("areas.id"), primary_key=True)

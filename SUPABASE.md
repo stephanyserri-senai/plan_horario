@@ -74,7 +74,7 @@ As migrações rodam em transação: se falharem, nada é alterado. **Nunca** ro
 
 Para bancos que já têm dados, use o Alembic.
 
-**Atualizar um banco que já está na versão 0002 (ex.: homologação) pelo SQL Editor:** cole e execute `backend/sql/atualizacao_0003.sql` (unidades Beira Mar e Porto, áreas tecnológicas, turnos oficiais e coluna de área nos cadastros; não destrutiva). Opcional: `backend/sql/remover_unidade_teste.sql` remove uma unidade de teste vazia (código `TESTE`).
+**Atualizar um banco que já está na versão 0002 (ex.: homologação) pelo SQL Editor:** cole e execute, nesta ordem, `backend/sql/atualizacao_0003.sql` (unidades Beira Mar e Porto, áreas tecnológicas, turnos oficiais e coluna de área nos cadastros) e `backend/sql/atualizacao_0004.sql` (áreas múltiplas e exceção justificada de regra acadêmica). Ambas são não destrutivas. Opcional: `backend/sql/remover_unidade_teste.sql` remove uma unidade de teste vazia (código `TESTE`).
 
 **Dados de demonstração pelo SQL Editor (homologação):** cole e execute `backend/sql/demo_recarregar.sql`. Ele remove só os registros `DEMO-` (incluindo o cenário DEMO e suas aulas), carrega a demonstração atual e registra a regra de composição das aulas (`regras_aula`) se ainda não existir. Pode ser executado mais de uma vez. É gerado por `scripts/gerar_demo_sql.py` (equivale ao workflow "Dados de demonstração" → recarregar).
 

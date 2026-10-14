@@ -14,3 +14,9 @@ echo "Gerado backend/sql/schema_completo.sql"
   ALEMBIC_DATABASE_URL="postgresql+psycopg://usuario:senha@host/banco" python -m alembic upgrade 0002:0003 --sql
 } > sql/atualizacao_0003.sql
 echo "Gerado backend/sql/atualizacao_0003.sql"
+{
+  echo "-- Atualização 0003 -> 0004: exceção justificada para regras acadêmicas (instrutor/laboratório de outra área, sem competência)."
+  echo "-- Não destrutiva. Cole o arquivo inteiro no SQL Editor do Supabase e clique em Run."
+  ALEMBIC_DATABASE_URL="postgresql+psycopg://usuario:senha@host/banco" python -m alembic upgrade 0003:0004 --sql
+} > sql/atualizacao_0004.sql
+echo "Gerado backend/sql/atualizacao_0004.sql"

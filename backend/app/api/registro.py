@@ -44,7 +44,7 @@ ENTIDADES: dict[str, dict] = {
                     "pk": ["uc_id", "recurso_tipo"]},
     "tipos_ambiente": {"model": TipoAmbiente, "rotulo": "Tipos de ambiente", "grupo": "Ambientes", "label": "{nome}", "busca": ["codigo", "nome"]},
     "ambientes": {"model": Ambiente, "rotulo": "Ambientes", "grupo": "Ambientes", "label": "{codigo} – {nome}", "busca": ["codigo", "nome", "predio", "localizacao"],
-                  "unidade_col": "unidade_id", "obrigatorios": ["area_id"], "opcoes": {"situacao": ["operacional", "manutencao", "interditado"]}},
+                  "unidade_col": "unidade_id", "obrigatorios": ["area_id"], "extras": {"areas_ids": {"tipo": "multiref", "ref": "areas", "rotulo": "Outras áreas em que também atua"}}, "opcoes": {"situacao": ["operacional", "manutencao", "interditado"]}},
     "disponibilidade_ambientes": {"model": DisponibilidadeAmbiente, "rotulo": "Disponibilidade de ambientes", "grupo": "Ambientes", "label": "{dia_semana}",
                                   "busca": [], "dia": ["dia_semana"]},
     "recursos": {"model": Recurso, "rotulo": "Recursos e equipamentos", "grupo": "Ambientes", "label": "{codigo} – {nome}", "busca": ["codigo", "nome", "tipo"],
@@ -56,7 +56,7 @@ ENTIDADES: dict[str, dict] = {
     "turma_ucs": {"model": TurmaUC, "rotulo": "Ofertas (turma × UC)", "grupo": "Acadêmico", "label": "{turma_id}/{uc_id}", "busca": [],
                   "opcoes": {"situacao": ["prevista", "ofertada", "em_execucao", "concluida", "pendente", "cancelada"]}},
     "instrutores": {"model": Instrutor, "rotulo": "Instrutores", "grupo": "Instrutores", "label": "{nome} ({matricula})", "busca": ["nome", "matricula", "areas_competencia"],
-                    "unidade_col": "unidade_id", "obrigatorios": ["area_id"], "pessoais": ["email"], "opcoes": {"situacao": ["ativo", "afastado", "ferias", "desligado"]}},
+                    "unidade_col": "unidade_id", "obrigatorios": ["area_id"], "extras": {"areas_ids": {"tipo": "multiref", "ref": "areas", "rotulo": "Outras áreas em que também atua"}}, "pessoais": ["email"], "opcoes": {"situacao": ["ativo", "afastado", "ferias", "desligado"]}},
     "instrutor_unidades": {"model": InstrutorUnidade, "rotulo": "Unidades de atuação", "grupo": "Instrutores", "label": "{unidade_id}", "busca": [],
                            "pk": ["instrutor_id", "unidade_id"]},
     "competencias": {"model": CompetenciaInstrutor, "rotulo": "Matriz de competências", "grupo": "Instrutores", "label": "{instrutor_id}/{uc_id}",
@@ -92,12 +92,12 @@ ROTULOS = {
     "condicoes": "Condições", "valido_ate": "Válido até", "alvo_tipo": "Tipo de alvo", "alvo_id": "ID do alvo", "inicio": "Início", "fim": "Fim",
     "motivo": "Motivo", "tipo": "Tipo", "data": "Data", "versao": "Versão", "vigencia_inicio": "Início da vigência", "modalidade": "Modalidade",
     "eixo_tecnologico": "Eixo tecnológico", "turnos_possiveis": "Turnos possíveis", "minutos": "Minutos", "ordem": "Ordem", "especializado": "Especializado",
-    "recurso_tipo": "Tipo de recurso", "quantidade": "Quantidade", "cidade": "Cidade", "modulo": "Módulo",
+    "todas_areas": "Atende todas as áreas", "recurso_tipo": "Tipo de recurso", "quantidade": "Quantidade", "cidade": "Cidade", "modulo": "Módulo",
 }
 REFS = {"curso_id": "Curso", "matriz_id": "Matriz", "unidade_id": "Unidade", "calendario_id": "Calendário", "turno_id": "Turno", "turma_id": "Turma",
         "uc_id": "Unidade curricular", "instrutor_id": "Instrutor", "ambiente_id": "Ambiente", "recurso_id": "Recurso", "tipo_ambiente_id": "Tipo de ambiente",
         "prerequisito_id": "Pré-requisito", "origem_id": "Unidade de origem", "destino_id": "Unidade de destino", "matriz_origem_id": "Matriz de origem",
-        "instrutor_preferido_id": "Instrutor preferido", "turno_preferencial_id": "Turno preferencial", "area_id": "Área"}
+        "instrutor_preferido_id": "Instrutor preferido", "turno_preferencial_id": "Turno preferencial", "area_id": "Área principal"}
 
 
 def tipo_coluna(col) -> str:

@@ -50,7 +50,7 @@ def _fator(p) -> float:
     """Converte minutos de relógio de um período em minutos de carga horária."""
     dur = minutos(p.hora_fim) - minutos(p.hora_inicio)
     return 60 / dur if _HORA_AULA["ativo"] and dur > 0 else 1.0
-from app.services.planejamento import ambientes_compativeis, instrutores_elegiveis, situacao_carga_horaria
+from app.services.planejamento import ambientes_compativeis, area_da_turma, instrutores_elegiveis, situacao_carga_horaria
 
 
 @dataclass
@@ -120,7 +120,7 @@ def demandas_do_cenario(db: Session, cenario_id: int | None, d0: date, d1: date,
         tamanho = math.ceil(turma.qtd_alunos / grupos)
         horas = uc.encontros_semanais * info["horas_por_encontro"]
         ambs = ambientes_compativeis(db, uc, turma, grupos > 1)
-        insts = instrutores_elegiveis(db, uc, turma.unidade_id, d0)
+        insts = instrutores_elegiveis(db, uc, turma.unidade_id, d0, area_da_turma(db, turma))
         for g in range(grupos):
             res.append(Demanda(
                 chave=f"{tuc.id}:{g + 1 if grupos > 1 else 0}", turma_id=turma.id, turma_codigo=turma.codigo, turno_id=turma.turno_id,

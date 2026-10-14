@@ -19,7 +19,7 @@ export default function Dashboard() {
   const inst = useCarregar(() => cenario ? api.get(`/api/indicadores/institucionais${qs(p)}`) : Promise.resolve(null), [cenario?.id, inicio, fim]);
   const amb = useCarregar(() => cenario ? api.get(`/api/indicadores/ambientes${qs(p)}`) : Promise.resolve(null), [cenario?.id, inicio, fim]);
   const ins = useCarregar(() => cenario ? api.get(`/api/indicadores/instrutores${qs(p)}`) : Promise.resolve(null), [cenario?.id, inicio, fim]);
-  if (!cenario) return <Pagina titulo="Início"><PrimeirosPassos /><p>Nenhum cenário cadastrado. Crie um cenário (o período letivo a planejar) em <b>Planejamento → Cenários</b>.</p></Pagina>;
+  if (!cenario) return <Pagina titulo="Início"><PrimeirosPassos /><p>Nenhum semestre cadastrado. Crie o semestre a planejar em <b>Semestres e aprovação → + Novo semestre</b>.</p></Pagina>;
   const d = inst.dados;
   const a = amb.dados;
   const i = ins.dados;
