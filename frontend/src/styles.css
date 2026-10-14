@@ -267,3 +267,45 @@ details.avancado summary { cursor: pointer; color: var(--primaria); }
 .gantt-link { background: none; border: none; padding: 0; color: inherit; cursor: pointer; font: inherit; text-align: left; }
 .gantt-link:hover { text-decoration: underline; }
 .gantt-barra.uc { cursor: pointer; }
+
+/* ---------- Início: fluxo do semestre ---------- */
+.fluxo-trabalho { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; counter-reset: etapa; }
+.etapa { background: var(--superficie); border: 1px solid var(--borda); border-top: 4px solid var(--borda); border-radius: 10px; padding: 12px;
+  display: flex; flex-direction: column; gap: 8px; position: relative; }
+.etapa:not(:last-child)::after { content: "›"; position: absolute; right: -11px; top: 18px; color: var(--mudo); font-size: 1.2rem; }
+.etapa-cab { display: flex; gap: 10px; align-items: center; }
+.etapa-num { width: 30px; height: 30px; border-radius: 50%; border: 2px solid var(--borda); display: inline-flex; align-items: center; justify-content: center;
+  font-weight: 700; flex-shrink: 0; color: var(--mudo); }
+.etapa-titulo { font-weight: 700; }
+.etapa-status { font-size: .78rem; color: var(--mudo); }
+.etapa-detalhe { font-size: .85rem; margin: 0; flex: 1; color: var(--texto); }
+.etapa .btn { align-self: flex-start; }
+.etapa-ok { border-top-color: var(--ok); }
+.etapa-ok .etapa-num { background: var(--ok-bg); border-color: var(--ok); color: var(--ok); }
+.etapa-atencao { border-top-color: var(--alerta); }
+.etapa-atencao .etapa-num { background: var(--alerta-bg); border-color: var(--alerta); color: var(--alerta); }
+.etapa-andamento { border-top-color: var(--info); }
+.etapa-andamento .etapa-num { border-color: var(--info); color: var(--info); }
+.etapa-futuro { opacity: .65; }
+.etapa-proxima { border-color: var(--primaria); border-top-color: var(--primaria); box-shadow: 0 2px 10px rgba(31, 78, 121, .15); }
+.etapa-proxima .etapa-status { color: var(--primaria); font-weight: 700; }
+.etapa-proxima .etapa-num { background: var(--primaria); border-color: var(--primaria); color: var(--primaria-txt); }
+.inicio-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 14px; }
+.inicio-grid h2 { font-size: 1.05rem; margin: 0 0 10px; }
+.inicio-visao { display: flex; gap: 14px; flex-wrap: wrap; align-items: stretch; }
+.inicio-visao .anel { border: none; padding: 0; min-width: 0; flex: 0 0 auto; }
+.inicio-numeros { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; flex: 1; min-width: 240px; }
+.inicio-numeros > div { border-left: 4px solid var(--borda); padding: 4px 8px; display: flex; flex-direction: column; }
+.inicio-numeros b { font-size: 1.3rem; }
+.inicio-numeros span { font-size: .8rem; color: var(--mudo); }
+.lista-atencao { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+.lista-atencao li { border-left: 4px solid var(--borda); padding: 4px 8px; font-size: .9rem; }
+.atalhos { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 14px; }
+.atalho { background: var(--superficie); border: 1px solid var(--borda); border-radius: 10px; padding: 12px; text-decoration: none; color: var(--texto);
+  display: grid; gap: 2px; }
+.atalho:hover { border-color: var(--primaria); }
+.atalho span { font-size: 1.3rem; }
+.atalho small { color: var(--mudo); }
+.inicio-vazio { max-width: 640px; }
+@media (max-width: 1100px) { .fluxo-trabalho { grid-template-columns: repeat(2, minmax(0, 1fr)); } .etapa::after { display: none; } .inicio-grid { grid-template-columns: 1fr; } .atalhos { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .fluxo-trabalho, .atalhos { grid-template-columns: 1fr; } }

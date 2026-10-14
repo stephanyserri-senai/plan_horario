@@ -186,3 +186,17 @@ def test_multiplas_areas_e_todas_as_areas(db, cli, mundo):
     assert r.status_code == 200 and r.json()["areas_ids"] == [autom.id], r.text
     oc = ocorrencias()
     assert not any(o["regra"] == "INSTRUTOR_OUTRA_AREA" for o in oc)
+
+
+def test_painel_do_semestre(db, cli, mundo):
+    m = mundo
+    r = cli.get(f"/api/painel?cenario_id={m.cen.id}").json()
+    etapas = {e["chave"]: e for e in r["etapas"]}
+    assert [e["chave"] for e in r["etapas"]] == ["cadastros", "gerar", "conferir", "aprovar", "publicar"]
+    assert etapas["gerar"]["status"] == "pendente" and r["proximo"] in ("cadastros", "gerar")
+    assert etapas["publicar"]["status"] == "futuro"
+    aloc.criar_aula(db, m.ctx, m.cen.id, aula(m, db, m.t1, m.uc_a, instrutor=m.i1, ambiente=m.s1))
+    db.commit()
+    r = cli.get(f"/api/painel?cenario_id={m.cen.id}").json()
+    assert {e["chave"]: e for e in r["etapas"]}["gerar"]["status"] == "atencao"  # tem aulas, mas ainda falta carga
+    assert r["indicadores"]["aulas"] == 1 and 0 < r["indicadores"]["pct_com_horario"] < 100

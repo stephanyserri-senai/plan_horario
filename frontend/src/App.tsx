@@ -10,6 +10,7 @@ import Cadastro from "./pages/Cadastro";
 import Configuracoes from "./pages/Configuracoes";
 import Cronograma from "./pages/Cronograma";
 import Dashboard from "./pages/Dashboard";
+import Inicio from "./pages/Inicio";
 import Gargalos from "./pages/Gargalos";
 import Geracao from "./pages/Geracao";
 import Grade from "./pages/Grade";
@@ -23,7 +24,7 @@ import Usuarios from "./pages/Usuarios";
 type Item = { para: string; rotulo: string; icone: string; acao?: string };
 const MENU: { grupo: string; itens: Item[] }[] = [
   { grupo: "Planejamento", itens: [
-    { para: "/", rotulo: "Início", icone: "▦", acao: "indicadores.ler" },
+    { para: "/", rotulo: "Início", icone: "▦", acao: "alocacoes.ler" },
     { para: "/acompanhamento", rotulo: "Acompanhamento", icone: "📊", acao: "indicadores.ler" },
     { para: "/cronograma", rotulo: "Cronograma (Gantt)", icone: "▬", acao: "indicadores.ler" },
     { para: "/grade", rotulo: "Grade horária", icone: "▤", acao: "alocacoes.ler" },
@@ -31,6 +32,7 @@ const MENU: { grupo: string; itens: Item[] }[] = [
     { para: "/planejamento", rotulo: "Semestres e aprovação", icone: "☰", acao: "alocacoes.ler" },
     { para: "/simulador", rotulo: "Simular nova turma", icone: "◇", acao: "simulacao.executar" },
     { para: "/gargalos", rotulo: "Capacidade e gargalos", icone: "⚠", acao: "indicadores.ler" },
+    { para: "/indicadores", rotulo: "Indicadores", icone: "📈", acao: "indicadores.ler" },
     { para: "/relatorios", rotulo: "Relatórios", icone: "⎙", acao: "exportacao.executar" },
   ] },
   { grupo: "Cadastros", itens: [
@@ -157,7 +159,8 @@ export default function App() {
         {trocarSenha && <TrocarSenha fechar={() => setTrocarSenha(false)} />}
         <main>
           <Routes>
-            <Route path="/" element={<Dashboard />} />
+            <Route path="/" element={<Inicio />} />
+            <Route path="/indicadores" element={<Dashboard />} />
             <Route path="/acompanhamento" element={<Acompanhamento />} />
             <Route path="/cronograma" element={<Cronograma />} />
             <Route path="/grade" element={<Grade />} />

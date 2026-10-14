@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api, dataBR, qs } from "../api";
 import { Abas, Badge, Campo, Card, Kpi, AntesDepois, Erro, EstadoCenario, Modal, ResumoTabela, rotulo, OcorrenciasLista, Pagina, Tabela, useCarregar } from "../components/ui";
 import { useApp } from "../contexto";
@@ -30,7 +31,8 @@ const PROXIMOS: Record<string, { estado: string; rotulo: string; acao: string }[
 };
 
 export default function Planejamento() {
-  const [aba, setAba] = useState("cenarios");
+  const [sp] = useSearchParams();
+  const [aba, setAba] = useState(sp.get("aba") || "cenarios");
   const { cenario } = useApp();
   return (
     <Pagina titulo="Semestres e aprovação" descricao="Crie o semestre, acompanhe a aprovação e a publicação, confira conflitos e compare versões.">

@@ -640,3 +640,81 @@ def sugestoes_aula(turma_uc_id: int, data: date, periodo_inicio_id: int, num_per
     for lst in (instrutores, ambientes):
         lst.sort(key=lambda x: (ordem[x["grupo"]], -x.pop("_p")))
     return {"area_turma": areas.get(area_turma), "horario": f"{ini:%H:%M}–{fim:%H:%M}", "instrutores": instrutores, "ambientes": ambientes}
+
+
+# ============================================================================ painel do semestre (Início)
+@router.get("/painel")
+def painel(cenario_id: int, ctx: Contexto = Depends(requer("alocacoes.ler")), db: Session = Depends(get_db)):
+    """Visão geral do semestre como fluxo de trabalho (cadastros → gerar → conferir → aprovar → publicar),
+    com indicadores-resumo e a lista do que precisa de atenção. Uma única chamada, poucas consultas."""
+    from app.services.cronograma import cronograma
+    cen = db.get(CenarioPlanejamento, cenario_id)
+    if cen is None:
+        raise NaoEncontrado("Semestre/planejamento não encontrado.")
+    passos = primeiros_passos(cenario_id, ctx, db)["passos"]
+    faltando = [p for p in passos if not p["feito"] and p["chave"] not in ("grade", "cenario")]
+    cr = cronograma(db, cenario_id, unidades_permitidas=ctx.unidades)
+    r = cr["resumo"]
+    ucs = [i for i in cr["itens"] if i["tipo"] == "uc"]
+    total_h = sum(i["total_h"] for i in ucs)
+    sem_h = sum(i["restante_h"] for i in ucs)
+    com_h = total_h - sem_h
+    aulas = db.scalar(select(func.count()).select_from(Alocacao).where(Alocacao.cenario_id == cenario_id, Alocacao.status != "cancelada")) or 0
+    excecoes = db.scalar(select(func.count()).select_from(Alocacao).where(Alocacao.cenario_id == cenario_id, Alocacao.excecao_id.isnot(None))) or 0
+    ex = db.scalar(select(ExecucaoOtimizacao).where(ExecucaoOtimizacao.cenario_id == cenario_id).order_by(ExecucaoOtimizacao.id.desc()).limit(1))
+    val = db.scalar(select(Validacao).where(Validacao.cenario_id == cenario_id).order_by(Validacao.id.desc()).limit(1))
+    gerando = bool(ex and ex.status in ("pendente", "executando"))
+    est = cen.estado
+
+    def etapa(chave, titulo, status, detalhe, acao=None, link=None):
+        return {"chave": chave, "titulo": titulo, "status": status, "detalhe": detalhe, "acao": acao, "link": link}
+    etapas = [
+        etapa("cadastros", "Cadastros", "ok" if not faltando else "pendente",
+              "Unidades, turnos, salas, cursos, instrutores e turmas prontos." if not faltando else "Falta: " + "; ".join(p["titulo"].lower() for p in faltando),
+              None if not faltando else "Completar cadastros", None if not faltando else faltando[0]["link"]),
+        etapa("gerar", "Gerar horários",
+              "andamento" if gerando else "ok" if aulas and sem_h <= 0.01 else "atencao" if aulas else "pendente",
+              "Gerando agora…" if gerando else f"{aulas} aulas na grade; toda a carga horária tem horário." if aulas and sem_h <= 0.01
+              else f"{aulas} aulas na grade; {round(sem_h)} h ainda sem horário em {r['ucs_sem_horario']} unidade(s) curricular(es)." if aulas
+              else "Nenhuma aula gerada ainda.",
+              None if gerando or (aulas and sem_h <= 0.01) else "Ver o que ficou sem horário" if aulas else "Gerar horários",
+              "/cronograma" if aulas and sem_h > 0.01 else "/geracao"),
+        etapa("conferir", "Conferir conflitos",
+              "pendente" if not val else ("atencao" if val.total_bloqueios else "ok"),
+              "Ainda não conferido." if not val else (f"{val.total_bloqueios} bloqueio(s) e {val.total_alertas} alerta(s) na última conferência ({val.executado_em:%d/%m %H:%M})."
+                                                       if val.total_bloqueios or val.total_alertas else f"Sem bloqueios na última conferência ({val.executado_em:%d/%m %H:%M})."),
+              "Conferir agora" if not val or val.total_bloqueios else None, "/planejamento?aba=validacao"),
+        etapa("aprovar", "Aprovação",
+              "ok" if est in ("aprovado", "publicado") else "andamento" if est == "aguardando_aprovacao" else "pendente",
+              {"aguardando_aprovacao": "Aguardando a decisão da coordenação.", "aprovado": "Aprovado.", "publicado": "Aprovado."}.get(est, "Envie para validação e aprovação quando a grade estiver pronta."),
+              "Enviar para aprovação" if est in ("em_elaboracao", "em_validacao") else None, "/planejamento?aba=cenarios"),
+        etapa("publicar", "Publicação", "ok" if est == "publicado" else "pendente" if est == "aprovado" else "futuro",
+              "Publicado: esta é a grade oficial." if est == "publicado" else "Pronto para publicar." if est == "aprovado" else "Depois da aprovação.",
+              "Publicar" if est == "aprovado" else None, "/planejamento?aba=cenarios"),
+    ]
+    proximo = next((e["chave"] for e in etapas if e["status"] in ("pendente", "andamento")), None) or \
+        next((e["chave"] for e in etapas if e["status"] == "atencao"), None)
+
+    atencao = []
+    for i in sorted((i for i in ucs if i["critico"]), key=lambda i: i["folga_dias"])[:6]:
+        motivo = "termina depois do prazo" if i["atrasado"] else f"folga de {i['folga_dias']} dia(s)"
+        atencao.append({"tipo": "bloqueio" if i["atrasado"] else "alerta", "texto": f"{i['turma_codigo']} · {i['codigo']} {i['nome']}: {motivo}"
+                        + (" (sem horário)" if i["sem_horario"] else ""), "link": "/cronograma"})
+    if val and val.total_bloqueios:
+        atencao.append({"tipo": "bloqueio", "texto": f"{val.total_bloqueios} conflito(s) na grade", "link": "/planejamento?aba=validacao"})
+    if excecoes:
+        atencao.append({"tipo": "info", "texto": f"{excecoes} aula(s) com exceção justificada (outra área ou sem competência)", "link": "/planejamento?aba=validacao"})
+    if ex and ex.status == "falha":
+        atencao.append({"tipo": "bloqueio", "texto": "A última geração de horários falhou", "link": "/geracao"})
+    return {
+        "semestre": {"id": cen.id, "nome": cen.nome, "estado": est, "inicio": cen.periodo_inicio.isoformat() if cen.periodo_inicio else None,
+                     "fim": cen.periodo_fim.isoformat() if cen.periodo_fim else None},
+        "etapas": etapas, "proximo": proximo,
+        "indicadores": {"turmas": r["turmas"], "ucs": r["ucs"], "aulas": aulas, "ch_total_h": round(total_h), "ch_com_horario_h": round(com_h),
+                        "pct_com_horario": round(100 * com_h / total_h, 1) if total_h else 0.0,
+                        "ch_realizada_h": round(sum(i["realizada_h"] for i in ucs)), "turmas_atrasadas": r["turmas_atrasadas"],
+                        "turmas_em_risco": r["turmas_em_risco"], "ucs_criticas": r["ucs_criticas"], "ucs_sem_horario": r["ucs_sem_horario"],
+                        "excecoes": excecoes, "termino_previsto": r["fim"]},
+        "atencao": atencao,
+        "ultima_geracao": {"status": ex.status, "resultado": ex.status_solver, "em": ex.criado_em.isoformat()} if ex else None,
+    }
