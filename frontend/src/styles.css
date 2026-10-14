@@ -309,3 +309,12 @@ details.avancado summary { cursor: pointer; color: var(--primaria); }
 .inicio-vazio { max-width: 640px; }
 @media (max-width: 1100px) { .fluxo-trabalho { grid-template-columns: repeat(2, minmax(0, 1fr)); } .etapa::after { display: none; } .inicio-grid { grid-template-columns: 1fr; } .atalhos { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 600px) { .fluxo-trabalho, .atalhos { grid-template-columns: 1fr; } }
+
+.importar-rapido { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; background: var(--info-bg); border-radius: 10px; padding: 10px 14px; margin: 8px 0 12px; }
+.importar-rapido > div { flex: 1; min-width: 240px; }
+.perguntas { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.pergunta { border: 1px solid var(--borda); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.pergunta h3 { margin: 0; font-size: 1rem; }
+.pergunta p { margin: 0; color: var(--mudo); font-size: .88rem; flex: 1; }
+.pergunta .btn { align-self: flex-start; }
+@media (max-width: 1000px) { .perguntas { grid-template-columns: 1fr; } }

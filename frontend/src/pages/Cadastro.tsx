@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { useParams, useSearchParams } from "react-router-dom";
-import { api, dataBR, DIAS, qs } from "../api";
+import { Link, useParams, useSearchParams } from "react-router-dom";
+import { api, baixar, dataBR, DIAS, qs } from "../api";
 import { Abas, Badge, Campo, Erro, fmt, Modal, Pagina, Paginacao, Tabela, useCarregar } from "../components/ui";
 import { useApp } from "../contexto";
 import { invalidarOpcoes, rotuloDe, useOpcoes } from "../hooks";
@@ -19,7 +19,7 @@ const RELACIONADOS: Record<string, string[]> = {
   turmas: ["turmas", "turma_ucs"],
   instrutores: ["instrutores", "competencias", "disponibilidade_instrutores", "habilitacoes", "instrutor_unidades"],
   ucs: ["ucs", "uc_recursos", "uc_prerequisitos"],
-  cursos: ["cursos", "matrizes", "ucs"],
+  cursos: ["cursos", "matrizes", "ucs", "uc_prerequisitos"],
   ambientes: ["ambientes", "tipos_ambiente", "disponibilidade_ambientes", "recursos_ambientes"],
   recursos: ["recursos", "recursos_ambientes"],
   unidades: ["unidades", "areas", "calendarios", "calendario_excecoes", "bloqueios", "horarios_funcionamento", "setores", "deslocamentos"],
@@ -261,8 +261,17 @@ function FiltroRef({ c, valor, mudar }: { c: CampoMeta; valor: string; mudar: (v
   );
 }
 
+const IMPORTACAO: Record<string, { tipo: string; titulo: string; texto: string }> = {
+  cursos: { tipo: "estrutura_curricular", titulo: "Cadastre tudo por planilha", texto: "Uma linha por UC: o curso, a matriz e as UCs são criados e ligados automaticamente." },
+  ucs: { tipo: "estrutura_curricular", titulo: "Cadastre tudo por planilha", texto: "Uma linha por UC: o curso, a matriz e as UCs são criados e ligados automaticamente." },
+  ambientes: { tipo: "ambientes", titulo: "Cadastre as salas por planilha", texto: "Uma linha por sala/laboratório, com tipo, capacidade e áreas (ou TODAS)." },
+  instrutores: { tipo: "levantamento_instrutores", titulo: "Levantamento de instrutores", texto: "Uma linha por instrutor: áreas, turnos e dias disponíveis, UCs que ministra e certificações." },
+  turmas: { tipo: "turmas", titulo: "Cadastre as turmas por planilha", texto: "Uma linha por turma; as UCs da matriz são ligadas automaticamente." },
+};
+
 export default function Cadastro() {
   const { ent = "turmas" } = useParams();
+  const { pode } = useApp();
   const metas = useMeta();
   const rel = RELACIONADOS[ent] || [ent];
   const [aba, setAba] = useState(rel[0]);
@@ -273,6 +282,11 @@ export default function Cadastro() {
     <Pagina titulo={meta?.rotulo || "Cadastros"} descricao={AJUDA[ent] || "Inclua, pesquise e edite registros. Tudo é validado e fica registrado no histórico."}>
       {rel.length > 1 && <Abas abas={rel.map((r) => ({ id: r, rotulo: metas.find((m) => m.chave === r)?.rotulo || r }))} ativa={aba} mudar={setAba} />}
       {aba !== ent && AJUDA[aba] && <p className="sub">{AJUDA[aba]}</p>}
+      {IMPORTACAO[ent] && pode("importacao.executar") && <div className="importar-rapido">
+        <div><b>{IMPORTACAO[ent].titulo}</b><br /><small className="mudo">{IMPORTACAO[ent].texto}</small></div>
+        <button className="btn" onClick={() => baixar(`/api/importacao/modelo/${IMPORTACAO[ent].tipo}`, `modelo_${IMPORTACAO[ent].tipo}.xlsx`)}>Baixar modelo</button>
+        <Link className="btn btn-primario" to={`/importacao?tipo=${IMPORTACAO[ent].tipo}`}>Importar planilha</Link>
+      </div>}
       {aba === "turnos" && <TurnosPadrao aoCriar={() => setVersao((v) => v + 1)} />}
       <ListaEntidade key={`${aba}-${versao}`} ent={aba} />
     </Pagina>

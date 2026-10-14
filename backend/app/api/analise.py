@@ -230,7 +230,11 @@ def relatorio_imp(iid: int, formato: str = "xlsx", ctx: Contexto = Depends(reque
 
 
 @router.get("/importacao/modelo/{tipo}")
-def modelo(tipo: str, ctx: Contexto = Depends(get_contexto)):
+def modelo(tipo: str, ctx: Contexto = Depends(get_contexto), db: Session = Depends(get_db)):
+    from app.services.modelos_planilha import MODELOS, gerar_modelo
+    if tipo in MODELOS:
+        return Response(gerar_modelo(db, tipo), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        headers={"Content-Disposition": f'attachment; filename="modelo_{tipo}.xlsx"'})
     if tipo not in importacao.SPECS:
         raise NaoEncontrado("Tipo inexistente.")
     cols = {c: "" for c in importacao.SPECS[tipo]["campos"]}

@@ -56,14 +56,15 @@ def test_17_importacao_com_referencias_invalidas(db, mundo):
     imp = importacao.gerar_previa(db, m.ctx, "ambientes.csv", csv_, tipo="ambientes")
     db.commit()
     acoes = [i["acao"] for i in imp.previa["itens"]]
-    assert acoes == ["criar", "erro", "erro"]
+    assert acoes == ["criar", "erro", "criar"]  # tipo de sala inexistente é criado (com aviso na prévia)
     assert "unidade 'UX'" in imp.previa["itens"][1]["erros"][0]
+    assert any("será criado" in a for a in imp.previa["itens"][2]["avisos"])
     with pytest.raises(ConflitoValidacao):
         importacao.confirmar(db, m.ctx, imp.id)
     db.rollback()
     rel = importacao.confirmar(db, m.ctx, imp.id, ignorar_erros=True)
     db.commit()
-    assert rel["criados"] == 1 and rel["ignorados_por_erro"] == 2
+    assert rel["criados"] == 2 and rel["ignorados_por_erro"] == 1
     assert db.scalar(select(func.count()).select_from(Ambiente).where(Ambiente.codigo == "A9")) == 1
 
 

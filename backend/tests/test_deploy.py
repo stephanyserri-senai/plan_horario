@@ -503,6 +503,21 @@ def test_scripts_do_sql_editor_funcionam_comando_a_comando():
             assert c.scalar(text("SELECT count(*) FROM turma_uc tu JOIN turmas t ON t.id = tu.turma_id WHERE t.codigo LIKE 'DEMO-%'")) == 12
             assert c.scalar(text("SELECT count(*) FROM turmas t JOIN unidades u ON u.id = t.unidade_id WHERE u.codigo = 'BEIRA-MAR' AND t.area_id IS NOT NULL")) == 3
             assert c.scalar(text("SELECT count(*) FROM turnos t JOIN unidades u ON u.id = t.unidade_id WHERE u.codigo = 'BEIRA-MAR'")) == 3
+            c.execute(text("INSERT INTO unidades (codigo, nome, situacao, ativo) VALUES ('TESTE', 'UNIDADE TESTE', 'ativa', true)"))
+            c.commit()
+        eng.dispose()
+        # limpeza dos dados de teste (comando a comando, como no editor)
+        for cmd in _comandos_sql((sql_dir / "limpar_dados_teste.sql").read_text(encoding="utf-8")):
+            with psycopg.connect(dsn, autocommit=True) as conn:
+                conn.execute(cmd.encode())
+        eng = create_engine(url)
+        with eng.connect() as c:
+            cont = lambda t: c.scalar(text(f"SELECT count(*) FROM {t}"))  # noqa: E731
+            assert (cont("unidades"), cont("areas"), cont("turnos"), cont("periodos_horarios")) == (2, 11, 6, 24)
+            assert all(cont(t) == 0 for t in ("cursos", "turmas", "instrutores", "ambientes", "cenarios_planejamento", "unidades_curriculares",
+                                               "tipos_ambiente", "calendarios", "alocacoes"))
+            assert cont("usuarios") >= 1 and cont("permissoes_perfil") > 0 and cont("parametros_otimizacao") > 0
+            assert c.scalar(text("SELECT valor->>'contagem' FROM configuracoes WHERE chave = 'regras_aula'")) == "hora_aula"
         eng.dispose()
     finally:
         with adm.connect() as c:

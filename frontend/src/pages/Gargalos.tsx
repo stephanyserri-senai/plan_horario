@@ -17,8 +17,6 @@ export default function Gargalos() {
   const [fim, setFim] = useState("");
   const [rec, setRec] = useState<any | null>(null);
   const [q, setQ] = useState<any>({});
-  const turmas = useOpcoes("turmas");
-  const turnos = useOpcoes("turnos");
   const ambientes = useOpcoes("ambientes");
   const g = useCarregar<any>(() => cenario ? api.get(`/api/gargalos${qs({ cenario_id: cenario.id, inicio, fim })}`) : Promise.resolve(null), [cenario?.id, inicio, fim]);
   if (!cenario) return <Pagina titulo="Capacidade e gargalos"><p>Selecione um cenário.</p></Pagina>;
@@ -44,18 +42,28 @@ export default function Gargalos() {
         ))}
         {g.dados.gargalos.length === 0 && <Card><p><Badge tipo="ok">Sem gargalos agregados</Badge> A demanda cabe nos recursos compatíveis. A confirmação final depende do gerador de horários.</p></Card>}
       </>}
-      <Card titulo="Perguntas de planejamento (recomendações explicáveis)">
-        <div className="form-grid">
-          <Campo rotulo="O que acontece se uma turma mudar de turno?"><div className="linha">
-            <select aria-label="Turma" value={q.turma || ""} onChange={(e) => setQ({ ...q, turma: e.target.value })}><option value="">Turma</option>{turmas.map((t) => <option key={t.id} value={t.id}>{t.rotulo}</option>)}</select>
-            <select aria-label="Novo turno" value={q.turno || ""} onChange={(e) => setQ({ ...q, turno: e.target.value })}><option value="">Novo turno</option>{turnos.map((t) => <option key={t.id} value={t.id}>{t.rotulo}</option>)}</select>
-            <button className="btn" disabled={!q.turma || !q.turno} onClick={() => perguntar(`/api/recomendacoes/mudanca_turno${qs({ cenario_id: cenario.id, turma_id: q.turma, turno_id: q.turno })}`)}>Avaliar</button></div></Campo>
-          <Campo rotulo="Impacto de ampliar a disponibilidade de um ambiente"><div className="linha">
-            <select aria-label="Ambiente" value={q.amb || ""} onChange={(e) => setQ({ ...q, amb: e.target.value })}><option value="">Ambiente</option>{ambientes.map((t) => <option key={t.id} value={t.id}>{t.rotulo}</option>)}</select>
-            <input type="number" aria-label="Horas semanais" placeholder="h/sem" style={{ width: 80 }} value={q.horas || ""} onChange={(e) => setQ({ ...q, horas: e.target.value })} />
-            <button className="btn" disabled={!q.amb || !q.horas} onClick={() => perguntar(`/api/recomendacoes/ampliar_ambiente${qs({ cenario_id: cenario.id, ambiente_id: q.amb, horas: q.horas })}`)}>Avaliar</button></div></Campo>
-          <Campo rotulo="Quais alterações liberariam capacidade?"><button className="btn" onClick={() => perguntar(`/api/recomendacoes/liberar_capacidade?cenario_id=${cenario.id}`)}>Analisar</button></Campo>
-          <Campo rotulo="Quais UCs apresentam risco de não conclusão?"><button className="btn" onClick={() => perguntar(`/api/recomendacoes/ucs_risco?cenario_id=${cenario.id}`)}>Analisar</button></Campo>
+      <Card titulo="Perguntas de planejamento">
+        <p className="sub">Respostas calculadas a partir dos cadastros e da grade atual. Nada é alterado: são análises para apoiar a decisão.</p>
+        <div className="perguntas">
+          <div className="pergunta">
+            <h3>Onde falta sala, laboratório ou instrutor?</h3>
+            <p>Mostra cada ponto em que a demanda das turmas passa da capacidade disponível e indica salas compatíveis que estão com horário sobrando.</p>
+            <button className="btn btn-primario" onClick={() => perguntar(`/api/recomendacoes/liberar_capacidade?cenario_id=${cenario.id}`)}>Ver onde falta capacidade</button>
+          </div>
+          <div className="pergunta">
+            <h3>Quais disciplinas podem não terminar no prazo?</h3>
+            <p>Compara, para cada turma, a carga horária que ainda falta com os dias letivos que restam até o prazo da unidade curricular.</p>
+            <button className="btn btn-primario" onClick={() => perguntar(`/api/recomendacoes/ucs_risco?cenario_id=${cenario.id}`)}>Ver disciplinas em risco</button>
+          </div>
+          <div className="pergunta">
+            <h3>E se uma sala ou laboratório ficasse disponível por mais horas?</h3>
+            <p>Simula quanto da falta de capacidade seria resolvida ampliando o horário de uso de um ambiente (ex.: abrir o laboratório também à noite).</p>
+            <div className="linha">
+              <select aria-label="Sala ou laboratório" value={q.amb || ""} onChange={(e) => setQ({ ...q, amb: e.target.value })}><option value="">Escolha a sala ou laboratório</option>{ambientes.map((t) => <option key={t.id} value={t.id}>{t.rotulo}</option>)}</select>
+              <input type="number" min={1} aria-label="Horas a mais por semana" placeholder="horas a mais/semana" style={{ width: 170 }} value={q.horas || ""} onChange={(e) => setQ({ ...q, horas: e.target.value })} />
+              <button className="btn" disabled={!q.amb || !q.horas} onClick={() => perguntar(`/api/recomendacoes/ampliar_ambiente${qs({ cenario_id: cenario.id, ambiente_id: q.amb, horas: q.horas })}`)}>Simular</button>
+            </div>
+          </div>
         </div>
       </Card>
       <Modal titulo="Recomendação" aberto={!!rec} fechar={() => setRec(null)} largo>{rec && <Recomendacao r={rec} />}</Modal>

@@ -38,8 +38,7 @@ const MENU: { grupo: string; itens: Item[] }[] = [
   { grupo: "Cadastros", itens: [
     { para: "/cadastros/turmas", rotulo: "Turmas", icone: "👥", acao: "cadastros.ler" },
     { para: "/cadastros/instrutores", rotulo: "Instrutores", icone: "👤", acao: "cadastros.ler" },
-    { para: "/cadastros/ucs", rotulo: "Unidades curriculares", icone: "📘", acao: "cadastros.ler" },
-    { para: "/cadastros/cursos", rotulo: "Cursos e matrizes", icone: "🎓", acao: "cadastros.ler" },
+    { para: "/cadastros/cursos", rotulo: "Cursos, matrizes e UCs", icone: "🎓", acao: "cadastros.ler" },
     { para: "/cadastros/ambientes", rotulo: "Salas e laboratórios", icone: "🏫", acao: "cadastros.ler" },
     { para: "/cadastros/recursos", rotulo: "Recursos e equipamentos", icone: "🔧", acao: "cadastros.ler" },
     { para: "/cadastros/unidades", rotulo: "Unidades, áreas e calendário", icone: "🏢", acao: "cadastros.ler" },

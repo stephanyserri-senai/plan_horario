@@ -1,14 +1,23 @@
 import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api, baixar } from "../api";
 import { Badge, Campo, Card, Erro, Pagina, Tabela, useCarregar } from "../components/ui";
 import { useApp } from "../contexto";
 
-const TIPOS = ["unidades", "cursos", "matrizes", "ucs", "turmas", "turma_ucs", "instrutores", "competencias", "ambientes", "disponibilidade_instrutores", "aulas"];
+const TIPOS: [string, string][] = [
+  ["estrutura_curricular", "Cursos, matrizes e UCs (planilha única)"], ["ambientes", "Salas e laboratórios"],
+  ["levantamento_instrutores", "Levantamento de instrutores (áreas, disponibilidade, UCs, certificações)"], ["turmas", "Turmas"],
+  ["turma_ucs", "Turma × UC (datas e carga já realizada)"], ["aulas", "Aulas (grade)"],
+  ["cursos", "Somente cursos"], ["matrizes", "Somente matrizes"], ["ucs", "Somente UCs"], ["instrutores", "Somente instrutores"],
+  ["competencias", "Somente competências"], ["disponibilidade_instrutores", "Somente disponibilidade de instrutores"], ["unidades", "Dados complementares das unidades"],
+];
+const NOME_TIPO = Object.fromEntries(TIPOS);
 
 export default function Importacao() {
   const { cenarios, cenario, aviso, auth } = useApp();
   const [arquivo, setArquivo] = useState<File | null>(null);
-  const [tipo, setTipo] = useState("");
+  const [sp] = useSearchParams();
+  const [tipo, setTipo] = useState(sp.get("tipo") || "");
   const [cen, setCen] = useState<string>("");
   const [previa, setPrevia] = useState<any | null>(null);
   const [mapa, setMapa] = useState<Record<string, string | null>>({});
@@ -34,20 +43,20 @@ export default function Importacao() {
   };
   const itens = (previa?.itens || []).filter((i: any) => !filtroAcao || i.acao === filtroAcao);
   return (
-    <Pagina titulo="Importação de planilhas" descricao="XLSX ou CSV: identificação da estrutura, mapeamento revisável de colunas, validação de relacionamentos, prévia, correção e confirmação.">
+    <Pagina titulo="Importação de planilhas" descricao="Baixe o modelo, preencha e envie. O sistema reconhece as colunas, mostra uma prévia com o que será criado ou atualizado e só grava quando você confirmar.">
       <Card titulo="1. Selecionar arquivo">
         <div className="form-grid">
           <Campo rotulo="Arquivo (.xlsx, .csv)" ajuda={auth ? `Tamanho máximo: ${auth.limite_upload_mb} MB` : undefined}><input type="file" accept=".xlsx,.xlsm,.csv,.txt" onChange={(e) => setArquivo(e.target.files?.[0] || null)} /></Campo>
-          <Campo rotulo="Tipo de dados" ajuda="Vazio = identificar pelos cabeçalhos"><select value={tipo} onChange={(e) => setTipo(e.target.value)}><option value="">Detectar automaticamente</option>{TIPOS.map((t) => <option key={t}>{t}</option>)}</select></Campo>
+          <Campo rotulo="Tipo de dados" ajuda="Vazio = identificar pelos cabeçalhos"><select value={tipo} onChange={(e) => setTipo(e.target.value)}><option value="">Detectar automaticamente</option>{TIPOS.map(([t, r]) => <option key={t} value={t}>{r}</option>)}</select></Campo>
           <Campo rotulo="Cenário de destino (aulas)" ajuda="Somente cenários em elaboração; horários publicados nunca são sobrescritos.">
             <select value={cen} onChange={(e) => setCen(e.target.value)}><option value="">Cenário atual</option>{cenarios.filter((c) => c.estado === "em_elaboracao").map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}</select></Campo>
         </div>
         <div className="acoes"><button className="btn btn-primario" disabled={!arquivo} onClick={enviar}>Gerar prévia</button>
-          {tipo && <button className="btn" onClick={() => baixar(`/api/importacao/modelo/${tipo}`, `modelo_${tipo}.xlsx`)}>Baixar modelo de “{tipo}”</button>}</div>
+          {tipo && <button className="btn" onClick={() => baixar(`/api/importacao/modelo/${tipo}`, `modelo_${tipo}.xlsx`)}>Baixar modelo: {NOME_TIPO[tipo] || tipo}</button>}</div>
         <Erro erro={erro} />
       </Card>
       {previa && <>
-        <Card titulo={`2. Mapeamento de colunas — tipo “${previa.tipo}”`}>
+        <Card titulo={`2. Mapeamento de colunas — ${NOME_TIPO[previa.tipo] || previa.tipo}`}>
           {previa.arquivo_ja_processado && <p className="aviso-inline"><Badge tipo="alerta">Arquivo já importado</Badge> Este arquivo (mesmo conteúdo) foi confirmado na importação #{previa.arquivo_ja_processado.importacao_id}. Registros existentes serão reconhecidos pela chave e não duplicados.</p>}
           {previa.planilhas.length > 1 && <Campo rotulo="Planilha"><select value={previa.planilha} onChange={(e) => remapear({ planilha: e.target.value })}>{previa.planilhas.map((p: string) => <option key={p}>{p}</option>)}</select></Campo>}
           <div className="form-grid">{Object.entries(previa.campos).map(([campo, info]: any) => (
