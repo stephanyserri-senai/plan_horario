@@ -123,7 +123,7 @@ def demandas_do_cenario(db: Session, cenario_id: int | None, d0: date, d1: date,
 
 
 def analisar(db: Session, cenario_id: int | None, d0: date, d1: date, unidade_id=None, demandas_extras: list[Demanda] | None = None,
-             simulacao_id=None, data_referencia: date | None = None) -> dict:
+             simulacao_id=None, data_referencia: date | None = None, horas_extra_ambiente: dict[int, float] | None = None) -> dict:
     demandas = demandas_do_cenario(db, cenario_id, d0, d1, unidade_id, simulacao_id) + list(demandas_extras or [])
     data_referencia = data_referencia or d0
     turnos = {t.id: t for t in db.scalars(select(Turno).where(Turno.ativo.is_(True)))}
@@ -140,7 +140,7 @@ def analisar(db: Session, cenario_id: int | None, d0: date, d1: date, unidade_id
     cap_amb_turno: dict[tuple[int, int], float] = {}
     for amb in ambientes.values():
         for t in {p.turno_id for p in per_un[amb.unidade_id]}:
-            cap_amb_turno[(amb.id, t)] = _horas_turno_ambiente(db, amb, t, per_un[amb.unidade_id])
+            cap_amb_turno[(amb.id, t)] = _horas_turno_ambiente(db, amb, t, per_un[amb.unidade_id]) + (horas_extra_ambiente or {}).get(amb.id, 0.0)
 
     def fluxo_ambientes(dems: list[Demanda], turno_de) -> dict[str, float]:
         mf = max_flow.SimpleMaxFlow()
@@ -185,7 +185,7 @@ def analisar(db: Session, cenario_id: int | None, d0: date, d1: date, unidade_id
         oferta = sum(cap_amb_turno.get((a, turno_id), 0) for a in compat) if turno_id else sum(
             v for (a, t), v in cap_amb_turno.items() if a in compat)
         turno_nome = turnos[turno_id].nome if turno_id in turnos else "todos os turnos"
-        if dem_h - at_turno > 0.01:
+        if dem_h - at_turno > 0.05:
             deficit = dem_h - at_turno
             sobra_outros = at_total - at_turno
             alternativas = []
@@ -196,7 +196,7 @@ def analisar(db: Session, cenario_id: int | None, d0: date, d1: date, unidade_id
             if not tipos_set or any(not tipos[t].especializado for t in tipos_set if t in tipos):
                 alternativas.append(f"Avaliar se a UC aceita outros tipos de ambiente tecnicamente compatíveis ({', '.join(outros_tipos[:4])}).")
             alternativas.append("Redistribuir a carga semanal (mais semanas com menos encontros) ou redimensionar a oferta.")
-            tipo_def = "deficit_turno" if dem_h - at_total <= 0.01 else "deficit_capacidade_total"
+            tipo_def = "deficit_turno" if dem_h - at_total <= 0.05 else "deficit_capacidade_total"
             gargalos.append({
                 "tipo": tipo_def, "recurso": f"Ambientes: {nomes}", "turno": turno_nome,
                 "descricao": f"Há demanda de {dem_h:.1f} horas semanais para atividades que exigem {nomes} no turno {turno_nome}, mas a disponibilidade compatível atendível é de {at_turno:.1f} horas. Déficit estimado: {deficit:.1f} horas semanais.",
@@ -248,7 +248,7 @@ def analisar(db: Session, cenario_id: int | None, d0: date, d1: date, unidade_id
     for uc_id, dems in por_uc.items():
         dem_h = sum(d.horas_semana for d in dems)
         at = sum(atend_i[d.chave] for d in dems)
-        if dem_h - at > 0.01:
+        if dem_h - at > 0.05:
             uc = db.get(UnidadeCurricular, uc_id)
             elegiveis = sorted({i for d in dems for i in d.instrutores})
             em_formacao = db.scalars(select(Instrutor.nome).join(CompetenciaInstrutor, CompetenciaInstrutor.instrutor_id == Instrutor.id)

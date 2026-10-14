@@ -21,7 +21,7 @@ def _json(v):
     return v
 
 
-def snapshot(obj, ocultar: tuple[str, ...] = ("senha_hash",)) -> dict:
+def snapshot(obj, ocultar: tuple[str, ...] = ("senha_hash", "intervalo", "intervalo_ambiente")) -> dict:
     if obj is None:
         return None
     mapper = inspect(obj).mapper

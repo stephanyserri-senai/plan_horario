@@ -176,7 +176,6 @@ def criar_aula(db: Session, ctx, cenario_id: int, d: DadosAula, validar_somente:
     try:
         a = _gravar(db, cenario_id, p, tuc, d, ctx)
     except (IntegrityError, DBAPIError) as e:
-        db.rollback()
         _traduzir_erro_banco(e)
     auditoria.registrar(db, ctx, "alocacao.criar", "alocacoes", a.id, depois=auditoria.snapshot(a), origem=d.origem)
     if d.origem == "manual":
@@ -223,7 +222,6 @@ def atualizar_aula(db: Session, ctx, alocacao_id: int, d: DadosAula, versao_espe
             db.add(AlocacaoRecurso(alocacao_id=atual.id, recurso_id=rid, quantidade=q))
         db.flush()
     except (IntegrityError, DBAPIError) as e:
-        db.rollback()
         _traduzir_erro_banco(e)
     auditoria.registrar(db, ctx, "alocacao.alterar", "alocacoes", atual.id, antes=antes, depois=auditoria.snapshot(atual), motivo=motivo)
     db.add(RegistroDecisao(tipo="alteracao_manual", cenario_id=atual.cenario_id, alocacao_id=atual.id, usuario_id=getattr(ctx, "id", None),
@@ -305,15 +303,12 @@ def criar_recorrente(db: Session, ctx, cenario_id: int, base: DadosAula, dia_sem
         try:
             criadas.append(_gravar(db, cenario_id, p, tuc, d, ctx, atividade_id=atv.id))
         except (IntegrityError, DBAPIError) as e:
-            db.rollback()
             _traduzir_erro_banco(e)
     if falhas:
-        db.rollback()
         raise ConflitoValidacao(
             f"{len(falhas)} data(s) da recorrência violam restrições obrigatórias; nenhuma aula foi gravada.",
             detalhes={"falhas": falhas, "puladas": puladas}, codigo="RESTRICAO_OBRIGATORIA")
     if not criadas:
-        db.rollback()
         raise ConflitoValidacao("A carga horária da UC já está totalmente programada.", codigo="CH_COMPLETA")
     atv.data_fim = criadas[-1].data
     auditoria.registrar(db, ctx, "atividade.criar", "atividades", atv.id, depois={**auditoria.snapshot(atv), "aulas": len(criadas)}, origem=origem)
@@ -348,7 +343,6 @@ def copiar_semana(db: Session, ctx, cenario_id: int, turma_id: int, semana_orige
         tuc = db.get(TurmaUC, a.turma_uc_id)
         criadas.append(_gravar(db, cenario_id, p, tuc, DadosAula(turma_uc_id=tuc.id, data=p.inicio.date(), origem="copia", observacao=a.observacao), ctx))
     if falhas:
-        db.rollback()
         raise ConflitoValidacao("A cópia violaria restrições obrigatórias; nada foi gravado.", detalhes={"falhas": falhas}, codigo="RESTRICAO_OBRIGATORIA")
     auditoria.registrar(db, ctx, "alocacao.copiar_semana", "turmas", turma_id,
                         depois={"origem": seg_o.isoformat(), "destino": seg_d.isoformat(), "aulas": len(criadas)})

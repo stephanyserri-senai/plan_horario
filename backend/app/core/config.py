@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     ambiente: str = "desenvolvimento"  # desenvolvimento | producao | teste
     database_url: str = "postgresql+psycopg://plan:plan@localhost:5432/plan_horario"
     # Em produção PLAN_JWT_SECRET é obrigatório (verificado em main.py).
-    jwt_secret: str = "dev-secret-altere-em-producao"
+    jwt_secret: str = "dev-secret-altere-em-producao-0123456789"
     jwt_expira_minutos: int = 480
     cors_origens: str = "http://localhost:5173"
     solver_threads: int = 4
