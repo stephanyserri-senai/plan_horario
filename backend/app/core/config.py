@@ -22,8 +22,22 @@ def normalizar_url_banco(url: str) -> str:
         url = "postgresql://" + url[len("postgres://"):]
     if url.startswith("postgresql://"):
         url = "postgresql+psycopg://" + url[len("postgresql://"):]
-    partes = urlsplit(url)
-    if partes.hostname and "supabase" in partes.hostname:
+    # Senha com '@' não codificado: o último '@' separa credenciais do host; os anteriores pertencem à senha.
+    esquema, sep, resto = url.partition("://")
+    if sep:
+        autoridade, barra, caminho = resto.partition("/")
+        if autoridade.count("@") > 1:
+            cred, _, host = autoridade.rpartition("@")
+            usuario, dois_pontos, senha = cred.partition(":")
+            cred = usuario + dois_pontos + senha.replace("@", "%40")
+            url = f"{esquema}://{cred}@{host}{barra}{caminho}"
+    try:
+        partes = urlsplit(url)
+        host = partes.hostname
+    except ValueError:
+        raise ValueError("PLAN_DATABASE_URL inválida: a parte da senha contém '[' ou ']' (os colchetes de "
+                         "[YOUR-PASSWORD] devem ser removidos; caracteres especiais da senha precisam ser codificados).") from None
+    if host and "supabase" in host:
         q = dict(parse_qsl(partes.query))
         q.setdefault("sslmode", "require")
         # parâmetros específicos de outros drivers que o libpq não aceita

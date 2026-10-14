@@ -29,6 +29,12 @@ def test_normalizacao_da_url_do_supabase():
     assert u.startswith("postgresql+psycopg://postgres.abc:s%40nha@")
     assert "sslmode=require" in u and "pgbouncer" not in u
     assert normalizar_url_banco("postgresql://u:p@localhost/x") == "postgresql+psycopg://u:p@localhost/x"
+    # senha com '@' não codificado (caso real do primeiro deploy)
+    u2 = normalizar_url_banco("postgresql://postgres.ref:abc@x26@aws-1-sa-east-1.pooler.supabase.com:6543/postgres")
+    assert "postgres.ref:abc%40x26@aws-1-sa-east-1.pooler.supabase.com:6543/postgres" in u2
+    from sqlalchemy.engine import make_url
+    m = make_url(u2)
+    assert m.password == "abc@x26" and m.host == "aws-1-sa-east-1.pooler.supabase.com"
 
 
 def test_pooler_transacao_usa_nullpool_sem_prepared_statements():

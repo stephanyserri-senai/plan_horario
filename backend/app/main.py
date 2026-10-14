@@ -111,26 +111,83 @@ for r in (seguranca.router, cadastros.router, planejamento.router, analise.route
     app.include_router(r)
 
 
+DICAS_BANCO = [
+    ("password authentication failed", "Senha do banco incorreta em PLAN_DATABASE_URL (use a senha do banco definida ao criar o projeto, sem colchetes)."),
+    ("tenant or user not found", "Usuário ou host do pooler incorretos: o usuário deve ser 'postgres.<ref-do-projeto>' e o host o do pooler copiado em Supabase → Connect."),
+    ("could not translate host name", "Host do banco inválido: copie novamente a URL em Supabase → Connect → Transaction pooler."),
+    ("name or service not known", "Host do banco inválido: copie novamente a URL em Supabase → Connect → Transaction pooler."),
+    ("network is unreachable", "Rede inalcançável (a conexão direta do Supabase é só IPv6): use a URL do pooler (porta 6543)."),
+    ("connection refused", "Conexão recusada: host/porta incorretos (Vercel deve usar o Transaction pooler, porta 6543)."),
+    ("timeout", "Tempo esgotado ao conectar: confira host e porta (6543 para o Transaction pooler)."),
+    ("timed out", "Tempo esgotado ao conectar: confira host e porta (6543 para o Transaction pooler)."),
+    ("does not exist", "Banco/tabela inexistente: confira o nome do banco (postgres) e se as migrações foram aplicadas."),
+    ("plan_database_url inválida", "A senha na URL ainda tem colchetes '[ ]' (remova os de [YOUR-PASSWORD]) ou caracteres especiais não codificados."),
+    ("ssl", "Problema de SSL: a URL do Supabase deve usar SSL (a aplicação adiciona sslmode=require automaticamente)."),
+]
+
+
+def _diagnostico_banco(exc: Exception) -> dict:
+    """Diagnóstico da conexão SEM expor a senha. Detalhes só fora da produção."""
+    import re
+    from urllib.parse import unquote
+    bruto = str(getattr(exc, "orig", None) or exc)
+    # análise tolerante (urlsplit falha com '[' na senha)
+    m = re.match(r"^[a-z+]+://(?P<usuario>[^:@/]*)(?::(?P<senha>.*))?@(?P<host>[^:/?]+)(?::(?P<porta>\d+))?/(?P<banco>[^?]*)", settings.database_url.strip())
+    g = m.groupdict() if m else {}
+    senha = unquote(g.get("senha") or "")
+    if senha:
+        bruto = bruto.replace(senha, "***")
+    msg = bruto.split("(Background on this error")[0].strip()[:500]
+    info = {"status": "erro", "componente": "banco_de_dados", "erro_tipo": type(getattr(exc, "orig", None) or exc).__name__}
+    if settings.producao:
+        return info
+    baixo = msg.lower()
+    info.update({
+        "mensagem": msg,
+        "dica": next((d for k, d in DICAS_BANCO if k in baixo), "Confira a variável PLAN_DATABASE_URL na Vercel e faça um novo deploy (Redeploy)."),
+        "conexao_configurada": {
+            "variavel_lida": "PLAN_DATABASE_URL" if __import__("os").environ.get("PLAN_DATABASE_URL") else
+                             ("DATABASE_URL/POSTGRES_URL" if settings.database_url else "nenhuma"),
+            "url_reconhecida": bool(m),
+            "host": g.get("host"), "porta": int(g["porta"]) if g.get("porta") else None, "usuario": g.get("usuario"), "banco": g.get("banco"),
+            "senha_preenchida": bool(senha), "senha_com_colchetes": senha.startswith("[") or "YOUR-PASSWORD" in senha.upper(),
+            "url_com_espacos": settings.database_url != settings.database_url.strip(),
+        },
+    })
+    return info
+
+
 @app.get("/api/saude")
 def saude():
     """Diagnóstico sem dados sensíveis: banco, migração, modo de execução e fila."""
     from app.models import Configuracao, ExecucaoOtimizacao, SimulacaoCapacidade
-    with SessionLocal() as db:
-        db.execute(text("select 1"))
-        try:
-            revisao = db.scalar(text("select version_num from alembic_version"))
-        except Exception:
-            db.rollback()
-            revisao = None
-        fila = {
-            "execucoes_pendentes": db.scalar(select(func.count()).select_from(ExecucaoOtimizacao).where(ExecucaoOtimizacao.status == "pendente")),
-            "simulacoes_pendentes": db.scalar(select(func.count()).select_from(SimulacaoCapacidade).where(SimulacaoCapacidade.status == "pendente")),
-        }
-        w = db.get(Configuracao, "worker_status")
-        from app.seed import usuario_teste_ativo
-        teste = usuario_teste_ativo(db)
-    return {"usuario_teste_ativo": teste, "status": "ok", "ambiente": settings.ambiente, "auth": settings.auth_modo, "executor": settings.modo_executor,
-            "migracao": revisao, "fila": fila, "worker": w.valor if w else None}
+    base = {"ambiente": settings.ambiente, "auth": settings.auth_modo, "executor": settings.modo_executor}
+    try:
+        with SessionLocal() as db:
+            db.execute(text("select 1"))
+    except Exception as e:
+        log.exception("Falha ao conectar ao banco em /api/saude")
+        return JSONResponse(status_code=503, content={**base, **_diagnostico_banco(e)})
+    try:
+        with SessionLocal() as db:
+            try:
+                revisao = db.scalar(text("select version_num from alembic_version"))
+            except Exception:
+                db.rollback()
+                revisao = None
+            fila = {
+                "execucoes_pendentes": db.scalar(select(func.count()).select_from(ExecucaoOtimizacao).where(ExecucaoOtimizacao.status == "pendente")),
+                "simulacoes_pendentes": db.scalar(select(func.count()).select_from(SimulacaoCapacidade).where(SimulacaoCapacidade.status == "pendente")),
+            }
+            w = db.get(Configuracao, "worker_status")
+            from app.seed import usuario_teste_ativo
+            teste = usuario_teste_ativo(db)
+    except Exception as e:
+        log.exception("Falha nas consultas de /api/saude")
+        info = _diagnostico_banco(e)
+        info["componente"] = "consultas (banco conectado; verifique se as migrações foram aplicadas)"
+        return JSONResponse(status_code=503, content={**base, **info})
+    return {"usuario_teste_ativo": teste, "status": "ok", **base, "migracao": revisao, "fila": fila, "worker": w.valor if w else None}
 
 
 # Fora da Vercel, o build do frontend é servido pela própria API (na Vercel, pela CDN).
