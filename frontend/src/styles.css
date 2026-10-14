@@ -23,7 +23,8 @@ h3 { font-size: .95rem; margin: 12px 0 6px; }
 code { font-size: .85em; }
 .app { display: flex; min-height: 100vh; }
 .lateral { width: 240px; background: var(--lateral); color: var(--lateral-txt); flex-shrink: 0; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
-.marca { padding: 18px 16px; font-weight: 700; font-size: 1.05rem; border-bottom: 1px solid rgba(255,255,255,.1); }
+.marca { padding: 16px 14px; font-weight: 700; font-size: 1.05rem; border-bottom: 1px solid rgba(255,255,255,.1); display: flex; align-items: center; gap: 10px; line-height: 1.15; }
+.marca img { width: 40px; height: 40px; flex-shrink: 0; filter: drop-shadow(0 2px 6px rgba(0,0,0,.3)); }
 .marca small { font-weight: 400; opacity: .75; }
 .lateral nav { display: flex; flex-direction: column; padding: 8px; }
 .lateral a { color: inherit; text-decoration: none; padding: 7px 10px; border-radius: 6px; display: flex; gap: 8px; align-items: center; }
@@ -318,3 +319,51 @@ details.avancado summary { cursor: pointer; color: var(--primaria); }
 .pergunta p { margin: 0; color: var(--mudo); font-size: .88rem; flex: 1; }
 .pergunta .btn { align-self: flex-start; }
 @media (max-width: 1000px) { .perguntas { grid-template-columns: 1fr; } }
+
+/* Login com ícone */
+.login { background: radial-gradient(circle at 15% 10%, rgba(47,111,171,.18), transparent 45%), radial-gradient(circle at 85% 90%, rgba(91,60,220,.16), transparent 45%), var(--fundo); }
+.login form { box-shadow: 0 12px 40px rgba(20, 50, 79, .12); }
+.login-icone { align-self: center; width: 84px; height: 84px; margin-bottom: 6px; filter: drop-shadow(0 6px 14px rgba(40, 60, 200, .3)); }
+.login h1, .login .sub { text-align: center; }
+
+/* Boas-vindas (sem semestre) */
+.boas-vindas { display: flex; flex-direction: column; gap: 16px; }
+.hero { position: relative; overflow: hidden; display: flex; align-items: center; gap: 24px; justify-content: space-between; padding: 28px 32px; border-radius: 16px; color: #fff;
+  background: linear-gradient(120deg, #1e5bd8 0%, #3a3fd9 55%, #5b2bd6 100%); box-shadow: 0 10px 30px rgba(43, 64, 200, .25); }
+.hero::before, .hero::after { content: ""; position: absolute; border-radius: 50%; background: rgba(255,255,255,.08); pointer-events: none; }
+.hero::before { width: 320px; height: 320px; right: -80px; top: -140px; }
+.hero::after { width: 200px; height: 200px; right: 180px; bottom: -120px; }
+.hero-texto { position: relative; max-width: 640px; }
+.hero h1 { font-size: 1.7rem; margin: 6px 0 8px; }
+.hero p { margin: 0 0 6px; opacity: .92; font-size: 1rem; line-height: 1.5; }
+.hero-selo { display: inline-block; font-size: .75rem; letter-spacing: .06em; text-transform: uppercase; background: rgba(255,255,255,.16); padding: 3px 10px; border-radius: 999px; }
+.hero .acoes { display: flex; gap: 10px; flex-wrap: wrap; }
+.hero .btn-primario { background: #fff; color: #2a3fc9; border-color: #fff; font-weight: 600; }
+.hero .btn-claro { background: rgba(255,255,255,.12); color: #fff; border-color: rgba(255,255,255,.4); text-decoration: none; }
+.hero .btn-claro:hover { background: rgba(255,255,255,.2); }
+.hero-icone { position: relative; width: 168px; height: 168px; flex-shrink: 0; filter: drop-shadow(0 12px 24px rgba(0,0,0,.3)); animation: flutuar 5s ease-in-out infinite; }
+@keyframes flutuar { 50% { transform: translateY(-8px) rotate(-2deg); } }
+@media (prefers-reduced-motion: reduce) { .hero-icone { animation: none; } }
+.passos { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.passo { position: relative; background: var(--superficie); border: 1px solid var(--borda); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 4px; }
+.passo:not(:last-child)::after { content: "→"; position: absolute; right: -12px; top: 22px; color: var(--mudo); font-size: 1rem; }
+.passo-ico { font-size: 1.5rem; width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; background: var(--info-bg); margin-bottom: 4px; }
+.passo-num { font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; color: var(--mudo); }
+.passo p { margin: 0; font-size: .85rem; color: var(--mudo); line-height: 1.4; }
+.bv-grid { display: grid; grid-template-columns: 1.3fr 1fr; gap: 16px; }
+.boas-vindas .card h2 { margin-bottom: 4px; }
+.bv-cadastros { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 10px; }
+.bv-cad { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 12px 6px; border-radius: 10px; border: 1px dashed var(--borda); text-decoration: none; color: var(--texto); text-align: center; }
+.bv-cad span { font-size: 1.4rem; } .bv-cad b { font-size: 1.4rem; color: var(--mudo); } .bv-cad small { color: var(--mudo); font-size: .78rem; }
+.bv-cad.tem { border-style: solid; border-color: var(--ok); background: var(--ok-bg); } .bv-cad.tem b { color: var(--ok); }
+.bv-cad:hover { border-color: var(--primaria); }
+.bv-turnos { list-style: none; padding: 0; margin: 10px 0 0; display: flex; flex-direction: column; gap: 8px; }
+.bv-turnos li { display: grid; grid-template-columns: 28px 64px 1fr auto; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; background: var(--fundo); }
+.bv-turnos li span:first-child { font-size: 1.2rem; } .bv-turnos small { color: var(--mudo); }
+.bv-unidades { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 8px; }
+.bv-unidade h3 { margin: 0 0 6px; }
+@media (max-width: 900px) {
+  .hero { flex-direction: column-reverse; align-items: flex-start; padding: 22px 18px; } .hero-icone { width: 96px; height: 96px; }
+  .passos, .bv-cadastros { grid-template-columns: repeat(2, minmax(0, 1fr)); } .passo::after { display: none; }
+  .bv-grid, .bv-unidades { grid-template-columns: 1fr; }
+}

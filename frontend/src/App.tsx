@@ -129,7 +129,7 @@ export default function App() {
   return (
     <div className="app">
       <aside className={`lateral ${menuAberto ? "aberto" : ""}`}>
-        <div className="marca">Planejamento<br /><small>Acadêmico</small></div>
+        <div className="marca"><img src="/icone.png" alt="" width={40} height={40} /><span>Planejamento<br /><small>Acadêmico</small></span></div>
         <nav aria-label="Menu principal">
           {MENU.map((g) => {
             const itens = g.itens.filter((m) => !m.acao || pode(m.acao));

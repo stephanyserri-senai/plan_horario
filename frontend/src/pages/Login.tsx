@@ -18,6 +18,7 @@ export default function Login() {
         setEnviando(true);
         try { await entrar(email.trim(), senha); } catch (x: any) { setErro(x.message); } finally { setEnviando(false); }
       }}>
+        <img className="login-icone" src="/icone.png" alt="" width={84} height={84} />
         <h1>Planejamento Acadêmico</h1>
         <p className="sub">Horários, capacidade institucional e simulação de ofertas</p>
         {erroAcesso && <div className="erro-box" role="alert">{erroAcesso}{modoSupabase && <> <button type="button" className="btn-link" onClick={sair}>Sair</button></>}</div>}
@@ -55,6 +56,7 @@ export function DefinirSenha() {
         if (error) return setErro(error.message);
         await concluirDefinicaoSenha();
       }}>
+        <img className="login-icone" src="/icone.png" alt="" width={84} height={84} />
         <h1>Definir senha</h1>
         <p className="sub">Crie a senha de acesso à plataforma.</p>
         <label className="campo"><span className="campo-rotulo">Nova senha</span><input type="password" autoComplete="new-password" value={senha} onChange={(e) => setSenha(e.target.value)} /></label>
