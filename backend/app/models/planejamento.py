@@ -366,7 +366,7 @@ class HistoricoAuditoria(Base):
 class Usuario(Base):
     __tablename__ = "usuarios"
     __table_args__ = (
-        CheckConstraint("perfil in ('administrador','planejador','coordenador','gestor','consulta')"),
+        CheckConstraint("perfil in ('administrador','planejador','coordenador','gestor','consulta','instrutor')", name="usuarios_perfil_check"),
     )
     id: Mapped[int] = mapped_column(primary_key=True)
     nome: Mapped[str] = mapped_column(String(200))
@@ -375,10 +375,28 @@ class Usuario(Base):
     # Vínculo com o usuário do Supabase Auth (auth.users.id) quando PLAN_AUTH_MODO=supabase.
     auth_user_id: Mapped[str | None] = mapped_column(String(36), unique=True)
     perfil: Mapped[str] = mapped_column(String(20))
+    # perfil "instrutor": o cadastro de instrutor que este usuário pode ver e atualizar pelo portal
+    instrutor_id: Mapped[int | None] = mapped_column(ForeignKey("instrutores.id", ondelete="SET NULL"), unique=True)
     acesso_global: Mapped[bool] = mapped_column(Boolean, default=False)
     ativo: Mapped[bool] = mapped_column(Boolean, default=True)
     criado_em: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     ultimo_acesso: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class ObservacaoInstrutor(Base):
+    """Observação/sugestão que o instrutor envia pelo portal sobre uma turma × UC atribuída a ele."""
+    __tablename__ = "observacoes_instrutor"
+    __table_args__ = (CheckConstraint("status in ('nova','lida','resolvida')", name="observacoes_instrutor_status_check"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    instrutor_id: Mapped[int] = mapped_column(ForeignKey("instrutores.id", ondelete="CASCADE"), index=True)
+    turma_uc_id: Mapped[int | None] = mapped_column(ForeignKey("turma_uc.id", ondelete="CASCADE"), index=True)
+    tipo: Mapped[str] = mapped_column(String(30), default="sugestao")
+    texto: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), default="nova", server_default="nova")
+    resposta: Mapped[str | None] = mapped_column(Text)
+    respondido_por_id: Mapped[int | None] = mapped_column(ForeignKey("usuarios.id", ondelete="SET NULL"))
+    respondido_em: Mapped[datetime | None] = mapped_column(DateTime)
+    criado_em: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
 class PermissaoEscopo(Base):

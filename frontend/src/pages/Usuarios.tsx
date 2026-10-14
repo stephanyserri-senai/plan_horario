@@ -23,6 +23,7 @@ function ListaUsuarios() {
   const unidades = useOpcoes("unidades");
   const cursos = useOpcoes("cursos");
   const turmas = useOpcoes("turmas");
+  const instrutores = useOpcoes("instrutores");
   const fontes: Record<string, any[]> = { unidade: unidades, curso: cursos, turma: turmas };
   const salvar = async () => {
     setErro(null);
@@ -35,7 +36,7 @@ function ListaUsuarios() {
   return (
     <>
       <button className="btn btn-primario" onClick={() => setEd({ nome: "", email: "", perfil: "consulta", escopos: [], acesso_global: false })}>+ Novo usuário</button>
-      <Tabela colunas={[{ chave: "nome", rotulo: "Nome" }, { chave: "email", rotulo: "E-mail" }, { chave: "perfil", rotulo: "Perfil" }, { chave: "acesso_global", rotulo: "Acesso global" },
+      <Tabela colunas={[{ chave: "nome", rotulo: "Nome" }, { chave: "email", rotulo: "E-mail" }, { chave: "perfil", rotulo: "Perfil", render: (u: any) => u.perfil === "instrutor" ? <>instrutor {u.instrutor_id ? "" : <small className="tom-erro">(sem vínculo)</small>}</> : u.perfil }, { chave: "acesso_global", rotulo: "Acesso global" },
         { chave: "escopos", rotulo: "Escopo", render: (u: any) => u.escopos.map((e: any) => `${e.tipo} #${e.id}`).join(", ") || (u.acesso_global ? "todas" : "nenhum") },
         { chave: "ativo", rotulo: "Ativo" },
         ...(supabase ? [{ chave: "vinculado_supabase", rotulo: "Acesso Supabase", render: (u: any) => u.vinculado_supabase ? "vinculado" : <span onClick={(e) => e.stopPropagation()}>aguardando 1º acesso <button className="btn-link" onClick={async () => {
@@ -48,11 +49,14 @@ function ListaUsuarios() {
             <Campo rotulo="E-mail" obrigatorio><input type="email" disabled={!!ed.id} value={ed.email} onChange={(e) => setEd({ ...ed, email: e.target.value })} /></Campo>
             {supabase ? <p className="sub">A senha é definida pelo próprio usuário no Supabase Auth (convite por e-mail).</p> :
               <Campo rotulo={ed.id ? "Nova senha (opcional)" : "Senha"} obrigatorio={!ed.id} ajuda="Mínimo 8 caracteres; armazenada com bcrypt."><input type="password" autoComplete="new-password" value={ed.senha || ""} onChange={(e) => setEd({ ...ed, senha: e.target.value })} /></Campo>}
-            <Campo rotulo="Perfil"><select value={ed.perfil} onChange={(e) => setEd({ ...ed, perfil: e.target.value })}>{["administrador", "planejador", "coordenador", "gestor", "consulta"].map((p) => <option key={p}>{p}</option>)}</select></Campo>
+            <Campo rotulo="Perfil"><select value={ed.perfil} onChange={(e) => setEd({ ...ed, perfil: e.target.value })}>{["administrador", "planejador", "coordenador", "gestor", "consulta", "instrutor"].map((p) => <option key={p}>{p}</option>)}</select></Campo>
+            {ed.perfil === "instrutor" && <Campo rotulo="Cadastro do instrutor" obrigatorio ajuda="O instrutor só vê e atualiza os próprios dados e turmas no portal.">
+              <select value={ed.instrutor_id ?? ""} onChange={(e) => setEd({ ...ed, instrutor_id: e.target.value ? Number(e.target.value) : null })}>
+                <option value="">— (ou mesmo e-mail do cadastro)</option>{instrutores.map((o) => <option key={o.id} value={o.id}>{o.rotulo}</option>)}</select></Campo>}
             <Campo rotulo="Acesso"><label><input type="checkbox" checked={ed.acesso_global} onChange={(e) => setEd({ ...ed, acesso_global: e.target.checked })} /> Todas as unidades</label>
               {ed.id && <label><input type="checkbox" checked={ed.ativo} onChange={(e) => setEd({ ...ed, ativo: e.target.checked })} /> Ativo</label>}</Campo>
           </div>
-          {!ed.acesso_global && <Card titulo="Escopo de acesso">
+          {!ed.acesso_global && ed.perfil !== "instrutor" && <Card titulo="Escopo de acesso">
             {ed.escopos.map((e: any, i: number) => <div key={i} className="linha">
               <select value={e.tipo} onChange={(x) => { const n = [...ed.escopos]; n[i] = { tipo: x.target.value, id: "" }; setEd({ ...ed, escopos: n }); }}><option value="unidade">Unidade</option><option value="curso">Curso</option><option value="turma">Turma</option></select>
               <select value={e.id} onChange={(x) => { const n = [...ed.escopos]; n[i] = { ...e, id: x.target.value }; setEd({ ...ed, escopos: n }); }}><option value="">—</option>{(fontes[e.tipo] || []).map((o) => <option key={o.id} value={o.id}>{o.rotulo}</option>)}</select>

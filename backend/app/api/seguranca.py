@@ -21,6 +21,7 @@ router = APIRouter(prefix="/api", tags=["segurança"])
 def _usuario(u: Usuario, db: Session) -> dict:
     escopos = db.scalars(select(PermissaoEscopo).where(PermissaoEscopo.usuario_id == u.id)).all()
     return {"id": u.id, "nome": u.nome, "email": u.email, "perfil": u.perfil, "acesso_global": u.acesso_global, "ativo": u.ativo,
+            "instrutor_id": u.instrutor_id,
             "vinculado_supabase": bool(u.auth_user_id),
             "ultimo_acesso": u.ultimo_acesso.isoformat() if u.ultimo_acesso else None,
             "escopos": [{"tipo": e.escopo_tipo, "id": e.escopo_id} for e in escopos]}
@@ -91,7 +92,7 @@ def criar(dados: dict = Body(...), ctx: Contexto = Depends(requer("usuarios.gere
         raise EntradaInvalida("E-mail inválido.")
     # No modo Supabase a senha fica no Supabase Auth; o hash local é inutilizável.
     u = Usuario(nome=dados["nome"], email=email, senha_hash="!supabase" if supabase else hash_senha(dados["senha"]), perfil=dados["perfil"],
-                acesso_global=bool(dados.get("acesso_global")), ativo=True)
+                acesso_global=bool(dados.get("acesso_global")), ativo=True, instrutor_id=_instrutor_do_usuario(db, dados, email))
     try:
         db.add(u)
         db.flush()
@@ -106,6 +107,21 @@ def criar(dados: dict = Body(...), ctx: Contexto = Depends(requer("usuarios.gere
         from app.core.supabase_auth import convidar_usuario
         res["convite"] = convidar_usuario(email)
     return res
+
+
+def _instrutor_do_usuario(db, dados: dict, email: str) -> int | None:
+    """Perfil instrutor: liga ao cadastro do instrutor (informado ou com o mesmo e-mail)."""
+    if dados.get("perfil") != "instrutor":
+        return None
+    from sqlalchemy import func
+    from app.models import Instrutor
+    iid = dados.get("instrutor_id")
+    inst = db.get(Instrutor, int(iid)) if iid else db.scalars(select(Instrutor).where(func.lower(Instrutor.email) == email)).first()
+    if inst is None:
+        raise EntradaInvalida("Para o perfil instrutor, escolha o cadastro do instrutor (ou use o mesmo e-mail do cadastro).")
+    if db.scalars(select(Usuario).where(Usuario.instrutor_id == inst.id)).first():
+        raise ConflitoValidacao(f"{inst.nome} já tem um usuário de acesso ao portal.")
+    return inst.id
 
 
 def _salvar_escopos(db, uid, escopos):
@@ -125,6 +141,12 @@ def atualizar(uid: int, dados: dict = Body(...), ctx: Contexto = Depends(requer(
             setattr(u, k, dados[k])
     if u.perfil not in PERFIS:
         raise EntradaInvalida("Perfil inválido.")
+    if "instrutor_id" in dados and u.perfil == "instrutor" and dados["instrutor_id"] != u.instrutor_id:
+        u.instrutor_id = None
+        db.flush()
+        u.instrutor_id = _instrutor_do_usuario(db, {**dados, "perfil": "instrutor"}, u.email)
+    elif u.perfil != "instrutor":
+        u.instrutor_id = None
     if dados.get("senha") and get_settings().auth_modo == "local":
         if len(dados["senha"]) < 8:
             raise EntradaInvalida("A senha deve ter ao menos 8 caracteres.")

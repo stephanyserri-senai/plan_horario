@@ -3,7 +3,7 @@ import { principalDoSemestre, semestreAtual, semestres } from "./semestre";
 import { api, token } from "./api";
 import { carregarConfigAuth, supabase, tipoLinkInicial, type ConfigAuth } from "./auth";
 
-export type Usuario = { id: number; nome: string; email: string; perfil: string; acoes: string[]; escopo: any };
+export type Usuario = { id: number; nome: string; email: string; perfil: string; acoes: string[]; escopo: any; instrutor_id?: number | null };
 export type Cenario = { id: number; nome: string; estado: string; tipo: string; versao: number; unidade_id: number | null;
   periodo_inicio: string | null; periodo_fim: string | null; aulas: number; lock_version: number; cenario_origem_id: number | null };
 
@@ -50,9 +50,10 @@ export function Provedor({ children }: { children: ReactNode }) {
 
   const carregarUsuario = useCallback(async () => {
     try {
-      setUsuario(await api.get("/api/auth/me"));
+      const u: Usuario = await api.get("/api/auth/me");
+      setUsuario(u);
       setErroAcesso(null);
-      await recarregarCenarios();
+      if (u.perfil !== "instrutor") await recarregarCenarios();  // o instrutor só usa o portal
     } catch (e: any) {
       setUsuario(null);
       // 403: autenticado no Supabase, mas sem cadastro/permissão na plataforma

@@ -119,7 +119,7 @@ TABELA_ENTIDADE = {cfg["model"].__tablename__: k for k, cfg in ENTIDADES.items()
 TABELA_ENTIDADE["unidades_curriculares"] = "ucs"
 TABELA_ENTIDADE["matrizes_curriculares"] = "matrizes"
 TABELA_ENTIDADE["turma_uc"] = "turma_ucs"
-SOMENTE_LEITURA = {"id", "criado_em", "atualizado_em"}
+SOMENTE_LEITURA = {"id", "criado_em", "atualizado_em", "atualizado_pelo_instrutor_em"}
 
 ROTULOS = {
     "id": "ID", "codigo": "Código", "nome": "Nome", "situacao": "Situação", "ativo": "Ativo", "endereco": "Endereço", "responsavel": "Responsável",
@@ -140,7 +140,7 @@ ROTULOS = {
     "condicoes": "Condições", "valido_ate": "Válido até", "alvo_tipo": "Tipo de alvo", "alvo_id": "ID do alvo", "inicio": "Início", "fim": "Fim",
     "motivo": "Motivo", "tipo": "Tipo", "data": "Data", "versao": "Versão", "vigencia_inicio": "Início da vigência", "modalidade": "Modalidade",
     "eixo_tecnologico": "Eixo tecnológico", "turnos_possiveis": "Turnos possíveis", "minutos": "Minutos", "ordem": "Ordem", "especializado": "Especializado",
-    "todas_areas": "Atende todas as áreas", "recurso_tipo": "Tipo de recurso", "quantidade": "Quantidade", "cidade": "Cidade", "modulo": "Módulo",
+    "todas_areas": "Atende todas as áreas", "atualizado_pelo_instrutor_em": "Atualizado pelo instrutor em", "recurso_tipo": "Tipo de recurso", "quantidade": "Quantidade", "cidade": "Cidade", "modulo": "Módulo",
 }
 REFS = {"curso_id": "Curso", "matriz_id": "Matriz", "unidade_id": "Unidade", "calendario_id": "Calendário", "turno_id": "Turno", "turma_id": "Turma",
         "uc_id": "Unidade curricular", "instrutor_id": "Instrutor", "ambiente_id": "Ambiente", "recurso_id": "Recurso", "tipo_ambiente_id": "Tipo de ambiente",

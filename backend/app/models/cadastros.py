@@ -402,6 +402,8 @@ class Instrutor(TimestampMixin, Base):
     restricoes_deslocamento: Mapped[str | None] = mapped_column(Text)
     situacao: Mapped[str] = mapped_column(String(20), default="ativo")
     ativo: Mapped[bool] = mapped_column(Boolean, default=True)
+    # última vez que o próprio instrutor atualizou os dados pelo portal
+    atualizado_pelo_instrutor_em: Mapped[datetime | None] = mapped_column(DateTime)
 
 
 class InstrutorUnidade(Base):

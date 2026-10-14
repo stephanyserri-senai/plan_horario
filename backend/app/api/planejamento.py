@@ -706,6 +706,11 @@ def painel(cenario_id: int, ctx: Contexto = Depends(requer("alocacoes.ler")), db
         atencao.append({"tipo": "info", "texto": f"{excecoes} aula(s) com exceção justificada (outra área ou sem competência)", "link": "/planejamento?aba=validacao"})
     if ex and ex.status == "falha":
         atencao.append({"tipo": "bloqueio", "texto": "A última geração de horários falhou", "link": "/geracao"})
+    if ctx.pode("observacoes.gerenciar"):
+        from app.api.portal import contar_novas
+        novas = contar_novas(db, ctx.unidades)
+        if novas:
+            atencao.append({"tipo": "info", "texto": f"{novas} observação(ões) nova(s) enviada(s) por instrutores", "link": "/cadastros/instrutores?aba=observacoes"})
     return {
         "semestre": {"id": cen.id, "nome": cen.nome, "estado": est, "inicio": cen.periodo_inicio.isoformat() if cen.periodo_inicio else None,
                      "fim": cen.periodo_fim.isoformat() if cen.periodo_fim else None},

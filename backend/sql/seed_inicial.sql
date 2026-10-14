@@ -23,6 +23,7 @@ INSERT INTO permissoes_perfil (perfil, acao) VALUES ('administrador', 'auditoria
 INSERT INTO permissoes_perfil (perfil, acao) VALUES ('administrador', 'dados_pessoais.ler') ON CONFLICT DO NOTHING;
 INSERT INTO permissoes_perfil (perfil, acao) VALUES ('administrador', 'excecoes.autorizar') ON CONFLICT DO NOTHING;
 INSERT INTO permissoes_perfil (perfil, acao) VALUES ('administrador', 'aprendizado.gerenciar') ON CONFLICT DO NOTHING;
+INSERT INTO permissoes_perfil (perfil, acao) VALUES ('administrador', 'observacoes.gerenciar') ON CONFLICT DO NOTHING;
 INSERT INTO permissoes_perfil (perfil, acao) VALUES ('planejador', 'cadastros.ler') ON CONFLICT DO NOTHING;
 INSERT INTO permissoes_perfil (perfil, acao) VALUES ('planejador', 'cadastros.editar') ON CONFLICT DO NOTHING;
 INSERT INTO permissoes_perfil (perfil, acao) VALUES ('planejador', 'alocacoes.ler') ON CONFLICT DO NOTHING;
@@ -35,6 +36,7 @@ INSERT INTO permissoes_perfil (perfil, acao) VALUES ('planejador', 'indicadores.
 INSERT INTO permissoes_perfil (perfil, acao) VALUES ('planejador', 'importacao.executar') ON CONFLICT DO NOTHING;
 INSERT INTO permissoes_perfil (perfil, acao) VALUES ('planejador', 'exportacao.executar') ON CONFLICT DO NOTHING;
 INSERT INTO permissoes_perfil (perfil, acao) VALUES ('planejador', 'dados_pessoais.ler') ON CONFLICT DO NOTHING;
+INSERT INTO permissoes_perfil (perfil, acao) VALUES ('planejador', 'observacoes.gerenciar') ON CONFLICT DO NOTHING;
 INSERT INTO permissoes_perfil (perfil, acao) VALUES ('coordenador', 'cadastros.ler') ON CONFLICT DO NOTHING;
 INSERT INTO permissoes_perfil (perfil, acao) VALUES ('coordenador', 'alocacoes.ler') ON CONFLICT DO NOTHING;
 INSERT INTO permissoes_perfil (perfil, acao) VALUES ('coordenador', 'alocacoes.editar') ON CONFLICT DO NOTHING;
@@ -49,6 +51,7 @@ INSERT INTO permissoes_perfil (perfil, acao) VALUES ('coordenador', 'exportacao.
 INSERT INTO permissoes_perfil (perfil, acao) VALUES ('coordenador', 'auditoria.ler') ON CONFLICT DO NOTHING;
 INSERT INTO permissoes_perfil (perfil, acao) VALUES ('coordenador', 'dados_pessoais.ler') ON CONFLICT DO NOTHING;
 INSERT INTO permissoes_perfil (perfil, acao) VALUES ('coordenador', 'excecoes.autorizar') ON CONFLICT DO NOTHING;
+INSERT INTO permissoes_perfil (perfil, acao) VALUES ('coordenador', 'observacoes.gerenciar') ON CONFLICT DO NOTHING;
 INSERT INTO permissoes_perfil (perfil, acao) VALUES ('gestor', 'cadastros.ler') ON CONFLICT DO NOTHING;
 INSERT INTO permissoes_perfil (perfil, acao) VALUES ('gestor', 'alocacoes.ler') ON CONFLICT DO NOTHING;
 INSERT INTO permissoes_perfil (perfil, acao) VALUES ('gestor', 'indicadores.ler') ON CONFLICT DO NOTHING;
@@ -58,6 +61,7 @@ INSERT INTO permissoes_perfil (perfil, acao) VALUES ('gestor', 'auditoria.ler') 
 INSERT INTO permissoes_perfil (perfil, acao) VALUES ('consulta', 'cadastros.ler') ON CONFLICT DO NOTHING;
 INSERT INTO permissoes_perfil (perfil, acao) VALUES ('consulta', 'alocacoes.ler') ON CONFLICT DO NOTHING;
 INSERT INTO permissoes_perfil (perfil, acao) VALUES ('consulta', 'indicadores.ler') ON CONFLICT DO NOTHING;
+INSERT INTO permissoes_perfil (perfil, acao) VALUES ('instrutor', 'portal.instrutor') ON CONFLICT DO NOTHING;
 
 -- Conjunto de pesos padrão do otimizador
 INSERT INTO parametros_otimizacao (nome, pesos, limite_tempo_s, padrao, versao, ativo) VALUES ('Padrão', '{"demanda_nao_atendida": 1000.0, "prazos": 200.0, "janelas_instrutores": 10.0, "janelas_turmas": 15.0, "ocupacao_inadequada": 0.2, "deslocamentos": 30.0, "equilibrio_carga": 2.0, "concentracao_dias": 20.0, "preferencia_turno": 5.0, "aulas_isoladas": 10.0, "especializado_desnecessario": 8.0, "horarios_excepcionais": 15.0, "mudancas_vigente": 25.0, "preservar_aprovados": 40.0, "min_periodos_dia": 2}'::jsonb, 30, true, 1, true) ON CONFLICT (nome) DO NOTHING;
@@ -69,6 +73,6 @@ INSERT INTO configuracoes (chave, valor, descricao) VALUES ('regras_aula', '{"tu
 
 -- USUÁRIO DE TESTE (login: admin / senha: admin@123) — SOMENTE homologação.
 -- Remova antes da produção: DELETE FROM usuarios WHERE email = 'admin' AND nome LIKE 'Administrador de TESTE%';
-INSERT INTO usuarios (nome, email, senha_hash, perfil, acesso_global, ativo) VALUES ('Administrador de TESTE (remover antes da produção)', 'admin', '$2b$12$ci1vfK1qrYCRw/kiHH50HeXjQmOltiZFyD3YqltrVsBYdA2Ase0rG', 'administrador', true, true) ON CONFLICT (email) DO NOTHING;
+INSERT INTO usuarios (nome, email, senha_hash, perfil, acesso_global, ativo) VALUES ('Administrador de TESTE (remover antes da produção)', 'admin', '$2b$12$RmehA1JijfHDCnxujZAdgu5SJ72Wx3zEbE3rnfHcT367t.lIeD/We', 'administrador', true, true) ON CONFLICT (email) DO NOTHING;
 
 COMMIT;

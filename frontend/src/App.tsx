@@ -5,6 +5,7 @@ import { Campo, Erro, EstadoCenario, Modal } from "./components/ui";
 import { useApp } from "./contexto";
 import { supabase } from "./auth";
 import Perfil from "./components/Perfil";
+import PortalInstrutor from "./pages/PortalInstrutor";
 import { principalDoSemestre, rotuloVersao, semestreDe, semestres, versoesDoSemestre } from "./semestre";
 import Acompanhamento from "./pages/Acompanhamento";
 import Auditoria from "./pages/Auditoria";
@@ -136,6 +137,10 @@ export default function App() {
   const [trocarSenha, setTrocarSenha] = useState(false);
   if (definirSenha) return <DefinirSenha />;
   if (!usuario) return <Login />;
+  if (usuario.perfil === "instrutor") return <>
+    <PortalInstrutor trocarSenha={() => setTrocarSenha(true)} />
+    {trocarSenha && <TrocarSenha fechar={() => setTrocarSenha(false)} />}
+  </>;
   return (
     <div className="app">
       <aside className={`lateral ${menuAberto ? "aberto" : ""}`}>

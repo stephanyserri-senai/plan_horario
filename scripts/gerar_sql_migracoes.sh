@@ -20,3 +20,9 @@ echo "Gerado backend/sql/atualizacao_0003.sql"
   ALEMBIC_DATABASE_URL="postgresql+psycopg://usuario:senha@host/banco" python -m alembic upgrade 0003:0004 --sql
 } > sql/atualizacao_0004.sql
 echo "Gerado backend/sql/atualizacao_0004.sql"
+{
+  echo "-- Atualização 0004 -> 0005: portal do instrutor (perfil instrutor, vínculo usuário × instrutor e observações sobre turmas/UCs)."
+  echo "-- Não destrutiva. Cole o arquivo inteiro no SQL Editor do Supabase e clique em Run."
+  ALEMBIC_DATABASE_URL="postgresql+psycopg://usuario:senha@host/banco" python -m alembic upgrade 0004:0005 --sql
+} > sql/atualizacao_0005.sql
+echo "Gerado backend/sql/atualizacao_0005.sql"

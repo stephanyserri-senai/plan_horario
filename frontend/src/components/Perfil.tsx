@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useApp } from "../contexto";
 import { useOpcoes } from "../hooks";
 
-const PERFIL: Record<string, string> = { administrador: "Administrador(a)", planejador: "Planejador(a)", coordenador: "Coordenador(a)", gestor: "Gestor(a)", consulta: "Somente consulta" };
+const PERFIL: Record<string, string> = { instrutor: "Instrutor(a)", administrador: "Administrador(a)", planejador: "Planejador(a)", coordenador: "Coordenador(a)", gestor: "Gestor(a)", consulta: "Somente consulta" };
 const CORES = ["#1e5bd8", "#2f8f6b", "#b5562a", "#7a3fd1", "#c23b6b", "#1f7a99", "#8a6d00"];
 type Tema = "auto" | "light" | "dark";
 
@@ -28,7 +28,7 @@ export default function Perfil({ trocarSenha }: { trocarSenha: () => void }) {
   const [tema, setTema] = useState<Tema>(temaSalvo());
   const ref = useRef<HTMLDivElement>(null);
   const nav = useNavigate();
-  const unidades = useOpcoes("unidades");
+  const unidades = useOpcoes(usuario?.perfil === "instrutor" ? null : "unidades");
   useEffect(() => {
     if (!aberto) return;
     const fora = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setAberto(false); };
@@ -59,11 +59,11 @@ export default function Perfil({ trocarSenha }: { trocarSenha: () => void }) {
               <span className="perfil-papel">{PERFIL[usuario.perfil] || usuario.perfil}</span>
             </div>
           </div>
-          <dl className="perfil-info">
+          {usuario.perfil !== "instrutor" && <dl className="perfil-info">
             <dt>Acesso</dt><dd>{nomesUn}</dd>
             <dt>Pode</dt><dd>{[pode("alocacoes.editar") && "editar a grade", pode("cadastros.editar") && "cadastrar", pode("cenarios.publicar") && "publicar",
               pode("exportacao.executar") && "exportar"].filter(Boolean).join(" · ") || "consultar"}</dd>
-          </dl>
+          </dl>}
           <div className="perfil-tema" role="group" aria-label="Tema">
             {([["auto", "🖥️ Automático"], ["light", "☀️ Claro"], ["dark", "🌙 Escuro"]] as [Tema, string][]).map(([t, r]) => (
               <button key={t} className={tema === t ? "ativo" : ""} aria-pressed={tema === t} onClick={() => { setTema(t); aplicarTema(t); }}>{r}</button>))}
@@ -71,7 +71,7 @@ export default function Perfil({ trocarSenha }: { trocarSenha: () => void }) {
           <button role="menuitem" className="perfil-item" onClick={() => { setAberto(false); trocarSenha(); }}>🔑 Alterar minha senha</button>
           {pode("usuarios.gerenciar") && <button role="menuitem" className="perfil-item" onClick={() => ir("/usuarios")}>👥 Usuários e permissões</button>}
           {pode("configuracoes.editar") && <button role="menuitem" className="perfil-item" onClick={() => ir("/configuracoes")}>⚙️ Configurações</button>}
-          <button role="menuitem" className="perfil-item" onClick={() => ir("/")}>🏠 Início e passo a passo</button>
+          {usuario.perfil !== "instrutor" && <button role="menuitem" className="perfil-item" onClick={() => ir("/")}>🏠 Início e passo a passo</button>}
           <button role="menuitem" className="perfil-item perfil-sair" onClick={sair}>↩ Sair</button>
         </div>
       )}

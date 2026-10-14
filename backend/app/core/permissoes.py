@@ -22,22 +22,27 @@ ACOES = {
     "dados_pessoais.ler": "Ver dados pessoais de instrutores",
     "excecoes.autorizar": "Autorizar exceções documentadas",
     "aprendizado.gerenciar": "Revisar registros de decisão para treinamento",
+    "observacoes.gerenciar": "Ler e responder observações enviadas pelos instrutores",
+    "portal.instrutor": "Portal do instrutor: atualizar os próprios dados e ver as próprias turmas",
 }
 
-PERFIS = ["administrador", "planejador", "coordenador", "gestor", "consulta"]
+PERFIS = ["administrador", "planejador", "coordenador", "gestor", "consulta", "instrutor"]
 
 PADRAO = {
-    "administrador": list(ACOES),
+    "administrador": [a for a in ACOES if a != "portal.instrutor"],
     "planejador": [
         "cadastros.ler", "cadastros.editar", "alocacoes.ler", "alocacoes.editar", "cenarios.criar",
         "cenarios.editar", "otimizacao.executar", "simulacao.executar", "indicadores.ler",
-        "importacao.executar", "exportacao.executar", "dados_pessoais.ler",
+        "importacao.executar", "exportacao.executar", "dados_pessoais.ler", "observacoes.gerenciar",
     ],
     "coordenador": [
         "cadastros.ler", "alocacoes.ler", "alocacoes.editar", "cenarios.criar", "cenarios.editar",
         "cenarios.aprovar", "cenarios.publicar", "cenarios.restaurar", "simulacao.executar",
         "indicadores.ler", "exportacao.executar", "auditoria.ler", "dados_pessoais.ler", "excecoes.autorizar",
+        "observacoes.gerenciar",
     ],
     "gestor": ["cadastros.ler", "alocacoes.ler", "indicadores.ler", "simulacao.executar", "exportacao.executar", "auditoria.ler"],
     "consulta": ["cadastros.ler", "alocacoes.ler", "indicadores.ler"],
+    # O instrutor só acessa o portal: os próprios dados, as próprias turmas e as próprias observações.
+    "instrutor": ["portal.instrutor"],
 }

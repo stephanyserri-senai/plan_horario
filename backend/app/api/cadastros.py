@@ -49,7 +49,10 @@ def serializar(obj, ent: str, ctx: Contexto | None = None) -> dict:
         d["areas_ids"] = sorted(sess.scalars(select(M.area_id).where(col == obj.id)).all()) if sess else []
     if ent == "instrutores" and getattr(obj, "id", None):
         from sqlalchemy.orm import object_session
-        d.update(_dados_instrutor(object_session(obj), obj))
+        from app.api.portal import acesso_do_instrutor
+        sess = object_session(obj)
+        d.update(_dados_instrutor(sess, obj))
+        d["_acesso_portal"] = acesso_do_instrutor(sess, obj.id) if sess else None
     if ent == "turmas" and getattr(obj, "curso_id", None):
         from sqlalchemy.orm import object_session
         sess = object_session(obj)
@@ -335,8 +338,11 @@ def _gravar_instrutor(db: Session, inst, dados: dict):
 def ucs_por_area(areas: str = "", unidade_id: int | None = None, todas: bool = False, db: Session = Depends(get_db), ctx: Contexto = Depends(get_contexto)):
     """UCs dos cursos das áreas escolhidas (para marcar o que o instrutor ministra)."""
     ctx.exigir("cadastros.ler")
+    return listar_ucs_por_area(db, [int(x) for x in areas.split(",") if x.strip()], unidade_id, todas)
+
+
+def listar_ucs_por_area(db: Session, ids: list[int], unidade_id: int | None = None, todas: bool = False) -> list[dict]:
     from app.models import Area
-    ids = [int(x) for x in areas.split(",") if x.strip()]
     q = select(Curso).where(Curso.ativo.is_(True))
     if todas and unidade_id:
         q = q.where(Curso.area_id.in_(select(Area.id).where(Area.unidade_id == unidade_id)))
@@ -460,17 +466,7 @@ def obter(ent: str, id_: str, db: Session = Depends(get_db), ctx: Contexto = Dep
 
 def _aplicar_extras(db: Session, ent: str, obj, dados: dict):
     if ent in ("instrutores", "ambientes") and dados.get("areas_ids") is not None:
-        from app.models import AmbienteArea, Area, InstrutorArea
-        M, col, chave = (InstrutorArea, InstrutorArea.instrutor_id, "instrutor_id") if ent == "instrutores" else (AmbienteArea, AmbienteArea.ambiente_id, "ambiente_id")
-        db.execute(delete(M).where(col == obj.id))
-        for aid in {int(x) for x in dados["areas_ids"] if x} - {obj.area_id}:
-            area = db.get(Area, aid)
-            if area is None:
-                raise EntradaInvalida("Área inexistente.")
-            if area.unidade_id != obj.unidade_id:
-                raise ConflitoValidacao(f"A área {area.nome} é de outra unidade.")
-            db.add(M(**{chave: obj.id, "area_id": aid}))
-        db.flush()
+        gravar_outras_areas(db, ent, obj, dados["areas_ids"])
     if ent == "instrutores":
         _gravar_instrutor(db, obj, dados)
     if ent == "ucs" and "tipos_ambiente_ids" in dados and dados["tipos_ambiente_ids"] is not None:
@@ -479,6 +475,21 @@ def _aplicar_extras(db: Session, ent: str, obj, dados: dict):
             db.add(UCTipoAmbiente(uc_id=obj.id, tipo_ambiente_id=int(tid)))
         db.flush()
         db.refresh(obj)
+
+
+def gravar_outras_areas(db: Session, ent: str, obj, areas_ids):
+    """Áreas adicionais (além da principal), sempre da mesma unidade."""
+    from app.models import AmbienteArea, Area, InstrutorArea
+    M, col, chave = (InstrutorArea, InstrutorArea.instrutor_id, "instrutor_id") if ent == "instrutores" else (AmbienteArea, AmbienteArea.ambiente_id, "ambiente_id")
+    db.execute(delete(M).where(col == obj.id))
+    for aid in {int(x) for x in areas_ids if x} - {obj.area_id}:
+        area = db.get(Area, aid)
+        if area is None:
+            raise EntradaInvalida("Área inexistente.")
+        if area.unidade_id != obj.unidade_id:
+            raise ConflitoValidacao(f"A área {area.nome} é de outra unidade.")
+        db.add(M(**{chave: obj.id, "area_id": aid}))
+    db.flush()
 
 
 @router.post("/cadastros/{ent}")

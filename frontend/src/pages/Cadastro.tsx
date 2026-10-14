@@ -5,6 +5,7 @@ import { Abas, Badge, Campo, Erro, fmt, Modal, Pagina, Paginacao, Tabela, useCar
 import { useApp } from "../contexto";
 import { invalidarOpcoes, rotuloDe, useOpcoes } from "../hooks";
 import { CompetenciasUCs, DisponibilidadeTurnos, PreviaCodigoTurma } from "../components/CamposEspeciais";
+import ObservacoesInstrutores from "../components/ObservacoesInstrutores";
 
 export type CampoMeta = { nome: string; tipo: string; obrigatorio: boolean; somente_leitura: boolean; rotulo: string; ref?: string; opcoes?: any[]; pessoal?: boolean;
   secao?: "principal" | "avancado" | "auto"; ajuda?: string };
@@ -19,7 +20,7 @@ export function useMeta() {
 
 const RELACIONADOS: Record<string, string[]> = {
   turmas: ["turmas", "turma_ucs"],
-  instrutores: ["instrutores", "habilitacoes", "competencias", "disponibilidade_instrutores"],
+  instrutores: ["instrutores", "observacoes", "habilitacoes", "competencias", "disponibilidade_instrutores"],
   ucs: ["ucs", "uc_recursos", "uc_prerequisitos"],
   cursos: ["cursos", "matrizes", "ucs", "uc_prerequisitos"],
   ambientes: ["ambientes", "tipos_ambiente", "disponibilidade_ambientes", "recursos_ambientes"],
@@ -175,7 +176,7 @@ function CampoEntrada({ c, v, set, unidadeId, excluir }: { c: CampoMeta; v: any;
 export function ListaEntidade({ ent }: { ent: string }) {
   const metas = useMeta();
   const meta = metas.find((m) => m.chave === ent);
-  const { pode, aviso, cenario } = useApp();
+  const { pode, aviso, cenario, auth } = useApp();
   const [sp] = useSearchParams();
   const [q, setQ] = useState("");
   const [pagina, setPagina] = useState(1);
@@ -185,6 +186,7 @@ export function ListaEntidade({ ent }: { ent: string }) {
   const [erro, setErro] = useState<any>(null);
   const [historico, setHistorico] = useState<any[] | null>(null);
   const [duplicar, setDuplicar] = useState<any | null>(null);
+  const [acesso, setAcesso] = useState<any | null>(null);
   useEffect(() => { setPagina(1); setFiltros((sp.get("id") ? { id: sp.get("id")! } : {}) as Record<string, string>); }, [ent, sp]);
   const lista = useCarregar(() => api.get(`/api/cadastros/${ent}${qs({ q, pagina, por_pagina: 25, ativo: meta?.inativavel ? ativo : "", ...filtros })}`),
     [ent, q, pagina, ativo, JSON.stringify(filtros), meta?.inativavel]);
@@ -247,6 +249,10 @@ export function ListaEntidade({ ent }: { ent: string }) {
             {editavel && ent !== "areas" && <button className="btn-link" onClick={() => { setErro(null); setEdicao({ ...l }); }}>Editar</button>}
             {editavel && meta.inativavel && <button className="btn-link" onClick={() => alternarAtivo(l)}>{l.ativo ? "Inativar" : "Reativar"}</button>}
             {editavel && !meta.inativavel && !meta.fixa && <button className="btn-link" onClick={() => excluir(l)}>Excluir</button>}
+            {ent === "instrutores" && (l._acesso_portal
+              ? <Badge tipo="ok">portal ✓</Badge>
+              : pode("usuarios.gerenciar") && <button className="btn-link" onClick={() => setAcesso({ id: l.id, nome: l.nome, email: l.email || "", senha: "" })}>Acesso ao portal</button>)}
+            {ent === "instrutores" && l.atualizado_pelo_instrutor_em && <Badge tipo="info">atualizado pelo instrutor em {new Date(l.atualizado_pelo_instrutor_em).toLocaleDateString("pt-BR")}</Badge>}
             {editavel && ent === "turmas" && <button className="btn-link" onClick={() => setDuplicar({ id: l.id, codigo: `${l.codigo}-COPIA`, nome: `${l.nome} (cópia)` })}>Duplicar</button>}
             {editavel && ent === "matrizes" && <button className="btn-link" onClick={async () => {
               const v = prompt("Identificação da nova versão da matriz:");
@@ -266,6 +272,22 @@ export function ListaEntidade({ ent }: { ent: string }) {
           {ent === "turmas" && edicao.__novo && <p className="sub">As ofertas (turma × UC) da matriz serão criadas automaticamente como “previstas”.</p>}
           <Erro erro={erro} />
           <div className="rodape-modal"><button className="btn" onClick={() => setEdicao(null)}>Cancelar</button><button className="btn btn-primario" onClick={salvar}>Salvar</button></div>
+        </>}
+      </Modal>
+      <Modal titulo={`Acesso ao portal — ${acesso?.nome || ""}`} aberto={!!acesso} fechar={() => setAcesso(null)}>
+        {acesso && <>
+          <p className="sub">O instrutor entra com este e-mail e só vê os próprios dados, turmas e horários. O que ele atualizar aparece direto neste cadastro.</p>
+          <Campo rotulo="E-mail de login" obrigatorio><input type="email" value={acesso.email} onChange={(e) => setAcesso({ ...acesso, email: e.target.value })} /></Campo>
+          {auth?.modo === "supabase" ? <p className="sub">Ele recebe um convite por e-mail para criar a própria senha.</p> :
+            <Campo rotulo="Senha inicial" obrigatorio ajuda="Mínimo de 8 caracteres. Entregue ao instrutor; ele pode trocá-la no menu do perfil.">
+              <input type="text" autoComplete="off" value={acesso.senha} onChange={(e) => setAcesso({ ...acesso, senha: e.target.value })} /></Campo>}
+          <div className="rodape-modal"><button className="btn" onClick={() => setAcesso(null)}>Cancelar</button><button className="btn btn-primario" onClick={async () => {
+            try {
+              const r = await api.post(`/api/instrutores/${acesso.id}/acesso`, { email: acesso.email, senha: acesso.senha });
+              aviso(r.convite ? (r.convite.enviado ? "Convite enviado por e-mail." : `Acesso criado; convite não enviado: ${r.convite.erro}`) : "Acesso criado. Informe o e-mail e a senha inicial ao instrutor.");
+              setAcesso(null); lista.recarregar();
+            } catch (e: any) { aviso(e.message, "erro"); }
+          }}>Liberar acesso</button></div>
         </>}
       </Modal>
       <Modal titulo="Duplicar turma" aberto={!!duplicar} fechar={() => setDuplicar(null)}>
@@ -304,6 +326,26 @@ function FiltroRef({ c, valor, mudar }: { c: CampoMeta; valor: string; mudar: (v
   );
 }
 
+const ROTULO_ABA: Record<string, string> = { observacoes: "💬 Observações dos instrutores" };
+
+/** Explica o portal do instrutor e, no login pelo Supabase, convida todos os instrutores com e-mail de uma vez. */
+function AcessosPortal() {
+  const { pode, auth, aviso } = useApp();
+  const [r, setR] = useState<any>(null);
+  if (!pode("usuarios.gerenciar")) return null;
+  return (
+    <div className="importar-rapido">
+      <div><b>Portal do instrutor</b><br /><small className="mudo">Cada instrutor pode entrar com o próprio login para atualizar áreas, UCs, disponibilidade e certificações,
+        ver as turmas e horários dele e enviar observações. Use “Acesso ao portal” na linha do instrutor.</small>
+        {r && <><br /><small>{r.criados.length} convite(s) enviado(s){r.falhas.length ? ` · ${r.falhas.length} sem convite: ${r.falhas.map((f: any) => `${f.instrutor} (${f.motivo})`).join("; ")}` : ""}</small></>}</div>
+      {auth?.modo === "supabase" && <button className="btn btn-primario" onClick={async () => {
+        if (!confirm("Enviar convite por e-mail a todos os instrutores ativos com e-mail e ainda sem acesso?")) return;
+        try { setR(await api.post("/api/instrutores/acessos-em-lote")); } catch (e: any) { aviso(e.message, "erro"); }
+      }}>Convidar todos com e-mail</button>}
+    </div>
+  );
+}
+
 const IMPORTACAO: Record<string, { tipo: string; titulo: string; texto: string }> = {
   cursos: { tipo: "estrutura_curricular", titulo: "Cadastre tudo por planilha", texto: "Uma linha por UC: o curso, a matriz e as UCs são criados e ligados automaticamente." },
   ucs: { tipo: "estrutura_curricular", titulo: "Cadastre tudo por planilha", texto: "Uma linha por UC: o curso, a matriz e as UCs são criados e ligados automaticamente." },
@@ -317,21 +359,25 @@ export default function Cadastro() {
   const { pode } = useApp();
   const metas = useMeta();
   const rel = RELACIONADOS[ent] || [ent];
-  const [aba, setAba] = useState(rel[0]);
+  const [sp] = useSearchParams();
+  const abaUrl = sp.get("aba");
+  const [aba, setAba] = useState(abaUrl && rel.includes(abaUrl) ? abaUrl : rel[0]);
   const [versao, setVersao] = useState(0);
-  useEffect(() => setAba(rel[0]), [ent]);
+  useEffect(() => setAba(abaUrl && rel.includes(abaUrl) ? abaUrl : rel[0]), [ent, abaUrl]);
   const meta = metas.find((m) => m.chave === ent);
   return (
     <Pagina titulo={meta?.rotulo || "Cadastros"} descricao={AJUDA[ent] || "Inclua, pesquise e edite registros. Tudo é validado e fica registrado no histórico."}>
-      {rel.length > 1 && <Abas abas={rel.map((r) => ({ id: r, rotulo: metas.find((m) => m.chave === r)?.rotulo || r }))} ativa={aba} mudar={setAba} />}
+      {rel.length > 1 && <Abas abas={rel.filter((r) => r !== "observacoes" || pode("observacoes.gerenciar"))
+        .map((r) => ({ id: r, rotulo: ROTULO_ABA[r] || metas.find((m) => m.chave === r)?.rotulo || r }))} ativa={aba} mudar={setAba} />}
       {aba !== ent && AJUDA[aba] && <p className="sub">{AJUDA[aba]}</p>}
-      {IMPORTACAO[ent] && pode("importacao.executar") && <div className="importar-rapido">
+      {IMPORTACAO[ent] && aba !== "observacoes" && pode("importacao.executar") && <div className="importar-rapido">
         <div><b>{IMPORTACAO[ent].titulo}</b><br /><small className="mudo">{IMPORTACAO[ent].texto}</small></div>
         <button className="btn" onClick={() => baixar(`/api/importacao/modelo/${IMPORTACAO[ent].tipo}`, `modelo_${IMPORTACAO[ent].tipo}.xlsx`)}>Baixar modelo</button>
         <Link className="btn btn-primario" to={`/importacao?tipo=${IMPORTACAO[ent].tipo}`}>Importar planilha</Link>
       </div>}
       {aba === "turnos" && <TurnosPadrao aoCriar={() => setVersao((v) => v + 1)} />}
-      <ListaEntidade key={`${aba}-${versao}`} ent={aba} />
+      {ent === "instrutores" && aba === "instrutores" && <AcessosPortal />}
+      {aba === "observacoes" ? <ObservacoesInstrutores /> : <ListaEntidade key={`${aba}-${versao}`} ent={aba} />}
     </Pagina>
   );
 }

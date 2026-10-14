@@ -6,14 +6,14 @@ type Comp = { uc_id: number; nivel: string };
 type Grupo = { curso_id: number; curso: string; area: string; ucs: { id: number; codigo: string; nome: string; ch: number; certificacao?: string }[] };
 
 /** UCs dos cursos das áreas do instrutor, para marcar o que ele ministra (e se é sob supervisão). */
-export function CompetenciasUCs({ valores, set }: { valores: any; set: (v: Comp[]) => void }) {
+export function CompetenciasUCs({ valores, set, fonte }: { valores: any; set: (v: Comp[]) => void; fonte?: (areas: number[]) => string }) {
   const [grupos, setGrupos] = useState<Grupo[] | null>(null);
   const [filtro, setFiltro] = useState("");
   const areas = [valores.area_id, ...(valores.areas_ids || [])].filter(Boolean).map(Number);
   const chave = `${areas.join(",")}|${valores.todas_areas ? 1 : 0}|${valores.unidade_id || ""}`;
   useEffect(() => {
     if (!areas.length && !valores.todas_areas) { setGrupos([]); return; }
-    api.get(`/api/cadastros-apoio/ucs-por-area${qs({ areas: areas.join(","), todas: valores.todas_areas ? "true" : "", unidade_id: valores.unidade_id })}`)
+    api.get(fonte ? fonte(areas) : `/api/cadastros-apoio/ucs-por-area${qs({ areas: areas.join(","), todas: valores.todas_areas ? "true" : "", unidade_id: valores.unidade_id })}`)
       .then(setGrupos).catch(() => setGrupos([]));
   }, [chave]);
   const sel: Comp[] = valores.ucs_competencia || [];
@@ -61,8 +61,9 @@ export function CompetenciasUCs({ valores, set }: { valores: any; set: (v: Comp[
 }
 
 /** Turnos × dias em que o instrutor pode dar aula (substitui a disponibilidade cadastrada). */
-export function DisponibilidadeTurnos({ valores, setVarios }: { valores: any; setVarios: (v: Record<string, any>) => void }) {
-  const turnos = useOpcoes("turnos").filter((t: any) => !valores.unidade_id || String(t.unidade_id) === String(valores.unidade_id));
+export function DisponibilidadeTurnos({ valores, setVarios, turnosFixos }: { valores: any; setVarios: (v: Record<string, any>) => void; turnosFixos?: { id: number; rotulo: string }[] }) {
+  const todosTurnos = useOpcoes(turnosFixos ? null : "turnos");
+  const turnos = turnosFixos || todosTurnos.filter((t: any) => !valores.unidade_id || String(t.unidade_id) === String(valores.unidade_id));
   const sel: number[] = (valores.disp_turnos || []).map(Number);
   const dias: number[] = valores.disp_dias ?? [0, 1, 2, 3, 4];
   const mudar = (t: number[], d: number[]) => setVarios({ disp_turnos: t, disp_dias: d, __disp: true });
@@ -84,7 +85,7 @@ export function DisponibilidadeTurnos({ valores, setVarios }: { valores: any; se
         <div className="checks"><span className="mudo">Dias:</span>{DIAS.slice(0, 6).map((d, i) => (
           <label key={i}><input type="checkbox" checked={dias.includes(i)}
             onChange={(e) => mudar(sel, e.target.checked ? [...dias, i].sort() : dias.filter((x) => x !== i))} /> {d.slice(0, 3)}</label>))}</div>
-        {valores.disp_personalizada && !valores.__disp && <p className="sub">Este instrutor tem horários personalizados (aba “Disponibilidade”). Marcar turnos aqui substitui esses horários.</p>}
+        {valores.disp_personalizada && !valores.__disp && <p className="sub">Há horários personalizados cadastrados. Marcar turnos aqui substitui esses horários.</p>}
         {sel.length === 0 && !valores.disp_personalizada && <p className="sub">⚠ Sem turno marcado o instrutor não é escalado.</p>}
       </>}
     </fieldset>

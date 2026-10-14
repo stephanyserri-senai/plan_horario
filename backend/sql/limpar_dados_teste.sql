@@ -1,7 +1,7 @@
 -- LIMPEZA DOS DADOS DE TESTE — para começar as validações com dados reais.
 -- MANTÉM: unidades Beira Mar e Porto, áreas tecnológicas, turnos oficiais (manhã/tarde/noite), configurações
 --         (pesos, regras de aula, limiares), perfis de acesso, usuários e o histórico de auditoria.
--- APAGA:  cursos, matrizes, UCs, turmas, instrutores, salas/laboratórios, tipos de sala, recursos, calendários,
+-- APAGA:  observações dos instrutores (o usuário do instrutor continua, mas desvinculado), cursos, matrizes, UCs, turmas, instrutores, salas/laboratórios, tipos de sala, recursos, calendários,
 --         feriados, bloqueios, semestres (cenários), aulas, gerações, simulações, importações e exceções;
 --         e qualquer unidade que não seja BEIRA-MAR ou PORTO (com seus turnos).
 -- IRREVERSÍVEL: faça um backup antes se houver algo que queira guardar. Cole o arquivo inteiro no SQL Editor e clique em Run.
@@ -10,7 +10,11 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM unidades WHERE codigo = 'BEIRA-MAR') OR NOT EXISTS (SELECT 1 FROM unidades WHERE codigo = 'PORTO') THEN
     RAISE EXCEPTION 'Unidades oficiais não encontradas: aplique antes as atualizações 0003 e 0004.';
   END IF;
-  TRUNCATE TABLE
+  -- portal do instrutor (atualização 0005): os usuários de instrutor continuam, só perdem o vínculo
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'usuarios' AND column_name = 'instrutor_id') THEN
+    EXECUTE 'UPDATE usuarios SET instrutor_id = NULL WHERE instrutor_id IS NOT NULL';
+  END IF;
+  EXECUTE 'TRUNCATE TABLE
     alocacao_recursos,
     alocacoes,
     ambiente_areas,
@@ -32,7 +36,6 @@ BEGIN
     importacoes,
     instrutor_areas,
     instrutor_unidades,
-    instrutores,
     matrizes_curriculares,
     ocorrencias_validacao,
     recursos,
@@ -49,8 +52,12 @@ BEGIN
     uc_tipos_ambiente,
     unidades_curriculares,
     validacoes,
-    versoes_planejamento
-  RESTART IDENTITY;
+    versoes_planejamento'
+    || CASE WHEN to_regclass('public.observacoes_instrutor') IS NOT NULL THEN ', observacoes_instrutor' ELSE '' END
+    || ' RESTART IDENTITY';
+  -- instrutores: DELETE (a tabela de usuários, que é mantida, aponta para ela)
+  DELETE FROM instrutores;
+  PERFORM setval(pg_get_serial_sequence('instrutores', 'id'), 1, false);
   -- escopos de acesso que apontavam para cursos/turmas apagados ou unidades extras
   DELETE FROM permissoes WHERE escopo_tipo IN ('curso', 'turma')
      OR (escopo_tipo = 'unidade' AND escopo_id NOT IN (SELECT id FROM unidades WHERE codigo IN ('BEIRA-MAR', 'PORTO')));
