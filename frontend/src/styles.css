@@ -213,3 +213,5 @@ details.avancado summary { cursor: pointer; color: var(--primaria); }
 .nivel i { width: 8px; height: 12px; border-radius: 2px; background: var(--ch-falta); display: inline-block; }
 .nivel i.on { background: var(--ch-realizada); }
 .nivel small { margin-left: 6px; color: var(--mudo); }
+
+.vazio-grade { padding: 16px; border: 1px dashed var(--borda); border-radius: 8px; margin: 10px; background: var(--superficie); }

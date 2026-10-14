@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { addDias, api, baixar, dataBR, DIAS_CURTOS, iso, qs, segundaDe } from "../api";
 import { Alternativas, Badge, Campo, Erro, Modal, OcorrenciasLista, Pagina, Selecao, Tabela, useCarregar } from "../components/ui";
 import { useApp } from "../contexto";
 import { useOpcoes } from "../hooks";
 import { Diferenca } from "./Cadastro";
 
-type Aula = { id: number; versao: number; data: string; inicio: string; fim: string; turma_id: number; turma: string; turma_uc_id: number; uc: string;
+type Aula = { unidade_id?: number; id: number; versao: number; data: string; inicio: string; fim: string; turma_id: number; turma: string; turma_uc_id: number; uc: string;
   uc_nome: string; grupo: number | null; instrutor_id: number | null; instrutor: string | null; ambiente_id: number | null; ambiente: string | null;
   fixa: boolean; origem: string; observacao: string | null; status: string; minutos_aula: number };
 type Periodo = { id: number; turno_id: number; turno: string; ordem: number; inicio: string; fim: string; dias_semana: number[]; excepcional: boolean };
@@ -34,13 +34,24 @@ export default function Grade() {
   const [copiar, setCopiar] = useState(false);
   const unidades = useOpcoes("unidades");
   const opsAlvo = useOpcoes(ENT[modo]);
-  useEffect(() => { if (!unidade && unidades.length) setUnidade(String(unidades[0].id)); }, [unidades, unidade]);
+  const [unidadeManual, setUnidadeManual] = useState(false);
+  useEffect(() => { setUnidadeManual(false); }, [cenario?.id]);
   useEffect(() => { if (cenario?.periodo_inicio) setSemana(segundaDe(new Date(cenario.periodo_inicio + "T12:00"))); }, [cenario?.id]);
 
   const fimSemana = addDias(semana, 6);
   const filtro: any = { cenario_id: cenario?.id, inicio: iso(semana), fim: iso(fimSemana), q };
   if (alvo) filtro[`${modo}_id`] = alvo;
   const aulas = useCarregar<Aula[]>(() => cenario ? api.get(`/api/grade${qs(filtro)}`) : Promise.resolve([]), [cenario?.id, modo, alvo, iso(semana), q]);
+  // Unidade da grade de horários escolhida automaticamente (a menos que o usuário escolha):
+  // unidade do cenário → unidade das aulas exibidas → primeira unidade cadastrada.
+  useEffect(() => {
+    if (unidadeManual || !unidades.length) return;
+    const contagem: Record<string, number> = {};
+    (aulas.dados || []).forEach((a) => { if (a.unidade_id) contagem[a.unidade_id] = (contagem[a.unidade_id] || 0) + 1; });
+    const daAulas = Object.entries(contagem).sort((x, y) => y[1] - x[1])[0]?.[0];
+    const escolhida = (cenario as any)?.unidade_id ? String((cenario as any).unidade_id) : daAulas || unidade || String(unidades[0].id);
+    if (escolhida !== unidade) setUnidade(escolhida);
+  }, [unidades, aulas.dados, cenario?.id, unidadeManual]);
   const periodos = useCarregar<Periodo[]>(() => unidade ? api.get(`/api/periodos?unidade_id=${unidade}`) : Promise.resolve([]), [unidade]);
   const livres = useCarregar<any[]>(() => cenario && mostrarLivres && alvo && ["turma", "instrutor", "ambiente"].includes(modo)
     ? api.get(`/api/grade/livres${qs({ cenario_id: cenario.id, semana: iso(semana), [`${modo}_id`]: alvo, unidade_id: unidade })}`) : Promise.resolve([]),
@@ -96,7 +107,7 @@ export default function Grade() {
           {MODOS.map((m) => <option key={m.id} value={m.id}>{m.rotulo}</option>)}
         </select>
         <Selecao rotulo="Filtrar" valor={alvo} mudar={setAlvo} opcoes={opsAlvo} vazio="(todos)" />
-        <Selecao rotulo="Unidade (grade de períodos)" valor={unidade} mudar={setUnidade} opcoes={unidades} vazio="Unidade" />
+        <Selecao rotulo="Unidade (grade de períodos)" valor={unidade} mudar={(v) => { setUnidade(v); setUnidadeManual(true); }} opcoes={unidades} vazio="Unidade" />
         <input type="search" aria-label="Pesquisa rápida" placeholder="Pesquisa rápida" value={q} onChange={(e) => setQ(e.target.value)} />
         <button className="btn" aria-label="Semana anterior" onClick={() => setSemana(addDias(semana, -7))}>‹</button>
         <input type="date" aria-label="Semana" value={iso(semana)} onChange={(e) => e.target.value && setSemana(segundaDe(new Date(e.target.value + "T12:00")))} />
@@ -104,6 +115,16 @@ export default function Grade() {
         {["turma", "instrutor", "ambiente"].includes(modo) && <label><input type="checkbox" checked={mostrarLivres} disabled={!alvo} onChange={(e) => setMostrarLivres(e.target.checked)} /> Destacar horários livres</label>}
       </div>
       <p className="sub">Semana de {dataBR(iso(semana))} a {dataBR(iso(fimSemana))} · {aulas.dados?.length ?? 0} aula(s)</p>
+      {(() => {
+        const outras = (aulas.dados || []).filter((a) => a.unidade_id && String(a.unidade_id) !== unidade);
+        const foraDoPeriodo = cenario.periodo_inicio && (iso(fimSemana) < cenario.periodo_inicio || (cenario.periodo_fim && iso(semana) > cenario.periodo_fim));
+        return <>
+          {outras.length > 0 && <p className="aviso-inline">{outras.length} aula(s) desta semana são de outra unidade e não aparecem nesta grade.{" "}
+            <button className="btn-link" onClick={() => { setUnidade(String(outras[0].unidade_id)); setUnidadeManual(true); }}>Mostrar a unidade {unidades.find((u) => String(u.id) === String(outras[0].unidade_id))?.rotulo || ""}</button></p>}
+          {foraDoPeriodo && <p className="aviso-inline">Esta semana está fora do período do cenário ({dataBR(cenario.periodo_inicio)} a {dataBR(cenario.periodo_fim)}).{" "}
+            <button className="btn-link" onClick={() => setSemana(segundaDe(new Date(cenario.periodo_inicio + "T12:00")))}>Ir para a primeira semana</button></p>}
+        </>;
+      })()}
       {aulas.erro && <div className="erro-box">{aulas.erro}</div>}
       <div className="grade-wrap">
         <table className="grade">
@@ -139,7 +160,10 @@ export default function Grade() {
             ))}
           </tbody>
         </table>
-        {linhas.length === 0 && <p className="mudo">Cadastre turnos e períodos da unidade em Configurações.</p>}
+        {linhas.length === 0 && !periodos.carregando && <div className="vazio-grade">
+          <p><b>A unidade selecionada ainda não tem horários de aula cadastrados</b>, por isso a grade não pode ser desenhada.</p>
+          <p>Escolha outra unidade no seletor acima ou cadastre os turnos e os horários de cada aula em <Link to="/cadastros/turnos">Cadastros → Turnos e horários</Link>.</p>
+        </div>}
       </div>
       <p className="sub">Dica: clique duas vezes em uma célula para alocar; arraste uma aula para movê-la (a validação é refeita no servidor). Legenda: 📌 fixa · área verde = livre para todos os recursos filtrados.</p>
       {form && <FormAula inicial={form} cenarioId={cenario.id} unidadeId={unidade} periodos={linhas} fechar={(ok) => { setForm(null); if (ok) aulas.recarregar(); }} />}

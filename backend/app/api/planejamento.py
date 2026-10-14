@@ -195,7 +195,7 @@ def grade(cenario_id: int, inicio: date | None = None, fim: date | None = None, 
           uc_id: int | None = None, q: str | None = None, ctx: Contexto = Depends(requer("alocacoes.ler")), db: Session = Depends(get_db)):
     linhas = _filtrar_aulas(db, ctx, cenario_id, inicio, fim, turma_id, instrutor_id, ambiente_id, turno_id, curso_id, unidade_id, uc_id, q)
     return [{"id": a.id, "versao": a.versao, "data": a.data.isoformat(), "inicio": a.inicio.strftime("%H:%M"), "fim": a.fim.strftime("%H:%M"),
-             "minutos_aula": a.minutos_aula, "turma_id": t.id, "turma": t.codigo, "turno_id": t.turno_id, "turma_uc_id": a.turma_uc_id,
+             "minutos_aula": a.minutos_aula, "turma_id": t.id, "turma": t.codigo, "turno_id": t.turno_id, "unidade_id": t.unidade_id, "turma_uc_id": a.turma_uc_id,
              "uc_id": u.id, "uc": u.codigo, "uc_nome": u.nome, "grupo": a.grupo, "instrutor_id": a.instrutor_id, "instrutor": i.nome if i else None,
              "ambiente_id": a.ambiente_id, "ambiente": amb.codigo if amb else None, "status": a.status, "fixa": a.fixa, "origem": a.origem,
              "observacao": a.observacao, "atividade_id": a.atividade_id}
