@@ -1,0 +1,26 @@
+name: CI
+on: [push, pull_request]
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env: { POSTGRES_USER: plan, POSTGRES_PASSWORD: plan, POSTGRES_DB: plan_horario_test }
+        ports: ["5432:5432"]
+        options: --health-cmd pg_isready --health-interval 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r backend/requirements.txt
+      - run: cd backend && python -m pytest -q
+        env:
+          PLAN_TEST_DATABASE_URL: postgresql+psycopg://plan:plan@localhost:5432/plan_horario_test
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - run: cd frontend && npm ci && npm run build
