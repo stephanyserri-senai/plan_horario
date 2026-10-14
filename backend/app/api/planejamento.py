@@ -559,3 +559,11 @@ def primeiros_passos(cenario_id: int | None = None, ctx: Contexto = Depends(get_
     for p in passos:
         p["feito"] = p["qtd"] > 0
     return {"passos": passos, "concluidos": sum(p["feito"] for p in passos), "total": len(passos)}
+
+
+@router.get("/cronograma")
+def cronograma_gantt(cenario_id: int, unidade_id: int | None = None, area_id: int | None = None, curso_id: int | None = None,
+                    ctx: Contexto = Depends(requer("indicadores.ler")), db: Session = Depends(get_db)):
+    """Dados do gráfico de Gantt (área → curso → turma → UC) com folgas e caminho crítico."""
+    from app.services.cronograma import cronograma
+    return cronograma(db, cenario_id, unidade_id, area_id, curso_id, ctx.unidades)

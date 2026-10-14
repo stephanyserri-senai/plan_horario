@@ -121,7 +121,7 @@ cd backend && PLAN_TEST_DATABASE_URL=postgresql+psycopg://plan:plan@localhost:54
 cd frontend && npm run typecheck && npm run build
 ```
 
-Resultado atual: **67 testes passando** contra PostgreSQL real (40 funcionais + 27 de publicação e operação na Vercel/Supabase; ver [TESTING.md](TESTING.md)). Os testes verificam o resultado e a integridade final no banco.
+Resultado atual: **72 testes passando** contra PostgreSQL real (44 funcionais + 28 de publicação e operação na Vercel/Supabase; ver [TESTING.md](TESTING.md)). Os testes verificam o resultado e a integridade final no banco.
 O CI (`.github/workflows/ci.yml`) executa a mesma suíte e o build do frontend.
 
 | Caso exigido (seção 20) | Teste |
@@ -156,6 +156,17 @@ O CI (`.github/workflows/ci.yml`) executa a mesma suíte e o build do frontend.
 | Publicação exige validação, edição só por proposta | `test_publicacao_exige_validacao_e_bloqueia_edicao` |
 
 ---
+
+## Estrutura fixa: unidades e áreas
+
+| Unidade | Áreas tecnológicas |
+|---|---|
+| Beira Mar (`BEIRA-MAR`) | AUTOMAÇÃO, ENERGIAS, AUTOMOTIVA, MECATRÔNICA, MECÂNICA, INSTRUMENTAÇÃO |
+| Porto (`PORTO`) | LOGÍSTICA, PORTOS, DDS/TI, ECONOMIA CRIATIVA, GESTÃO |
+
+* Criadas pela migração `0003` (e por `python -m app.seed`), com os turnos oficiais. A aplicação **não permite** incluir, excluir, inativar ou renomear unidades e áreas (API, telas e importação); só dados complementares da unidade (endereço, responsável) são editáveis.
+* Cursos, turmas, instrutores e ambientes exigem a **área**, que deve ser da mesma unidade do cadastro. A turma herda a área do curso; o curso sem unidade assume a unidade da área. Na importação, use a coluna `area` (nome ou código).
+* **Cronograma (Gantt)**: menu Planejamento → Cronograma. Área › curso › turma › UC, com prazos, folga, projeção do que ainda não tem horário e o caminho crítico de cada turma (UCs que definem a data de término, seguindo os pré-requisitos cadastrados).
 
 ## Regras de composição das aulas (padrão da instituição)
 

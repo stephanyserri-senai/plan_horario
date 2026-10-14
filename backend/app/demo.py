@@ -1,46 +1,61 @@
 """DADOS DE DEMONSTRAÇÃO — não usar em produção.
 
-Todos os registros usam o prefixo 'DEMO-' e podem ser removidos com:
+Os dados ficam na unidade oficial Beira Mar (usando os turnos oficiais) e todos os
+registros criados usam o prefixo 'DEMO-', para poderem ser removidos sem afetar
+os cadastros reais:
     python -m app.demo remover
-Carga:
+Carga / recarga:
     python -m app.demo carregar
+    python -m app.demo recarregar
 """
 import sys
 from datetime import date, time
 
-from sqlalchemy import delete, select, text
+from sqlalchemy import select, text
 
 from app.core.db import SessionLocal
-from app.services.regras_aula import TURNOS_PADRAO
+from app.core.estrutura import garantir_estrutura_fixa
 from app.models import (
-    Ambiente, Calendario, CalendarioExcecao, CenarioPlanejamento, CompetenciaInstrutor, Curso, DisponibilidadeInstrutor, HabilitacaoInstrutor,
-    Instrutor, MatrizCurricular, PeriodoHorario, Recurso, RecursoAmbiente, TipoAmbiente, Turma, TurmaUC, Turno, UCRecurso, UCTipoAmbiente, Unidade,
-    UnidadeCurricular,
+    Ambiente, Area, Calendario, CalendarioExcecao, CenarioPlanejamento, CompetenciaInstrutor, Curso, DisponibilidadeInstrutor,
+    HabilitacaoInstrutor, Instrutor, MatrizCurricular, Recurso, RecursoAmbiente, TipoAmbiente, Turma, TurmaUC, Turno, UCRecurso,
+    UCTipoAmbiente, Unidade, UnidadeCurricular,
 )
 
 PREFIXO = "DEMO-"
 
-
-def _hm(m: int) -> time:
-    return time(m // 60, m % 60)
+# Remoção somente de registros DEMO- (inclui a unidade DEMO-U1 das versões antigas da demonstração).
+REMOCAO = [
+    "DELETE FROM cenarios_planejamento WHERE nome LIKE 'DEMO-%' OR unidade_id IN (SELECT id FROM unidades WHERE codigo = 'DEMO-U1')",
+    "DELETE FROM turmas WHERE codigo LIKE 'DEMO-%'",
+    "DELETE FROM competencias_instrutores WHERE instrutor_id IN (SELECT id FROM instrutores WHERE matricula LIKE 'DEMO-%')",
+    "DELETE FROM instrutores WHERE matricula LIKE 'DEMO-%'",
+    "DELETE FROM uc_tipos_ambiente WHERE uc_id IN (SELECT id FROM unidades_curriculares WHERE codigo LIKE 'DEMO-%')",
+    "DELETE FROM uc_recursos WHERE uc_id IN (SELECT id FROM unidades_curriculares WHERE codigo LIKE 'DEMO-%')",
+    "DELETE FROM unidades_curriculares WHERE codigo LIKE 'DEMO-%'",
+    "DELETE FROM matrizes_curriculares WHERE curso_id IN (SELECT id FROM cursos WHERE codigo LIKE 'DEMO-%')",
+    "DELETE FROM cursos WHERE codigo LIKE 'DEMO-%'",
+    "DELETE FROM recursos_ambientes WHERE recurso_id IN (SELECT id FROM recursos WHERE codigo LIKE 'DEMO-%') "
+    "OR ambiente_id IN (SELECT id FROM ambientes WHERE codigo LIKE 'DEMO-%')",
+    "DELETE FROM recursos WHERE codigo LIKE 'DEMO-%'",
+    "DELETE FROM ambientes WHERE codigo LIKE 'DEMO-%'",
+    "DELETE FROM tipos_ambiente WHERE codigo LIKE 'DEMO-%'",
+    "DELETE FROM calendario_excecoes WHERE calendario_id IN (SELECT id FROM calendarios WHERE nome LIKE 'DEMO-%')",
+    "DELETE FROM calendarios WHERE nome LIKE 'DEMO-%'",
+    "DELETE FROM periodos_horarios WHERE unidade_id IN (SELECT id FROM unidades WHERE codigo = 'DEMO-U1')",
+    "DELETE FROM turnos WHERE unidade_id IN (SELECT id FROM unidades WHERE codigo = 'DEMO-U1')",
+    "DELETE FROM unidades WHERE codigo = 'DEMO-U1'",
+]
 
 
 def carregar(db, ano: int = 2026):
-    if db.scalar(select(Unidade).where(Unidade.codigo == f"{PREFIXO}U1")):
+    if db.scalar(select(Curso).where(Curso.codigo == f"{PREFIXO}ELT")):
         return "já carregado"
-    un = Unidade(codigo=f"{PREFIXO}U1", nome="DEMO – Unidade Centro", cidade="Vitória")
-    db.add(un)
-    db.flush()
-    # Turnos da instituição: 4 aulas por turno (55 min de manhã/tarde, 50 min à noite) com intervalo no meio.
-    turnos = {}
-    for ordem, (cod, nome, aulas) in enumerate(TURNOS_PADRAO, 1):
-        t = Turno(unidade_id=un.id, codigo=f"{PREFIXO}{cod}", nome=nome, hora_inicio=_hm(aulas[0][0]), hora_fim=_hm(aulas[-1][0] + aulas[-1][1]), ordem=ordem)
-        db.add(t)
-        db.flush()
-        for i, (ini, dur) in enumerate(aulas, 1):
-            db.add(PeriodoHorario(unidade_id=un.id, turno_id=t.id, ordem=i, hora_inicio=_hm(ini), hora_fim=_hm(ini + dur), dias_semana=[0, 1, 2, 3, 4]))
-        turnos[cod] = t
-    manha, tarde = turnos["M"], turnos["T"]
+    garantir_estrutura_fixa(db)
+    un = db.scalar(select(Unidade).where(Unidade.codigo == "BEIRA-MAR"))
+    area = {a.codigo: a for a in db.scalars(select(Area).where(Area.unidade_id == un.id))}
+    turno = {t.codigo: t for t in db.scalars(select(Turno).where(Turno.unidade_id == un.id))}
+    energ, autom = area["ENERGIAS"], area["AUTOMACAO"]
+
     cal = Calendario(unidade_id=un.id, nome=f"{PREFIXO}Calendário {ano}/2", data_inicio=date(ano, 8, 3), data_fim=date(ano, 12, 18))
     db.add(cal)
     db.flush()
@@ -51,90 +66,91 @@ def carregar(db, ano: int = 2026):
              [("SALA", "Sala de aula", False), ("INFO", "Laboratório de informática", True), ("CMD", "Laboratório de comandos elétricos", True)]}
     db.add_all(tipos.values())
     db.flush()
-    salas = [Ambiente(codigo=f"{PREFIXO}S{n}", nome=f"Sala {n}", unidade_id=un.id, tipo_ambiente_id=tipos["SALA"].id, capacidade_fisica=40,
-                      capacidade_operacional=36) for n in (101, 102)]
-    info = Ambiente(codigo=f"{PREFIXO}LI1", nome="Lab. Informática 1", unidade_id=un.id, tipo_ambiente_id=tipos["INFO"].id, capacidade_fisica=32, capacidade_operacional=30)
-    cmd = Ambiente(codigo=f"{PREFIXO}LC1", nome="Lab. Comandos Elétricos", unidade_id=un.id, tipo_ambiente_id=tipos["CMD"].id, capacidade_fisica=32,
-                   capacidade_operacional=30, tempo_preparacao_min=10)
-    db.add_all(salas + [info, cmd])
+    amb = {
+        "S101": Ambiente(codigo=f"{PREFIXO}S101", nome="Sala 101", unidade_id=un.id, area_id=energ.id, tipo_ambiente_id=tipos["SALA"].id,
+                         capacidade_fisica=40, capacidade_operacional=36),
+        "S102": Ambiente(codigo=f"{PREFIXO}S102", nome="Sala 102", unidade_id=un.id, area_id=autom.id, tipo_ambiente_id=tipos["SALA"].id,
+                         capacidade_fisica=40, capacidade_operacional=36),
+        "LI1": Ambiente(codigo=f"{PREFIXO}LI1", nome="Lab. Informática 1", unidade_id=un.id, area_id=autom.id, tipo_ambiente_id=tipos["INFO"].id,
+                        capacidade_fisica=32, capacidade_operacional=30),
+        "LC1": Ambiente(codigo=f"{PREFIXO}LC1", nome="Lab. Comandos Elétricos", unidade_id=un.id, area_id=energ.id, tipo_ambiente_id=tipos["CMD"].id,
+                        capacidade_fisica=32, capacidade_operacional=30, tempo_preparacao_min=10),
+    }
+    db.add_all(amb.values())
     db.flush()
     bancada = Recurso(codigo=f"{PREFIXO}BAN", nome="Bancadas de comandos", tipo="bancada_comandos", unidade_id=un.id, quantidade_total=8)
-    clp = Recurso(codigo=f"{PREFIXO}CLP", nome="Kits CLP (móveis)", tipo="kit_clp", unidade_id=un.id, quantidade_total=8, movel=True)
-    db.add_all([bancada, clp])
+    db.add(bancada)
     db.flush()
-    db.add(RecursoAmbiente(recurso_id=bancada.id, ambiente_id=cmd.id, quantidade=8))
-    curso = Curso(codigo=f"{PREFIXO}ELT", nome="Técnico em Eletrotécnica", modalidade="presencial", tipo="técnico", carga_horaria_total=1200,
-                  eixo_tecnologico="Controle e Processos Industriais", unidade_id=un.id)
-    db.add(curso)
-    db.flush()
-    mat = MatrizCurricular(curso_id=curso.id, versao="2026.1", situacao="vigente")
-    db.add(mat)
-    db.flush()
-    ucs = []
-    # Carga horária em hora-aula; cada encontro ocupa o turno inteiro (4 aulas).
-    # DTE (30 h) e INF (18 h) não são múltiplos de 4: suas últimas aulas são "fechamentos" de 2 aulas
-    # e o gerador as junta no mesmo turno.
-    for cod, nome, ch, tipos_uc, enc in [("FEL", "Fundamentos de Eletricidade", 40, ["SALA"], 2), ("DTE", "Desenho Técnico", 30, ["SALA", "INFO"], 1),
-                                         ("CMD", "Comandos Elétricos", 60, ["CMD"], 1), ("INF", "Informática Aplicada", 18, ["INFO"], 1)]:
-        uc = UnidadeCurricular(matriz_id=mat.id, codigo=f"{PREFIXO}{cod}", nome=nome, carga_horaria_total=ch, duracao_bloco_periodos=4, encontros_semanais=enc,
-                               certificacao_exigida="NR-10" if cod == "CMD" else None)
-        db.add(uc)
+    db.add(RecursoAmbiente(recurso_id=bancada.id, ambiente_id=amb["LC1"].id, quantidade=8))
+
+    # Carga horária em hora-aula; cada encontro ocupa o turno inteiro (4 aulas). UCs com carga que não é múltipla
+    # de 4 terminam com um "fechamento" de 2 aulas, e o gerador junta dois fechamentos da turma no mesmo turno.
+    cursos = [
+        ("ELT", "Técnico em Eletrotécnica", energ, [("FEL", "Fundamentos de Eletricidade", 40, ["SALA"], 2),
+                                                     ("DTE", "Desenho Técnico", 30, ["SALA", "INFO"], 1),
+                                                     ("CMD", "Comandos Elétricos", 60, ["CMD"], 1),
+                                                     ("INF", "Informática Aplicada", 18, ["INFO"], 1)]),
+        ("AUT", "Técnico em Automação Industrial", autom, [("CLP", "Controladores Lógicos Programáveis", 48, ["INFO"], 2),
+                                                            ("INS", "Instrumentação Industrial", 26, ["SALA"], 1),
+                                                            ("RED", "Redes Industriais", 22, ["INFO"], 1),
+                                                            # sem instrutor habilitado: fica sem horário e aparece como crítica no cronograma
+                                                            ("SUP", "Sistemas Supervisórios", 40, ["INFO"], 1)]),
+    ]
+    por_cod, matrizes = {}, {}
+    for cod_c, nome_c, ar, ucs in cursos:
+        curso = Curso(codigo=f"{PREFIXO}{cod_c}", nome=nome_c, modalidade="presencial", tipo="técnico", carga_horaria_total=1200,
+                      unidade_id=un.id, area_id=ar.id)
+        db.add(curso)
         db.flush()
-        for t in tipos_uc:
-            db.add(UCTipoAmbiente(uc_id=uc.id, tipo_ambiente_id=tipos[t].id))
-        ucs.append(uc)
-    db.add(UCRecurso(uc_id=ucs[2].id, recurso_tipo="bancada_comandos", quantidade=8))
-    nomes = [("DEMO-I01", "Ana (DEMO)", ["FEL", "CMD"]), ("DEMO-I02", "Bruno (DEMO)", ["FEL", "DTE"]), ("DEMO-I03", "Carla (DEMO)", ["INF", "DTE"]),
-             ("DEMO-I04", "Diego (DEMO)", ["CMD"])]
-    por_cod = {u.codigo.replace(PREFIXO, ""): u for u in ucs}
-    for mat_i, nome, comps in nomes:
-        i = Instrutor(matricula=mat_i, nome=nome, unidade_id=un.id, carga_horaria_contratual=40, limite_ch_letiva=24, max_horas_dia=8)
+        mat = MatrizCurricular(curso_id=curso.id, versao="2026.1", situacao="vigente")
+        db.add(mat)
+        db.flush()
+        matrizes[cod_c] = (curso, mat, [])
+        for cod, nome, ch, tipos_uc, enc in ucs:
+            uc = UnidadeCurricular(matriz_id=mat.id, codigo=f"{PREFIXO}{cod}", nome=nome, carga_horaria_total=ch, duracao_bloco_periodos=4,
+                                   encontros_semanais=enc, certificacao_exigida="NR-10" if cod == "CMD" else None)
+            db.add(uc)
+            db.flush()
+            for t in tipos_uc:
+                db.add(UCTipoAmbiente(uc_id=uc.id, tipo_ambiente_id=tipos[t].id))
+            por_cod[cod] = uc
+            matrizes[cod_c][2].append(uc)
+    db.add(UCRecurso(uc_id=por_cod["CMD"].id, recurso_tipo="bancada_comandos", quantidade=8))
+
+    instrutores = [("DEMO-I01", "Ana (DEMO)", energ, ["FEL", "CMD"], "D"), ("DEMO-I02", "Bruno (DEMO)", energ, ["FEL", "DTE"], "D"),
+                   ("DEMO-I03", "Carla (DEMO)", energ, ["INF", "DTE"], "D"), ("DEMO-I04", "Diego (DEMO)", energ, ["CMD"], "D"),
+                   ("DEMO-I05", "Eduardo (DEMO)", autom, ["CLP", "RED"], "N"), ("DEMO-I06", "Fernanda (DEMO)", autom, ["INS", "RED", "CLP"], "N")]
+    for mat_i, nome, ar, comps, periodo in instrutores:
+        i = Instrutor(matricula=mat_i, nome=nome, unidade_id=un.id, area_id=ar.id, carga_horaria_contratual=40, limite_ch_letiva=24, max_horas_dia=8)
         db.add(i)
         db.flush()
         for c in comps:
             db.add(CompetenciaInstrutor(instrutor_id=i.id, uc_id=por_cod[c].id, nivel="pleno"))
         if "CMD" in comps:
             db.add(HabilitacaoInstrutor(instrutor_id=i.id, nome="NR-10"))
+        ini, fim = (time(7, 30), time(17, 30)) if periodo == "D" else (time(18, 0), time(22, 0))
         for d in range(5):
-            db.add(DisponibilidadeInstrutor(instrutor_id=i.id, dia_semana=d, hora_inicio=time(7, 30), hora_fim=time(17, 30)))
-    for n, turno in ((1, manha), (2, tarde)):
-        t = Turma(codigo=f"{PREFIXO}ELT-{n}", nome=f"Eletrotécnica {n} (DEMO)", curso_id=curso.id, matriz_id=mat.id, unidade_id=un.id, calendario_id=cal.id,
-                  turno_id=turno.id, qtd_alunos=30, data_inicio=date(ano, 8, 3), data_fim=date(ano, 12, 18), num_grupos=1)
+            db.add(DisponibilidadeInstrutor(instrutor_id=i.id, dia_semana=d, hora_inicio=ini, hora_fim=fim))
+
+    for cod_t, nome_t, cod_c, t_cod in [("ELT-1", "Eletrotécnica 1", "ELT", "M"), ("ELT-2", "Eletrotécnica 2", "ELT", "T"),
+                                         ("AUT-1", "Automação Industrial 1", "AUT", "N")]:
+        curso, mat, ucs = matrizes[cod_c]
+        t = Turma(codigo=f"{PREFIXO}{cod_t}", nome=f"{nome_t} (DEMO)", curso_id=curso.id, matriz_id=mat.id, unidade_id=un.id, area_id=curso.area_id,
+                  calendario_id=cal.id, turno_id=turno[t_cod].id, qtd_alunos=30, data_inicio=date(ano, 8, 3), data_fim=date(ano, 12, 18), num_grupos=1)
         db.add(t)
         db.flush()
         for uc in ucs:
-            db.add(TurmaUC(turma_id=t.id, uc_id=uc.id, situacao="ofertada"))
+            # prazo apertado (folga de poucos dias) para o cronograma mostrar uma UC crítica
+            limite = date(ano, 12, 4) if (cod_t, uc.codigo) == ("ELT-2", f"{PREFIXO}CMD") else None
+            db.add(TurmaUC(turma_id=t.id, uc_id=uc.id, situacao="ofertada", data_limite=limite))
     db.add(CenarioPlanejamento(nome=f"{PREFIXO}Planejamento {ano}/2", unidade_id=un.id, periodo_inicio=date(ano, 8, 3), periodo_fim=date(ano, 12, 18)))
     db.commit()
     return "carregado"
 
 
 def remover(db):
-    un = db.scalar(select(Unidade).where(Unidade.codigo == f"{PREFIXO}U1"))
-    if not un:
-        return "nada a remover"
-    uid = un.id
-    db.execute(delete(CenarioPlanejamento).where(CenarioPlanejamento.unidade_id == uid))
-    for sql in [
-        "DELETE FROM turmas WHERE unidade_id=:u",
-        "DELETE FROM competencias_instrutores WHERE instrutor_id IN (SELECT id FROM instrutores WHERE unidade_id=:u)",
-        "DELETE FROM instrutores WHERE unidade_id=:u",
-        "DELETE FROM uc_tipos_ambiente WHERE uc_id IN (SELECT u.id FROM unidades_curriculares u JOIN matrizes_curriculares m ON m.id=u.matriz_id JOIN cursos c ON c.id=m.curso_id WHERE c.unidade_id=:u)",
-        "DELETE FROM uc_recursos WHERE uc_id IN (SELECT u.id FROM unidades_curriculares u JOIN matrizes_curriculares m ON m.id=u.matriz_id JOIN cursos c ON c.id=m.curso_id WHERE c.unidade_id=:u)",
-        "DELETE FROM unidades_curriculares WHERE matriz_id IN (SELECT m.id FROM matrizes_curriculares m JOIN cursos c ON c.id=m.curso_id WHERE c.unidade_id=:u)",
-        "DELETE FROM matrizes_curriculares WHERE curso_id IN (SELECT id FROM cursos WHERE unidade_id=:u)",
-        "DELETE FROM cursos WHERE unidade_id=:u",
-        "DELETE FROM recursos_ambientes WHERE ambiente_id IN (SELECT id FROM ambientes WHERE unidade_id=:u)",
-        "DELETE FROM recursos WHERE unidade_id=:u",
-        "DELETE FROM ambientes WHERE unidade_id=:u",
-        "DELETE FROM tipos_ambiente WHERE codigo LIKE 'DEMO-%'",
-        "DELETE FROM calendario_excecoes WHERE calendario_id IN (SELECT id FROM calendarios WHERE unidade_id=:u)",
-        "DELETE FROM calendarios WHERE unidade_id=:u",
-        "DELETE FROM periodos_horarios WHERE unidade_id=:u",
-        "DELETE FROM turnos WHERE unidade_id=:u",
-        "DELETE FROM unidades WHERE id=:u",
-    ]:
-        db.execute(text(sql), {"u": uid})
+    for sql in REMOCAO:
+        db.execute(text(sql))
     db.commit()
     return "removido"
 

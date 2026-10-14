@@ -7,6 +7,7 @@ import Acompanhamento from "./pages/Acompanhamento";
 import Auditoria from "./pages/Auditoria";
 import Cadastro from "./pages/Cadastro";
 import Configuracoes from "./pages/Configuracoes";
+import Cronograma from "./pages/Cronograma";
 import Dashboard from "./pages/Dashboard";
 import Gargalos from "./pages/Gargalos";
 import Geracao from "./pages/Geracao";
@@ -23,6 +24,7 @@ const MENU: { grupo: string; itens: Item[] }[] = [
   { grupo: "Planejamento", itens: [
     { para: "/", rotulo: "Início", icone: "▦", acao: "indicadores.ler" },
     { para: "/acompanhamento", rotulo: "Acompanhamento", icone: "📊", acao: "indicadores.ler" },
+    { para: "/cronograma", rotulo: "Cronograma (Gantt)", icone: "▬", acao: "indicadores.ler" },
     { para: "/grade", rotulo: "Grade horária", icone: "▤", acao: "alocacoes.ler" },
     { para: "/geracao", rotulo: "Gerar horários", icone: "⚙", acao: "alocacoes.ler" },
     { para: "/planejamento", rotulo: "Cenários e aprovação", icone: "☰", acao: "alocacoes.ler" },
@@ -37,7 +39,7 @@ const MENU: { grupo: string; itens: Item[] }[] = [
     { para: "/cadastros/cursos", rotulo: "Cursos e matrizes", icone: "🎓", acao: "cadastros.ler" },
     { para: "/cadastros/ambientes", rotulo: "Salas e laboratórios", icone: "🏫", acao: "cadastros.ler" },
     { para: "/cadastros/recursos", rotulo: "Recursos e equipamentos", icone: "🔧", acao: "cadastros.ler" },
-    { para: "/cadastros/unidades", rotulo: "Unidades e calendário", icone: "🏢", acao: "cadastros.ler" },
+    { para: "/cadastros/unidades", rotulo: "Unidades, áreas e calendário", icone: "🏢", acao: "cadastros.ler" },
     { para: "/cadastros/turnos", rotulo: "Turnos e horários", icone: "🕘", acao: "cadastros.ler" },
     { para: "/importacao", rotulo: "Importar planilha", icone: "⇪", acao: "importacao.executar" },
   ] },
@@ -142,6 +144,7 @@ export default function App() {
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/acompanhamento" element={<Acompanhamento />} />
+            <Route path="/cronograma" element={<Cronograma />} />
             <Route path="/grade" element={<Grade />} />
             <Route path="/planejamento" element={<Planejamento />} />
             <Route path="/geracao" element={<Geracao />} />

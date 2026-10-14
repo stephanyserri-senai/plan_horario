@@ -148,7 +148,7 @@ SPECS: dict[str, dict] = {
     "cursos": {"chave": ["codigo"], "campos": {
         "codigo": ("str", True, ["cod_curso", "codigo_curso"]), "nome": ("str", True, ["curso", "nome_curso"]),
         "modalidade": ("str", False, []), "tipo": ("str", False, ["tipo_curso"]), "carga_horaria_total": ("int", False, ["ch", "carga_horaria"]),
-        "eixo_tecnologico": ("str", False, ["eixo"]), "unidade_codigo": ("str", False, ["unidade"])}},
+        "eixo_tecnologico": ("str", False, ["eixo"]), "unidade_codigo": ("str", False, ["unidade"]), "area": ("str", False, ["area_tecnologica"])}},
     "matrizes": {"chave": ["curso_codigo", "versao"], "campos": {
         "curso_codigo": ("str", True, ["curso"]), "versao": ("str", True, ["versao_matriz", "matriz"]),
         "vigencia_inicio": ("date", False, ["vigencia"])}},
@@ -164,21 +164,23 @@ SPECS: dict[str, dict] = {
         "curso_codigo": ("str", True, ["curso"]), "versao": ("str", True, ["versao_matriz", "matriz"]),
         "unidade_codigo": ("str", True, ["unidade"]), "turno_codigo": ("str", False, ["turno"]), "qtd_alunos": ("int", False, ["alunos", "quantidade_alunos"]),
         "data_inicio": ("date", True, ["inicio"]), "data_fim": ("date", True, ["fim", "termino"]), "dias_possiveis": ("dias", False, ["dias"]),
-        "num_grupos": ("int", False, ["grupos"])}},
+        "num_grupos": ("int", False, ["grupos"]), "area": ("str", False, ["area_tecnologica"])}},
     "turma_ucs": {"chave": ["turma_codigo", "uc_codigo"], "campos": {
         "turma_codigo": ("str", True, ["turma"]), "uc_codigo": ("str", True, ["uc", "codigo_uc"]), "situacao": ("str", False, []),
         "data_inicio": ("date", False, ["inicio"]), "data_limite": ("date", False, ["limite", "fim"]), "ch_realizada": ("float", False, ["realizada"])}},
     "instrutores": {"chave": ["matricula"], "campos": {
         "matricula": ("str", True, ["registro", "identificacao", "id_institucional"]), "nome": ("str", True, ["instrutor", "docente", "professor"]),
         "email": ("str", False, ["e_mail"]), "unidade_codigo": ("str", True, ["unidade"]), "carga_horaria_contratual": ("float", False, ["ch_contratual", "jornada"]),
-        "limite_ch_letiva": ("float", False, ["ch_letiva", "limite_letivo"]), "areas_competencia": ("str", False, ["areas"])}},
+        "limite_ch_letiva": ("float", False, ["ch_letiva", "limite_letivo"]), "areas_competencia": ("str", False, ["areas"]),
+        "area": ("str", False, ["area_tecnologica"])}},
     "competencias": {"chave": ["matricula", "uc_codigo"], "campos": {
         "matricula": ("str", True, ["instrutor"]), "uc_codigo": ("str", True, ["uc"]), "curso_codigo": ("str", False, ["curso"]),
         "versao": ("str", False, ["matriz"]), "nivel": ("str", False, []), "valido_ate": ("date", False, ["validade"])}},
     "ambientes": {"chave": ["codigo"], "campos": {
         "codigo": ("str", True, ["sala", "cod_ambiente"]), "nome": ("str", True, ["ambiente", "nome_ambiente"]), "unidade_codigo": ("str", True, ["unidade"]),
         "tipo_codigo": ("str", True, ["tipo", "tipo_ambiente"]), "capacidade_fisica": ("int", True, ["capacidade", "lugares"]),
-        "capacidade_operacional": ("int", False, ["capacidade_recomendada"]), "predio": ("str", False, ["bloco"]), "acessivel": ("bool", False, ["acessibilidade"])}},
+        "capacidade_operacional": ("int", False, ["capacidade_recomendada"]), "predio": ("str", False, ["bloco"]), "acessivel": ("bool", False, ["acessibilidade"]),
+        "area": ("str", False, ["area_tecnologica"])}},
     "disponibilidade_instrutores": {"chave": ["matricula", "dia_semana", "hora_inicio"], "campos": {
         "matricula": ("str", True, ["instrutor"]), "dia_semana": ("dia", True, ["dia"]), "hora_inicio": ("time", True, ["inicio"]),
         "hora_fim": ("time", True, ["fim"])}},
@@ -272,6 +274,13 @@ class Resolvedor:
     def unidade(self, cod):
         return self._get(("u", cod), lambda: self.db.scalar(select(Unidade.id).where(func.lower(Unidade.codigo) == cod.lower())))
 
+    def area(self, nome_ou_cod):
+        def busca():
+            from app.models import Area
+            alvo = norm(nome_ou_cod)
+            return next(((a.id, a.unidade_id) for a in self.db.scalars(select(Area)) if alvo in (norm(a.codigo), norm(a.nome))), None)
+        return self._get(("a", nome_ou_cod), busca)
+
     def curso(self, cod):
         return self._get(("c", cod), lambda: self.db.scalar(select(Curso.id).where(func.lower(Curso.codigo) == cod.lower())))
 
@@ -322,16 +331,38 @@ def _converter(tipo: str, linha: dict, mapa: dict) -> tuple[dict, list[str]]:
     return vals, erros
 
 
+def _area(r, v: dict, d: dict, E: list, A: list, obrigatoria: bool = True):
+    """Coluna 'área': nome ou código de uma das áreas fixas, da mesma unidade do registro."""
+    if not v.get("area"):
+        if obrigatoria:
+            A.append("área não informada: defina-a depois em Cadastros (coluna 'area', ex.: AUTOMAÇÃO, LOGÍSTICA)")
+        return
+    achada = r.area(v["area"])
+    if not achada:
+        E.append(f"área '{v['area']}' não existe (use uma das áreas fixas da unidade)")
+        return
+    area_id, unidade_area = achada
+    if d.get("unidade_id") and d["unidade_id"] != unidade_area:
+        E.append(f"a área '{v['area']}' não pertence à unidade informada")
+        return
+    d["area_id"] = area_id
+    d.setdefault("unidade_id", unidade_area)
+
+
 def _preparar(db: Session, r: Resolvedor, tipo: str, v: dict) -> tuple[dict | None, object | None, list[str], list[str]]:
     """Retorna (dados para o modelo, registro existente, erros, avisos)."""
     E, A = [], []
     if tipo == "unidades":
         ex = db.scalars(select(Unidade).where(func.lower(Unidade.codigo) == v["codigo"].lower())).first()
-        return {k: v[k] for k in ("codigo", "nome", "endereco", "cidade", "responsavel") if v[k] is not None}, ex, E, A
+        if ex is None:
+            E.append("as unidades são fixas da instituição (BEIRA-MAR e PORTO); não é possível incluir outra")
+        # só dados complementares; código e nome são fixos
+        return {k: v[k] for k in ("endereco", "cidade", "responsavel") if v[k] is not None}, ex, E, A
     if tipo == "cursos":
         d = {k: v[k] for k in ("codigo", "nome", "modalidade", "tipo", "carga_horaria_total", "eixo_tecnologico") if v[k] is not None}
         if v["unidade_codigo"]:
             d["unidade_id"] = r.unidade(v["unidade_codigo"]) or E.append(f"unidade '{v['unidade_codigo']}' não cadastrada")
+        _area(r, v, d, E, A)
         return d, db.scalars(select(Curso).where(func.lower(Curso.codigo) == v["codigo"].lower())).first(), E, A
     if tipo == "matrizes":
         cid = r.curso(v["curso_codigo"])
@@ -372,6 +403,11 @@ def _preparar(db: Session, r: Resolvedor, tipo: str, v: dict) -> tuple[dict | No
             d["turno_id"] = r.turno(uid, v["turno_codigo"]) or E.append(f"turno '{v['turno_codigo']}' não cadastrado na unidade")
         if v["data_inicio"] and v["data_fim"] and v["data_fim"] < v["data_inicio"]:
             E.append("data_fim anterior a data_inicio")
+        if not v["area"] and d.get("curso_id"):
+            curso = db.get(Curso, d["curso_id"])
+            if curso and curso.area_id:
+                d["area_id"] = curso.area_id  # herda a área do curso
+        _area(r, v, d, E, A, obrigatoria=not d.get("area_id"))
         return d, r.turma(v["codigo"]), E, A
     if tipo == "turma_ucs":
         t = r.turma(v["turma_codigo"])
@@ -390,6 +426,7 @@ def _preparar(db: Session, r: Resolvedor, tipo: str, v: dict) -> tuple[dict | No
         uid = r.unidade(v["unidade_codigo"]) or E.append(f"unidade '{v['unidade_codigo']}' não cadastrada")
         d = {k: v[k] for k in ("matricula", "nome", "email", "carga_horaria_contratual", "limite_ch_letiva", "areas_competencia") if v[k] is not None}
         d["unidade_id"] = uid
+        _area(r, v, d, E, A)
         return d, db.scalars(select(Instrutor).where(Instrutor.matricula == v["matricula"])).first(), E, A
     if tipo == "competencias":
         iid, aviso = r.instrutor(v["matricula"])
@@ -417,6 +454,7 @@ def _preparar(db: Session, r: Resolvedor, tipo: str, v: dict) -> tuple[dict | No
                 d[k] = v[k]
         if d["capacidade_operacional"] and d["capacidade_fisica"] and d["capacidade_operacional"] > d["capacidade_fisica"]:
             E.append("capacidade operacional maior que a física")
+        _area(r, v, d, E, A)
         return d, db.scalars(select(Ambiente).where(func.lower(Ambiente.codigo) == v["codigo"].lower())).first(), E, A
     if tipo == "disponibilidade_instrutores":
         iid, _ = r.instrutor(v["matricula"])

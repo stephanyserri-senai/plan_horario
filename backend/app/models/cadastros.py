@@ -48,6 +48,16 @@ class Unidade(TimestampMixin, Base):
     ativo: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
+class Area(TimestampMixin, Base):
+    """Área tecnológica de uma unidade (cadastro fixo da instituição)."""
+    __tablename__ = "areas"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    unidade_id: Mapped[int] = mapped_column(ForeignKey("unidades.id"), index=True)
+    codigo: Mapped[str] = mapped_column(String(40), unique=True)
+    nome: Mapped[str] = mapped_column(String(100))
+    ativo: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
 class Setor(TimestampMixin, Base):
     __tablename__ = "setores"
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -168,6 +178,7 @@ class Curso(TimestampMixin, Base):
     carga_horaria_total: Mapped[int | None] = mapped_column(Integer)
     eixo_tecnologico: Mapped[str | None] = mapped_column(String(120))
     unidade_id: Mapped[int | None] = mapped_column(ForeignKey("unidades.id"), index=True)
+    area_id: Mapped[int | None] = mapped_column(ForeignKey("areas.id"), index=True)
     turnos_possiveis: Mapped[str | None] = mapped_column(String(200))
     situacao: Mapped[str] = mapped_column(String(20), default="ativo")
     ativo: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -262,6 +273,7 @@ class Ambiente(TimestampMixin, Base):
     codigo: Mapped[str] = mapped_column(String(30), unique=True)
     nome: Mapped[str] = mapped_column(String(200))
     unidade_id: Mapped[int] = mapped_column(ForeignKey("unidades.id"), index=True)
+    area_id: Mapped[int | None] = mapped_column(ForeignKey("areas.id"), index=True)
     predio: Mapped[str | None] = mapped_column(String(100))
     localizacao: Mapped[str | None] = mapped_column(String(200))
     tipo_ambiente_id: Mapped[int] = mapped_column(ForeignKey("tipos_ambiente.id"), index=True)
@@ -331,6 +343,7 @@ class Turma(TimestampMixin, Base):
     curso_id: Mapped[int] = mapped_column(ForeignKey("cursos.id"), index=True)
     matriz_id: Mapped[int] = mapped_column(ForeignKey("matrizes_curriculares.id"), index=True)
     unidade_id: Mapped[int] = mapped_column(ForeignKey("unidades.id"), index=True)
+    area_id: Mapped[int | None] = mapped_column(ForeignKey("areas.id"), index=True)
     calendario_id: Mapped[int | None] = mapped_column(ForeignKey("calendarios.id"))
     turno_id: Mapped[int | None] = mapped_column(ForeignKey("turnos.id"))
     qtd_alunos: Mapped[int] = mapped_column(Integer, default=0)
@@ -376,6 +389,7 @@ class Instrutor(TimestampMixin, Base):
     nome: Mapped[str] = mapped_column(String(200))
     email: Mapped[str | None] = mapped_column(String(200))  # dado pessoal: visível só a perfis autorizados
     unidade_id: Mapped[int] = mapped_column(ForeignKey("unidades.id"), index=True)
+    area_id: Mapped[int | None] = mapped_column(ForeignKey("areas.id"), index=True)
     areas_competencia: Mapped[str | None] = mapped_column(Text)
     carga_horaria_contratual: Mapped[float] = mapped_column(Numeric(5, 2), default=40)
     limite_ch_letiva: Mapped[float] = mapped_column(Numeric(5, 2), default=30)

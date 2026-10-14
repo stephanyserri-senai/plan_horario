@@ -6,7 +6,7 @@ import { useApp } from "../contexto";
 import { invalidarOpcoes, rotuloDe, useOpcoes } from "../hooks";
 
 export type CampoMeta = { nome: string; tipo: string; obrigatorio: boolean; somente_leitura: boolean; rotulo: string; ref?: string; opcoes?: any[]; pessoal?: boolean };
-export type EntMeta = { chave: string; rotulo: string; grupo: string; campos: CampoMeta[]; busca: string[]; inativavel: boolean; pk: string[] };
+export type EntMeta = { chave: string; rotulo: string; grupo: string; campos: CampoMeta[]; busca: string[]; inativavel: boolean; fixa?: boolean; pk: string[] };
 
 let metaCache: Promise<EntMeta[]> | null = null;
 export function useMeta() {
@@ -22,7 +22,7 @@ const RELACIONADOS: Record<string, string[]> = {
   cursos: ["cursos", "matrizes", "ucs"],
   ambientes: ["ambientes", "tipos_ambiente", "disponibilidade_ambientes", "recursos_ambientes"],
   recursos: ["recursos", "recursos_ambientes"],
-  unidades: ["unidades", "calendarios", "calendario_excecoes", "bloqueios", "horarios_funcionamento", "setores", "deslocamentos"],
+  unidades: ["unidades", "areas", "calendarios", "calendario_excecoes", "bloqueios", "horarios_funcionamento", "setores", "deslocamentos"],
   turnos: ["turnos", "periodos"],
 };
 
@@ -39,7 +39,8 @@ const AJUDA: Record<string, string> = {
   ambientes: "Salas, laboratórios e oficinas: capacidade de alunos, tipo e equipamentos. O sistema só coloca a aula em sala compatível.",
   tipos_ambiente: "Categorias de sala (ex.: sala teórica, laboratório de informática) usadas para casar disciplina e sala.",
   recursos: "Equipamentos e materiais (ex.: projetor, kits). Podem ser exigidos por disciplinas.",
-  unidades: "Escolas/unidades da instituição. Nas abas ao lado: calendário letivo, feriados e bloqueios.",
+  unidades: "As unidades (Beira Mar e Porto) e suas áreas são fixas da instituição. Aqui você consulta e mantém o calendário letivo, feriados e bloqueios.",
+  areas: "Áreas tecnológicas de cada unidade (fixas). Cursos, turmas, instrutores e ambientes devem indicar sua área.",
   calendarios: "Período letivo de cada unidade.",
   calendario_excecoes: "Feriados, recessos e dias sem aula: o sistema não programa aulas nessas datas.",
   bloqueios: "Indisponibilidades pontuais de sala, instrutor ou turma (ex.: manutenção, evento).",
@@ -73,14 +74,16 @@ export function Formulario({ meta, valores, setValores }: { meta: EntMeta; valor
   return (
     <div className="form-grid">
       {meta.campos.filter((c) => !c.somente_leitura && !(c.nome === "id" && meta.pk.length === 1)).map((c) => (
-        <CampoEntrada key={c.nome} c={c} v={valores[c.nome]} set={(v) => set(c.nome, v)} />
+        <CampoEntrada key={c.nome} c={c} v={valores[c.nome]} set={(v) => set(c.nome, v)} unidadeId={valores.unidade_id} />
       ))}
     </div>
   );
 }
 
-function CampoEntrada({ c, v, set }: { c: CampoMeta; v: any; set: (v: any) => void }) {
-  const ops = useOpcoes(c.tipo === "ref" || c.tipo === "multiref" ? c.ref : null);
+function CampoEntrada({ c, v, set, unidadeId }: { c: CampoMeta; v: any; set: (v: any) => void; unidadeId?: any }) {
+  const todas = useOpcoes(c.tipo === "ref" || c.tipo === "multiref" ? c.ref : null);
+  // a área precisa ser da mesma unidade do cadastro
+  const ops = c.ref === "areas" && unidadeId ? todas.filter((o: any) => String(o.unidade_id) === String(unidadeId)) : todas;
   const rotulo = c.rotulo;
   let input;
   switch (c.tipo) {
@@ -191,15 +194,16 @@ export function ListaEntidade({ ent }: { ent: string }) {
         )}
         {refsFiltro.map((c) => <FiltroRef key={c.nome} c={c} valor={filtros[c.nome] || ""} mudar={(v) => { setFiltros({ ...filtros, [c.nome]: v }); setPagina(1); }} />)}
         {filtros.id && <button className="chip" onClick={() => setFiltros({})}>Registro #{filtros.id} ✕</button>}
-        {editavel && <button className="btn btn-primario" onClick={() => { setErro(null); setEdicao({ __novo: true }); }}>+ Novo</button>}
+        {editavel && !meta.fixa && <button className="btn btn-primario" onClick={() => { setErro(null); setEdicao({ __novo: true }); }}>+ Novo</button>}
+        {meta.fixa && <span className="sub">🔒 Cadastro fixo da instituição: não é possível incluir, excluir ou renomear.</span>}
       </div>
       {lista.erro && <div className="erro-box">{lista.erro}</div>}
       <Tabela colunas={[...colunas, {
         chave: "_acoes", rotulo: "Ações", render: (l: any) => (
           <div className="acoes-linha" onClick={(e) => e.stopPropagation()}>
-            {editavel && <button className="btn-link" onClick={() => { setErro(null); setEdicao({ ...l }); }}>Editar</button>}
+            {editavel && ent !== "areas" && <button className="btn-link" onClick={() => { setErro(null); setEdicao({ ...l }); }}>Editar</button>}
             {editavel && meta.inativavel && <button className="btn-link" onClick={() => alternarAtivo(l)}>{l.ativo ? "Inativar" : "Reativar"}</button>}
-            {editavel && !meta.inativavel && <button className="btn-link" onClick={() => excluir(l)}>Excluir</button>}
+            {editavel && !meta.inativavel && !meta.fixa && <button className="btn-link" onClick={() => excluir(l)}>Excluir</button>}
             {editavel && ent === "turmas" && <button className="btn-link" onClick={() => setDuplicar({ id: l.id, codigo: `${l.codigo}-COPIA`, nome: `${l.nome} (cópia)` })}>Duplicar</button>}
             {editavel && ent === "matrizes" && <button className="btn-link" onClick={async () => {
               const v = prompt("Identificação da nova versão da matriz:");

@@ -41,6 +41,8 @@ def executar(db, admin_email: str | None = None, admin_senha: str | None = None)
                 db.add(PermissaoPerfil(perfil=perfil, acao=a))
     if not db.scalar(select(ParametrosOtimizacao).limit(1)):
         db.add(ParametrosOtimizacao(nome="Padrão", pesos=pesos_padrao(), limite_tempo_s=30, padrao=True))
+    from app.core.estrutura import garantir_estrutura_fixa
+    garantir_estrutura_fixa(db)  # unidades Beira Mar/Porto, áreas e turnos oficiais (normalmente já criados pela migração 0003)
     for k, (v, desc) in CONFIGS.items():
         if not db.get(Configuracao, k):
             db.add(Configuracao(chave=k, valor=v, descricao=desc))

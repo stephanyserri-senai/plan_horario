@@ -220,3 +220,40 @@ details.avancado summary { cursor: pointer; color: var(--primaria); }
 .grade td.bloco .aula { min-height: calc(var(--n) * 54px - 6px); display: flex; flex-direction: column; justify-content: flex-start; }
 .grade td.bloco .aula + .aula { min-height: 0; }
 .grade tr.novo-turno > * { border-top: 3px solid var(--borda); }
+
+/* ---------- Cronograma (Gantt) ---------- */
+.gantt { overflow-x: auto; border: 1px solid var(--borda); border-radius: 10px; background: var(--superficie); position: relative; }
+.gantt-inner { position: relative; }
+.gantt-cab { display: flex; position: sticky; top: 0; z-index: 3; background: var(--fundo); border-bottom: 1px solid var(--borda); height: 44px; }
+.gantt-rot { width: 320px; flex-shrink: 0; position: sticky; left: 0; z-index: 2; background: var(--superficie); border-right: 1px solid var(--borda);
+  display: flex; align-items: center; gap: 4px; font-size: .82rem; overflow: hidden; white-space: nowrap; padding-right: 6px; }
+.gantt-rot-cab { background: var(--fundo); font-weight: 600; padding-left: 10px; color: var(--mudo); }
+.gantt-escala { position: relative; flex-shrink: 0; }
+.gantt-mes { position: absolute; top: 2px; font-size: .78rem; font-weight: 600; padding-left: 4px; border-left: 1px solid var(--borda); height: 20px; }
+.gantt-sem { position: absolute; top: 24px; font-size: .65rem; color: var(--mudo); padding-left: 2px; border-left: 1px solid var(--borda); height: 18px; }
+.gantt-corpo { position: relative; }
+.gantt-linha { display: flex; height: 30px; border-bottom: 1px solid var(--borda); }
+.gantt-linha.nivel-area { background: var(--fundo); font-weight: 700; }
+.gantt-linha.nivel-area .gantt-rot { background: var(--fundo); }
+.gantt-linha.nivel-curso .gantt-rot { font-weight: 600; }
+.gantt-nome { overflow: hidden; text-overflow: ellipsis; flex: 1; }
+.gantt-caret { width: 18px; border: none; background: none; cursor: pointer; color: var(--mudo); padding: 0; flex-shrink: 0; }
+.gantt-st { font-size: .72rem; flex-shrink: 0; }
+.gantt-trilha { position: relative; flex-shrink: 0; }
+.gantt-grade { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--borda); opacity: .5; }
+.gantt-barra { position: absolute; top: 7px; height: 16px; border-radius: 4px; overflow: hidden; display: flex; background: var(--ch-falta); }
+.gantt-barra.grupo { top: 11px; height: 8px; background: var(--mudo); opacity: .75; }
+.gantt-barra .seg { position: absolute; top: 0; bottom: 0; left: 0; }
+.gantt-barra .seg.programada { background: var(--ch-programada); }
+.gantt-barra .seg.realizada { background: var(--ch-realizada); }
+.gantt-barra .seg.falta { background: repeating-linear-gradient(45deg, var(--ch-programada), var(--ch-programada) 3px, transparent 3px, transparent 7px); opacity: .7; }
+.gantt-barra.cam { box-shadow: 0 0 0 2px var(--texto); }
+.gantt-barra.critico { box-shadow: 0 0 0 2px var(--erro); }
+.gantt-barra.grupo.atrasado { background: var(--erro); }
+.gantt-atraso { position: absolute; top: 0; bottom: 0; background: var(--erro); opacity: .55; }
+.gantt-prazo { position: absolute; top: 0; font-size: .7rem; color: var(--texto); line-height: 1; }
+.gantt-hoje { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--alerta); z-index: 1; }
+.gantt-dica { position: fixed; z-index: 50; max-width: 290px; background: var(--superficie); border: 1px solid var(--borda); border-radius: 8px;
+  padding: 8px 10px; font-size: .8rem; box-shadow: 0 4px 16px rgba(0,0,0,.18); pointer-events: none; display: grid; gap: 2px; }
+.gantt-legenda { flex-wrap: wrap; margin-bottom: 8px; }
+.leg-prazo { font-size: .7rem; } .leg-hoje { color: var(--alerta); }

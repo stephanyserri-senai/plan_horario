@@ -88,7 +88,7 @@ def test_api_importa_sem_ortools():
 def test_saude_informa_fila_e_migracao(mundo):
     from app.main import app
     r = TestClient(app).get("/api/saude").json()
-    assert r["status"] == "ok" and r["migracao"] == "0002" and "execucoes_pendentes" in r["fila"]
+    assert r["status"] == "ok" and r["migracao"] == "0003" and "execucoes_pendentes" in r["fila"]
 
 
 # ------------------------------------------------------------------ RLS / Data API do Supabase
@@ -151,11 +151,14 @@ def test_sql_offline_das_migracoes_reproduz_banco_novo():
             assert c.scalar(text("SELECT count(*) FROM usuarios WHERE email = 'admin'")) == 1
             assert c.scalar(text("SELECT count(*) FROM pg_class cl JOIN pg_namespace n ON n.oid = cl.relnamespace "
                                  "WHERE n.nspname = 'public' AND cl.relkind = 'r' AND NOT cl.relrowsecurity")) == 0
-            assert c.scalar(text("SELECT version_num FROM alembic_version")) == "0002"
+            assert c.scalar(text("SELECT version_num FROM alembic_version")) == "0003"
             assert c.scalar(text("SELECT count(*) FROM pg_constraint WHERE conname LIKE 'excl_alocacao_%'")) == 3
-            assert c.scalar(text("SELECT count(*) FROM unidades WHERE codigo = 'DEMO-U1'")) == 1
-            assert c.scalar(text("SELECT count(*) FROM periodos_horarios p JOIN unidades u ON u.id = p.unidade_id WHERE u.codigo = 'DEMO-U1'")) == 12
-            assert c.scalar(text("SELECT count(*) FROM turma_uc tu JOIN turmas t ON t.id = tu.turma_id WHERE t.codigo LIKE 'DEMO-%'")) == 8
+            # estrutura fixa da instituição (migração 0003), idêntica a app/core/estrutura.py
+            from app.core.estrutura import AREAS, UNIDADES
+            assert sorted(c.execute(text("SELECT codigo, nome FROM unidades WHERE codigo IN ('BEIRA-MAR','PORTO')")).all()) == sorted(UNIDADES)
+            assert sorted(c.execute(text("SELECT a.codigo, a.nome, u.codigo FROM areas a JOIN unidades u ON u.id = a.unidade_id")).all()) == sorted(AREAS)
+            assert c.scalar(text("SELECT count(*) FROM periodos_horarios p JOIN unidades u ON u.id = p.unidade_id WHERE u.codigo IN ('BEIRA-MAR','PORTO')")) == 24
+            assert c.scalar(text("SELECT count(*) FROM turma_uc tu JOIN turmas t ON t.id = tu.turma_id WHERE t.codigo LIKE 'DEMO-%'")) == 12
             assert c.scalar(text("SELECT valor->>'contagem' FROM configuracoes WHERE chave = 'regras_aula'")) == "hora_aula"
         eng.dispose()
     finally:
@@ -445,3 +448,63 @@ def test_dados_do_acompanhamento(db, mundo):
     ins = indicadores.ocupacao_instrutores(db, mundo.cen.id, d0, d1)
     linha = next(l for l in ins["instrutores"] if l["instrutor_id"] == mundo.i1.id)
     assert linha["turmas_lista"] == [mundo.t1.codigo] and sum(linha["por_dia_semana_h"].values()) > 0 and "limiares" in ins
+
+
+def _comandos_sql(texto: str) -> list[str]:
+    """Separa um script em comandos (respeitando blocos $$ ... $$), como um editor SQL."""
+    cmds, atual, dentro = [], [], False
+    for linha in texto.splitlines():
+        if linha.strip().startswith("--") and not dentro:
+            continue
+        atual.append(linha)
+        if linha.count("$$") % 2 == 1:
+            dentro = not dentro
+        if not dentro and linha.rstrip().endswith(";"):
+            cmd = "\n".join(atual).strip()
+            if cmd.strip(";").strip():
+                cmds.append(cmd)
+            atual = []
+    return cmds
+
+
+def test_scripts_do_sql_editor_funcionam_comando_a_comando():
+    """Pior caso do SQL Editor do Supabase: cada comando numa conexão nova (BEGIN/COMMIT sem efeito).
+    Banco na 0002 → atualizacao_0003.sql → demo_recarregar.sql (2x)."""
+    import psycopg
+    from alembic import command
+    from alembic.config import Config
+    from sqlalchemy import create_engine
+    base = URL.rsplit("/", 1)[0]
+    nome = f"plan_editor_{uuid.uuid4().hex[:6]}"
+    adm = create_engine(base + "/postgres", isolation_level="AUTOCOMMIT")
+    with adm.connect() as c:
+        c.execute(text(f"CREATE DATABASE {nome}"))
+    try:
+        url = f"{base}/{nome}"
+        cfg = Config(str(RAIZ / "backend" / "alembic.ini"))
+        cfg.set_main_option("script_location", str(RAIZ / "backend" / "alembic"))
+        os.environ["ALEMBIC_DATABASE_URL"] = url
+        try:
+            command.upgrade(cfg, "0002")
+        finally:
+            os.environ.pop("ALEMBIC_DATABASE_URL", None)
+        dsn = url.replace("postgresql+psycopg://", "postgresql://")
+        sql_dir = RAIZ / "backend" / "sql"
+        for arq, vezes in (("atualizacao_0003.sql", 1), ("seed_inicial.sql", 1), ("demo_recarregar.sql", 2)):
+            for _ in range(vezes):
+                for cmd in _comandos_sql((sql_dir / arq).read_text(encoding="utf-8")):
+                    with psycopg.connect(dsn, autocommit=True) as conn:
+                        conn.execute(cmd.encode())
+        eng = create_engine(url)
+        with eng.connect() as c:
+            assert c.scalar(text("SELECT version_num FROM alembic_version")) == "0003"
+            assert c.scalar(text("SELECT count(*) FROM areas")) == 11
+            assert c.scalar(text("SELECT count(*) FROM turmas WHERE codigo LIKE 'DEMO-%'")) == 3
+            assert c.scalar(text("SELECT count(*) FROM turma_uc tu JOIN turmas t ON t.id = tu.turma_id WHERE t.codigo LIKE 'DEMO-%'")) == 12
+            assert c.scalar(text("SELECT count(*) FROM turmas t JOIN unidades u ON u.id = t.unidade_id WHERE u.codigo = 'BEIRA-MAR' AND t.area_id IS NOT NULL")) == 3
+            assert c.scalar(text("SELECT count(*) FROM turnos t JOIN unidades u ON u.id = t.unidade_id WHERE u.codigo = 'BEIRA-MAR'")) == 3
+        eng.dispose()
+    finally:
+        with adm.connect() as c:
+            c.execute(text(f"DROP DATABASE IF EXISTS {nome} WITH (FORCE)"))
+        adm.dispose()

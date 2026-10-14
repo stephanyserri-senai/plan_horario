@@ -15,7 +15,7 @@ from app.core.db import get_db
 from app.core.deps import Contexto, get_contexto
 from app.core.errors import ConflitoConcorrencia, ConflitoValidacao, EntradaInvalida, NaoEncontrado
 from app.models import (
-    HistoricoAuditoria, MatrizCurricular, Turma, TurmaUC, UCPrerequisito, UCRecurso, UCTipoAmbiente, UnidadeCurricular,
+    Curso, HistoricoAuditoria, MatrizCurricular, Turma, TurmaUC, UCPrerequisito, UCRecurso, UCTipoAmbiente, Unidade, UnidadeCurricular,
     CompetenciaInstrutor,
 )
 from app.services import auditoria
@@ -85,7 +85,8 @@ def converter(ent: str, dados: dict, parcial: bool) -> dict:
         res[k] = v
     if not parcial:
         for f in campos(ent):
-            if f["obrigatorio"] and f["nome"] not in res and f["tipo"] != "multiref":
+            # a área é conferida em _regras_especificas (a turma pode herdá-la do curso)
+            if f["obrigatorio"] and f["nome"] not in res and f["tipo"] != "multiref" and f["nome"] != "area_id":
                 erros.append(f"{f['nome']}: obrigatório")
     if erros:
         raise EntradaInvalida("Dados inválidos: " + "; ".join(erros), detalhes={"erros": erros})
@@ -113,8 +114,38 @@ def _verificar_escopo(ctx: Contexto, ent: str, obj):
         raise AcessoNegado("Turma fora do seu escopo de acesso.")
 
 
+FIXA_MSG = ("As unidades (Beira Mar e Porto) e as áreas tecnológicas são fixas da instituição: não podem ser incluídas, "
+            "excluídas, inativadas nem renomeadas pelo sistema.")
+
+
 def _regras_especificas(db: Session, ent: str, obj, dados: dict, novo: bool):
     """Regras de integridade de negócio dos cadastros."""
+    cfg = ENTIDADES[ent]
+    if cfg.get("fixa") and novo:
+        raise ConflitoValidacao(FIXA_MSG, codigo="ESTRUTURA_FIXA")
+    if not novo:
+        mudou = [k for k in cfg.get("travados", []) if k in dados and getattr(obj, k) != dados[k]]
+        if mudou:
+            raise ConflitoValidacao(FIXA_MSG, codigo="ESTRUTURA_FIXA")
+    if "area_id" in {c.key for c in cfg["model"].__table__.columns}:
+        from app.models import Area
+        if ent == "turmas" and novo and not dados.get("area_id"):
+            curso = db.get(Curso, dados.get("curso_id") or obj.curso_id) if (dados.get("curso_id") or obj.curso_id) else None
+            if curso and curso.area_id:
+                obj.area_id = dados["area_id"] = curso.area_id  # turma herda a área do curso
+        area_id = dados.get("area_id", obj.area_id)
+        if novo and "area_id" in cfg.get("obrigatorios", []) and not area_id:
+            raise EntradaInvalida("Informe a área tecnológica (ex.: AUTOMAÇÃO, LOGÍSTICA).")
+        if area_id:
+            area = db.get(Area, int(area_id))
+            if area is None:
+                raise EntradaInvalida("Área inexistente.")
+            unidade_id = dados.get("unidade_id", obj.unidade_id)
+            if ent == "cursos" and not unidade_id:
+                obj.unidade_id = dados["unidade_id"] = area.unidade_id  # curso assume a unidade da área
+            elif unidade_id and int(unidade_id) != area.unidade_id:
+                un = db.get(Unidade, area.unidade_id)
+                raise ConflitoValidacao(f"A área {area.nome} pertence à {un.nome if un else 'outra unidade'}; escolha uma área da mesma unidade do cadastro.")
     if ent == "ucs" and not novo:
         em_uso = db.scalar(select(func.count()).select_from(Turma).where(Turma.matriz_id == obj.matriz_id, Turma.simulacao_id.is_(None)))
         estruturais = {"carga_horaria_total", "codigo", "matriz_id", "duracao_bloco_periodos", "ch_teorica", "ch_pratica"}
@@ -151,7 +182,8 @@ def _traduzir_integridade(e: IntegrityError):
 @router.get("/meta/entidades")
 def meta(ctx: Contexto = Depends(get_contexto)):
     return [{"chave": k, "rotulo": c["rotulo"], "grupo": c["grupo"], "campos": campos(k), "busca": c["busca"],
-             "inativavel": hasattr(c["model"], "ativo"), "pk": c.get("pk", ["id"])} for k, c in ENTIDADES.items()]
+             "inativavel": hasattr(c["model"], "ativo") and not c.get("fixa"), "fixa": bool(c.get("fixa")), "pk": c.get("pk", ["id"])}
+            for k, c in ENTIDADES.items()]
 
 
 @router.get("/cadastros/{ent}")
@@ -218,7 +250,12 @@ def opcoes(ent: str, q: str | None = None, limite: int = 500, db: Session = Depe
     res = []
     for o in db.scalars(stmt.limit(limite)):
         s = serializar(o, ent, ctx)
-        res.append({"id": s.get("id"), "rotulo": s["_rotulo"]})
+        item = {"id": s.get("id"), "rotulo": s["_rotulo"]}
+        if "unidade_id" in s:
+            item["unidade_id"] = s["unidade_id"]
+        if "area_id" in s:
+            item["area_id"] = s["area_id"]
+        res.append(item)
     return res
 
 
@@ -308,6 +345,8 @@ def reativar(ent: str, id_: str, dados: dict = Body(default={}), db: Session = D
 def _ativo(ent, id_, valor, motivo, db, ctx):
     ctx.exigir("cadastros.editar")
     cfg = _cfg(ent)
+    if cfg.get("fixa"):
+        raise ConflitoValidacao(FIXA_MSG, codigo="ESTRUTURA_FIXA")
     obj = db.get(cfg["model"], _pk(ent, id_))
     if obj is None or not hasattr(obj, "ativo"):
         raise NaoEncontrado("Registro não encontrado ou não inativável.")
@@ -326,6 +365,8 @@ def excluir(ent: str, id_: str, db: Session = Depends(get_db), ctx: Contexto = D
     ctx.exigir("cadastros.editar")
     cfg = _cfg(ent)
     M = cfg["model"]
+    if cfg.get("fixa"):
+        raise ConflitoValidacao(FIXA_MSG, codigo="ESTRUTURA_FIXA")
     if hasattr(M, "ativo") and ent not in ("disponibilidade_ambientes", "disponibilidade_instrutores", "calendario_excecoes", "bloqueios",
                                           "competencias", "habilitacoes", "periodos", "horarios_funcionamento", "deslocamentos"):
         raise ConflitoValidacao("Cadastros principais não são excluídos: utilize a inativação para preservar o histórico.")

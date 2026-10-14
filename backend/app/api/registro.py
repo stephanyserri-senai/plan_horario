@@ -5,7 +5,7 @@ from __future__ import annotations
 from sqlalchemy import ARRAY, Boolean, Date, DateTime, Float, Integer, Numeric, String, Text, Time
 
 from app.models import (
-    Ambiente, Bloqueio, Calendario, CalendarioExcecao, CompetenciaInstrutor, Curso, DeslocamentoUnidade, DisponibilidadeAmbiente,
+    Ambiente, Area, Bloqueio, Calendario, CalendarioExcecao, CompetenciaInstrutor, Curso, DeslocamentoUnidade, DisponibilidadeAmbiente,
     DisponibilidadeInstrutor, HabilitacaoInstrutor, HorarioFuncionamento, Instrutor, InstrutorUnidade, MatrizCurricular, PeriodoHorario,
     Recurso, RecursoAmbiente, Setor, TipoAmbiente, Turma, TurmaUC, Turno, UCPrerequisito, UCRecurso, Unidade, UnidadeCurricular,
 )
@@ -13,8 +13,12 @@ from app.models import (
 DIAS_OPCOES = [{"valor": i, "rotulo": d} for i, d in enumerate(["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"])]
 
 ENTIDADES: dict[str, dict] = {
-    "unidades": {"model": Unidade, "rotulo": "Unidades", "grupo": "Instituição", "label": "{codigo} – {nome}", "busca": ["codigo", "nome", "cidade"],
-                 "unidade_col": "id", "opcoes": {"situacao": ["ativa", "inativa"]}},
+    # Unidades e áreas são FIXAS (criadas pela migração 0003): não se inclui, exclui nem renomeia pela aplicação.
+    "unidades": {"model": Unidade, "rotulo": "Unidades", "grupo": "Instituição", "label": "{nome}", "busca": ["codigo", "nome", "cidade"],
+                 "unidade_col": "id", "opcoes": {"situacao": ["ativa", "inativa"]}, "fixa": True,
+                 "travados": ["codigo", "nome", "situacao", "ativo"]},
+    "areas": {"model": Area, "rotulo": "Áreas", "grupo": "Instituição", "label": "{nome}", "busca": ["codigo", "nome"], "unidade_col": "unidade_id",
+              "fixa": True, "travados": ["codigo", "nome", "unidade_id", "ativo"]},
     "setores": {"model": Setor, "rotulo": "Setores", "grupo": "Instituição", "label": "{nome}", "busca": ["nome", "responsavel"], "unidade_col": "unidade_id"},
     "deslocamentos": {"model": DeslocamentoUnidade, "rotulo": "Deslocamentos entre unidades", "grupo": "Instituição", "label": "{origem_id}→{destino_id}", "busca": []},
     "turnos": {"model": Turno, "rotulo": "Turnos", "grupo": "Calendário", "label": "{nome}", "busca": ["codigo", "nome"], "unidade_col": "unidade_id"},
@@ -30,7 +34,7 @@ ENTIDADES: dict[str, dict] = {
                   "busca": ["motivo", "tipo"], "opcoes": {"alvo_tipo": ["instrutor", "ambiente", "turma", "unidade", "recurso"],
                                                           "tipo": ["indisponibilidade", "manutencao", "atividade_administrativa", "atividade_pedagogica", "evento", "afastamento"]}},
     "cursos": {"model": Curso, "rotulo": "Cursos", "grupo": "Acadêmico", "label": "{codigo} – {nome}", "busca": ["codigo", "nome", "eixo_tecnologico"],
-               "unidade_col": "unidade_id"},
+               "unidade_col": "unidade_id", "obrigatorios": ["area_id"]},
     "matrizes": {"model": MatrizCurricular, "rotulo": "Matrizes curriculares", "grupo": "Acadêmico", "label": "{versao}", "busca": ["versao"],
                  "opcoes": {"situacao": ["rascunho", "vigente", "encerrada"]}},
     "ucs": {"model": UnidadeCurricular, "rotulo": "Unidades curriculares", "grupo": "Acadêmico", "label": "{codigo} – {nome}",
@@ -40,19 +44,19 @@ ENTIDADES: dict[str, dict] = {
                     "pk": ["uc_id", "recurso_tipo"]},
     "tipos_ambiente": {"model": TipoAmbiente, "rotulo": "Tipos de ambiente", "grupo": "Ambientes", "label": "{nome}", "busca": ["codigo", "nome"]},
     "ambientes": {"model": Ambiente, "rotulo": "Ambientes", "grupo": "Ambientes", "label": "{codigo} – {nome}", "busca": ["codigo", "nome", "predio", "localizacao"],
-                  "unidade_col": "unidade_id", "opcoes": {"situacao": ["operacional", "manutencao", "interditado"]}},
+                  "unidade_col": "unidade_id", "obrigatorios": ["area_id"], "opcoes": {"situacao": ["operacional", "manutencao", "interditado"]}},
     "disponibilidade_ambientes": {"model": DisponibilidadeAmbiente, "rotulo": "Disponibilidade de ambientes", "grupo": "Ambientes", "label": "{dia_semana}",
                                   "busca": [], "dia": ["dia_semana"]},
     "recursos": {"model": Recurso, "rotulo": "Recursos e equipamentos", "grupo": "Ambientes", "label": "{codigo} – {nome}", "busca": ["codigo", "nome", "tipo"],
                  "unidade_col": "unidade_id", "opcoes": {"situacao": ["disponivel", "manutencao", "indisponivel"]}},
     "recursos_ambientes": {"model": RecursoAmbiente, "rotulo": "Equipamentos instalados em ambientes", "grupo": "Ambientes", "label": "{recurso_id}", "busca": []},
-    "turmas": {"model": Turma, "rotulo": "Turmas", "grupo": "Acadêmico", "label": "{codigo} – {nome}", "busca": ["codigo", "nome"], "unidade_col": "unidade_id",
+    "turmas": {"model": Turma, "rotulo": "Turmas", "grupo": "Acadêmico", "label": "{codigo} – {nome}", "busca": ["codigo", "nome"], "unidade_col": "unidade_id", "obrigatorios": ["area_id"],
                "dias": ["dias_possiveis"], "ocultar": ["simulacao_id"],
                "opcoes": {"situacao": ["planejada", "em_andamento", "concluida", "cancelada"]}},
     "turma_ucs": {"model": TurmaUC, "rotulo": "Ofertas (turma × UC)", "grupo": "Acadêmico", "label": "{turma_id}/{uc_id}", "busca": [],
                   "opcoes": {"situacao": ["prevista", "ofertada", "em_execucao", "concluida", "pendente", "cancelada"]}},
     "instrutores": {"model": Instrutor, "rotulo": "Instrutores", "grupo": "Instrutores", "label": "{nome} ({matricula})", "busca": ["nome", "matricula", "areas_competencia"],
-                    "unidade_col": "unidade_id", "pessoais": ["email"], "opcoes": {"situacao": ["ativo", "afastado", "ferias", "desligado"]}},
+                    "unidade_col": "unidade_id", "obrigatorios": ["area_id"], "pessoais": ["email"], "opcoes": {"situacao": ["ativo", "afastado", "ferias", "desligado"]}},
     "instrutor_unidades": {"model": InstrutorUnidade, "rotulo": "Unidades de atuação", "grupo": "Instrutores", "label": "{unidade_id}", "busca": [],
                            "pk": ["instrutor_id", "unidade_id"]},
     "competencias": {"model": CompetenciaInstrutor, "rotulo": "Matriz de competências", "grupo": "Instrutores", "label": "{instrutor_id}/{uc_id}",
@@ -93,7 +97,7 @@ ROTULOS = {
 REFS = {"curso_id": "Curso", "matriz_id": "Matriz", "unidade_id": "Unidade", "calendario_id": "Calendário", "turno_id": "Turno", "turma_id": "Turma",
         "uc_id": "Unidade curricular", "instrutor_id": "Instrutor", "ambiente_id": "Ambiente", "recurso_id": "Recurso", "tipo_ambiente_id": "Tipo de ambiente",
         "prerequisito_id": "Pré-requisito", "origem_id": "Unidade de origem", "destino_id": "Unidade de destino", "matriz_origem_id": "Matriz de origem",
-        "instrutor_preferido_id": "Instrutor preferido", "turno_preferencial_id": "Turno preferencial"}
+        "instrutor_preferido_id": "Instrutor preferido", "turno_preferencial_id": "Turno preferencial", "area_id": "Área"}
 
 
 def tipo_coluna(col) -> str:
@@ -125,9 +129,9 @@ def campos(chave: str) -> list[dict]:
     for col in cfg["model"].__table__.columns:
         if col.key in cfg.get("ocultar", []):
             continue
-        f = {"nome": col.key, "tipo": tipo_coluna(col), "obrigatorio": not col.nullable and col.default is None and col.server_default is None
-             and col.key not in SOMENTE_LEITURA and not (col.primary_key and col.key == "id"),
-             "somente_leitura": col.key in SOMENTE_LEITURA,
+        f = {"nome": col.key, "tipo": tipo_coluna(col), "obrigatorio": (not col.nullable and col.default is None and col.server_default is None
+             and col.key not in SOMENTE_LEITURA and not (col.primary_key and col.key == "id")) or col.key in cfg.get("obrigatorios", []),
+             "somente_leitura": col.key in SOMENTE_LEITURA or col.key in cfg.get("travados", []),
              "rotulo": ROTULOS.get(col.key) or REFS.get(col.key) or col.key.replace("_", " ").capitalize()}
         fks = list(col.foreign_keys)
         if fks:
