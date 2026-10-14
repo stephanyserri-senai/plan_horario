@@ -3,6 +3,7 @@ import { NavLink, Navigate, Route, Routes, useNavigate } from "react-router-dom"
 import { api } from "./api";
 import { Campo, Erro, EstadoCenario, Modal } from "./components/ui";
 import { useApp } from "./contexto";
+import Acompanhamento from "./pages/Acompanhamento";
 import Auditoria from "./pages/Auditoria";
 import Cadastro from "./pages/Cadastro";
 import Configuracoes from "./pages/Configuracoes";
@@ -21,6 +22,7 @@ type Item = { para: string; rotulo: string; icone: string; acao?: string };
 const MENU: { grupo: string; itens: Item[] }[] = [
   { grupo: "Planejamento", itens: [
     { para: "/", rotulo: "Início", icone: "▦", acao: "indicadores.ler" },
+    { para: "/acompanhamento", rotulo: "Acompanhamento", icone: "📊", acao: "indicadores.ler" },
     { para: "/grade", rotulo: "Grade horária", icone: "▤", acao: "alocacoes.ler" },
     { para: "/geracao", rotulo: "Gerar horários", icone: "⚙", acao: "alocacoes.ler" },
     { para: "/planejamento", rotulo: "Cenários e aprovação", icone: "☰", acao: "alocacoes.ler" },
@@ -139,6 +141,7 @@ export default function App() {
         <main>
           <Routes>
             <Route path="/" element={<Dashboard />} />
+            <Route path="/acompanhamento" element={<Acompanhamento />} />
             <Route path="/grade" element={<Grade />} />
             <Route path="/planejamento" element={<Planejamento />} />
             <Route path="/geracao" element={<Geracao />} />

@@ -222,6 +222,8 @@ def ocupacao_instrutores(db: Session, cenario_id: int, d0: date, d1: date, unida
         turnos_un[t.unidade_id].append(t)
     nomes_turno = {t.id: t.nome for t in turnos}
     ambientes = {a.id: a for a in db.scalars(select(Ambiente))}
+    cod_turma = dict(db.execute(select(Turma.id, Turma.codigo)).all())
+    cod_uc = dict(db.execute(select(UnidadeCurricular.id, UnidadeCurricular.codigo)).all())
     linhas = []
     for inst in instrutores:
         aulas = db.scalars(select(Alocacao).where(Alocacao.cenario_id == cenario_id, Alocacao.instrutor_id == inst.id,
@@ -264,6 +266,8 @@ def ocupacao_instrutores(db: Session, cenario_id: int, d0: date, d1: date, unida
             "por_turno_h": {k: round(v, 2) for k, v in por_turno.items()},
             "por_unidade_h": {str(k): round(v, 2) for k, v in por_unidade.items()},
             "ucs": len({a.uc_id for a in aulas}), "turmas": len({a.turma_id for a in aulas}),
+            "turmas_lista": sorted({cod_turma.get(a.turma_id, "?") for a in aulas}), "ucs_lista": sorted({cod_uc.get(a.uc_id, "?") for a in aulas}),
+            "por_dia_semana_h": {DIAS[i]: round(sum(a.minutos_aula for a in aulas if a.data.weekday() == i) / 60 / n_sem, 2) for i in range(6)},
             "janelas_h": round(janelas, 2), "deslocamentos": deslocamentos, "semanas_acima_limite": semanas_excesso,
             "critico": ocup >= lim["instrutor_critico_pct"] or semanas_excesso > 0,
         }
@@ -278,7 +282,7 @@ def ocupacao_instrutores(db: Session, cenario_id: int, d0: date, d1: date, unida
             "criticos": sum(1 for l in linhas if l["critico"]),
             "sem_aulas": sum(1 for l in linhas if l["alocada_total_h"] == 0),
         },
-        "instrutores": linhas,
+        "instrutores": linhas, "limiares": lim,
         "formula": "ocupação = horas alocadas por semana (média) ÷ capacidade efetiva para ensino (mínimo entre limite letivo e disponibilidade declarada) × 100",
     }
 
@@ -322,8 +326,11 @@ def turmas_ucs(db: Session, cenario_id: int, data_referencia: date | None = None
         for a in aulas:
             dist[DIAS[a.data.weekday()]] += a.minutos_aula / 60
         elegiveis = instrutores_elegiveis(db, uc, turma.unidade_id, data_referencia)
+        nomes_inst = {i.id: i.nome for i in db.scalars(select(Instrutor).where(Instrutor.id.in_({x.instrutor_id for x in aulas if x.instrutor_id})))} if aulas else {}
         info.update({
-            "turma_nome": turma.nome, "percentual_conclusao": round(100 * info["realizada_h"] / info["total_h"], 1) if info["total_h"] else 0.0,
+            "turma_nome": turma.nome, "instrutores": sorted(set(nomes_inst.values())),
+            "proxima_aula": (lambda d: d.isoformat() if d else None)(min((a.data for a in aulas if a.data >= data_referencia and a.status == "programada"), default=None)),
+            "ultima_aula": (lambda d: d.isoformat() if d else None)(max((a.data for a in aulas), default=None)), "percentual_conclusao": round(100 * info["realizada_h"] / info["total_h"], 1) if info["total_h"] else 0.0,
             "percentual_programado": round(100 * (info["realizada_h"] + info["programada_h"]) / info["total_h"], 1) if info["total_h"] else 0.0,
             "encontros_planejados": len(aulas), "distribuicao_semanal_h": dict(dist),
             "ambientes_utilizados": sorted({a.ambiente_id for a in aulas if a.ambiente_id}),

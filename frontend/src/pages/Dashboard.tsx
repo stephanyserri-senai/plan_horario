@@ -4,11 +4,14 @@ import { api, dataBR, qs } from "../api";
 import { Badge, Card, Kpi, Modal, Pagina, Tabela, useCarregar } from "../components/ui";
 import { useApp } from "../contexto";
 import { PrimeirosPassos } from "../components/PrimeirosPassos";
+import { Medidor } from "../components/Visual";
+import { useNavigate } from "react-router-dom";
 
 const COR = "var(--grafico-1)";
 
 export default function Dashboard() {
   const { cenario } = useApp();
+  const nav = useNavigate();
   const [inicio, setInicio] = useState("");
   const [fim, setFim] = useState("");
   const [detalhe, setDetalhe] = useState<{ titulo: string; linhas: any[]; colunas: any[] } | null>(null);
@@ -22,10 +25,10 @@ export default function Dashboard() {
   const i = ins.dados;
   const colAmb = [{ chave: "codigo", rotulo: "Ambiente" }, { chave: "tipo", rotulo: "Tipo" }, { chave: "horas_disponiveis", rotulo: "Disp. (h)", alinhar: "dir" as const },
     { chave: "horas_ocupadas", rotulo: "Ocup. (h)", alinhar: "dir" as const }, { chave: "horas_ociosas", rotulo: "Ociosas (h)", alinhar: "dir" as const },
-    { chave: "taxa_ocupacao_pct", rotulo: "Ocupação %", alinhar: "dir" as const }, { chave: "utilizacao_capacidade_fisica_pct", rotulo: "Uso cap. física %", alinhar: "dir" as const },
+    { chave: "taxa_ocupacao_pct", rotulo: "Ocupação", render: (l: any) => <Medidor pct={l.taxa_ocupacao_pct} /> }, { chave: "utilizacao_capacidade_fisica_pct", rotulo: "Uso cap. física %", alinhar: "dir" as const },
     { chave: "classificacao", rotulo: "Situação", render: (l: any) => <Badge tipo={l.classificacao === "adequado" ? "ok" : l.classificacao === "demanda_excessiva" ? "bloqueio" : "alerta"}>{l.classificacao.replace("_", " ")}</Badge> }];
   const colIns = [{ chave: "nome", rotulo: "Instrutor" }, { chave: "capacidade_efetiva_h", rotulo: "Capacidade p/ ensino (h/sem)", alinhar: "dir" as const },
-    { chave: "alocada_media_semanal_h", rotulo: "Alocada (h/sem)", alinhar: "dir" as const }, { chave: "ocupacao_pct", rotulo: "Ocupação %", alinhar: "dir" as const },
+    { chave: "alocada_media_semanal_h", rotulo: "Alocada (h/sem)", alinhar: "dir" as const }, { chave: "ocupacao_pct", rotulo: "Ocupação", render: (l: any) => <Medidor pct={l.ocupacao_pct} alerta={90} /> },
     { chave: "ucs", rotulo: "UCs", alinhar: "dir" as const }, { chave: "turmas", rotulo: "Turmas", alinhar: "dir" as const }, { chave: "janelas_h", rotulo: "Janelas (h)", alinhar: "dir" as const },
     { chave: "critico", rotulo: "Crítico", render: (l: any) => l.critico ? <Badge tipo="alerta">sim</Badge> : "não" }];
   const colUc = [{ chave: "turma_codigo", rotulo: "Turma" }, { chave: "uc_codigo", rotulo: "UC" }, { chave: "restante_h", rotulo: "Restante (h)", alinhar: "dir" as const },
@@ -44,7 +47,7 @@ export default function Dashboard() {
         <p className="sub">Período: {dataBR(d.periodo.inicio)} a {dataBR(d.periodo.fim)}</p>
         <div className="kpis">
           <Kpi rotulo="Carga horária alocada" valor={`${d.percentual_aulas_alocadas}%`} detalhe={`${d.turmas_ucs.ch_programada_h + d.turmas_ucs.ch_realizada_h} de ${d.turmas_ucs.ch_total_h} h`} />
-          <Kpi rotulo="Turmas com programação incompleta" valor={d.turmas_programacao_incompleta} tom={d.turmas_programacao_incompleta ? "alerta" : "ok"} />
+          <Kpi rotulo="Turmas com programação incompleta" valor={d.turmas_programacao_incompleta} tom={d.turmas_programacao_incompleta ? "alerta" : "ok"} detalhe="clique para acompanhar" onClick={() => nav("/acompanhamento")} />
           <Kpi rotulo="Ocupação temporal dos ambientes" valor={`${a.resumo.taxa_ocupacao_pct}%`} detalhe={`${a.resumo.horas_ocupadas} h de ${a.resumo.horas_disponiveis} h disponíveis`}
             onClick={() => setDetalhe({ titulo: "Ocupação por ambiente", linhas: a.ambientes, colunas: colAmb })} />
           <Kpi rotulo="Ocupação média dos instrutores" valor={`${i.resumo.ocupacao_media_pct}%`} detalhe={`${i.resumo.criticos} crítico(s)`}

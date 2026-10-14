@@ -423,3 +423,19 @@ def test_status_de_processamento_e_primeiros_passos(db, mundo):
     feitos = {p["chave"]: p["feito"] for p in pp["passos"]}
     assert feitos["unidades"] and feitos["turmas"] and feitos["cenario"] and not feitos["grade"]
     assert pp["total"] == len(pp["passos"]) and 0 < pp["concluidos"] < pp["total"]
+
+
+def test_dados_do_acompanhamento(db, mundo):
+    """Painel de acompanhamento: turmas×UCs com instrutores/prazos e instrutores com turmas, UCs e horas por dia."""
+    from datetime import date as _d
+    from app.services import alocacao, indicadores
+    from tests.conftest import aula
+    alocacao.criar_aula(db, mundo.ctx, mundo.cen.id, aula(mundo, db, mundo.t1, mundo.uc_a, instrutor=mundo.i1, ambiente=mundo.s1))
+    db.commit()
+    tu = indicadores.turmas_ucs(db, mundo.cen.id, _d(2020, 1, 1))
+    item = next(i for i in tu["itens"] if i["programada_h"] > 0)
+    assert item["instrutores"] == [mundo.i1.nome] and item["proxima_aula"] and item["turma_id"] == mundo.t1.id
+    d0, d1 = indicadores.periodo_padrao(db, mundo.cen)
+    ins = indicadores.ocupacao_instrutores(db, mundo.cen.id, d0, d1)
+    linha = next(l for l in ins["instrutores"] if l["instrutor_id"] == mundo.i1.id)
+    assert linha["turmas_lista"] == [mundo.t1.codigo] and sum(linha["por_dia_semana_h"].values()) > 0 and "limiares" in ins

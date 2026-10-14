@@ -85,7 +85,7 @@ export default function Geracao() {
         <Card titulo="Como o sistema escolhe a melhor grade">
           <p className="sub">Regras obrigatórias (nunca são quebradas): nenhum conflito de turma, instrutor ou sala; instrutor habilitado; sala compatível e com capacidade; disponibilidades, feriados e bloqueios respeitados.</p>
           <p className="sub">Entre as grades possíveis, o sistema prefere a que atende melhor os critérios abaixo (quanto maior a importância, mais o critério pesa):</p>
-          <Tabela colunas={[{ chave: "descricao", rotulo: "Critério" }, { chave: "peso", rotulo: "Importância", alinhar: "dir", render: (c: any) => conj?.pesos?.[c.criterio] ?? c.peso_padrao }]}
+          <Tabela colunas={[{ chave: "descricao", rotulo: "Critério" }, { chave: "peso", rotulo: "Importância", render: (c: any) => <Nivel peso={conj?.pesos?.[c.criterio] ?? c.peso_padrao} /> }]}
             linhas={crit.dados || []} chave={(c) => c.criterio} />
           <p className="sub">A importância de cada critério pode ser ajustada em Configurações.</p>
         </Card>
@@ -142,4 +142,13 @@ function DetalheExecucao({ e, criterios }: { e: any; criterios: any[] }) {
         <Tabela colunas={[{ chave: "atividade", rotulo: "Turma / unidade curricular" }, { chave: "data", rotulo: "Data", render: (x: any) => dataBR(x.data) }, { chave: "motivo", rotulo: "Motivo" }]} linhas={ap.datas_puladas.slice(0, 200)} chave={(_x, i) => i} /></details>}
     </div>
   );
+}
+
+/** Importância em 5 níveis (escala logarítmica dos pesos), em vez do número cru. */
+function Nivel({ peso }: { peso: number }) {
+  const p = Number(peso) || 0;
+  const n = p <= 0 ? 0 : p < 1 ? 1 : p < 10 ? 2 : p < 30 ? 3 : p < 200 ? 4 : 5;
+  const nome = ["desligado", "muito baixa", "baixa", "média", "alta", "muito alta"][n];
+  return <span className="nivel" title={`Importância ${nome} (peso ${p})`} aria-label={`Importância ${nome}`}>
+    {[1, 2, 3, 4, 5].map((i) => <i key={i} className={i <= n ? "on" : ""} />)}<small>{nome}</small></span>;
 }

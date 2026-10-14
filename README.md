@@ -121,7 +121,7 @@ cd backend && PLAN_TEST_DATABASE_URL=postgresql+psycopg://plan:plan@localhost:54
 cd frontend && npm run typecheck && npm run build
 ```
 
-Resultado atual: **62 testes passando** contra PostgreSQL real (36 funcionais + 26 de publicação e operação na Vercel/Supabase; ver [TESTING.md](TESTING.md)). Os testes verificam o resultado e a integridade final no banco.
+Resultado atual: **63 testes passando** contra PostgreSQL real (36 funcionais + 27 de publicação e operação na Vercel/Supabase; ver [TESTING.md](TESTING.md)). Os testes verificam o resultado e a integridade final no banco.
 O CI (`.github/workflows/ci.yml`) executa a mesma suíte e o build do frontend.
 
 | Caso exigido (seção 20) | Teste |

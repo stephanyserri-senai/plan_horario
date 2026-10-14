@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { api, dataBR, qs } from "../api";
-import { Abas, Badge, Campo, Card, AntesDepois, Erro, EstadoCenario, Modal, ResumoTabela, rotulo, OcorrenciasLista, Pagina, Tabela, useCarregar } from "../components/ui";
+import { Abas, Badge, Campo, Card, Kpi, AntesDepois, Erro, EstadoCenario, Modal, ResumoTabela, rotulo, OcorrenciasLista, Pagina, Tabela, useCarregar } from "../components/ui";
 import { useApp } from "../contexto";
 import { useOpcoes } from "../hooks";
+import { PainelAcompanhamento } from "./Acompanhamento";
+import { BarraCH, FluxoCenario, LegendaCH } from "../components/Visual";
 
 const PROXIMOS: Record<string, { estado: string; rotulo: string; acao: string }[]> = {
   em_elaboracao: [{ estado: "em_validacao", rotulo: "Enviar para validação", acao: "cenarios.editar" }],
@@ -13,11 +15,14 @@ const PROXIMOS: Record<string, { estado: string; rotulo: string; acao: string }[
 };
 
 export default function Planejamento() {
-  const [aba, setAba] = useState("cenarios");
+  const [aba, setAba] = useState("acompanhamento");
+  const { cenario } = useApp();
   return (
-    <Pagina titulo="Planejamento" descricao="Cenários, ciclo de aprovação e publicação, matriz de oferta, validação, versões e comparações.">
-      <Abas abas={[{ id: "cenarios", rotulo: "Cenários" }, { id: "oferta", rotulo: "Matriz de oferta" }, { id: "validacao", rotulo: "Validação" },
-        { id: "versoes", rotulo: "Versões" }, { id: "comparar", rotulo: "Comparar cenários" }]} ativa={aba} mudar={setAba} />
+    <Pagina titulo="Planejamento" descricao="Acompanhe o andamento, cuide dos cenários (versões do planejamento), confira conflitos e compare alternativas.">
+      {cenario && <FluxoCenario estado={cenario.estado} />}
+      <Abas abas={[{ id: "acompanhamento", rotulo: "Acompanhamento" }, { id: "cenarios", rotulo: "Cenários e aprovação" }, { id: "oferta", rotulo: "Turma × UC (detalhe)" },
+        { id: "validacao", rotulo: "Conferir conflitos" }, { id: "versoes", rotulo: "Histórico de versões" }, { id: "comparar", rotulo: "Comparar cenários" }]} ativa={aba} mudar={setAba} />
+      {aba === "acompanhamento" && <PainelAcompanhamento />}
       {aba === "cenarios" && <Cenarios />}
       {aba === "oferta" && <Oferta />}
       {aba === "validacao" && <Validacao />}
@@ -101,17 +106,17 @@ function Oferta() {
   const d = useCarregar<any[]>(() => cenario ? api.get(`/api/planejamento/oferta${qs({ cenario_id: cenario.id, turma_id: turma })}`) : Promise.resolve([]), [cenario?.id, turma]);
   return (
     <>
-      <div className="filtros"><select aria-label="Turma" value={turma} onChange={(e) => setTurma(e.target.value)}><option value="">Todas as turmas</option>{turmas.map((t) => <option key={t.id} value={t.id}>{t.rotulo}</option>)}</select></div>
+      <div className="filtros"><LegendaCH /><select aria-label="Turma" value={turma} onChange={(e) => setTurma(e.target.value)}><option value="">Todas as turmas</option>{turmas.map((t) => <option key={t.id} value={t.id}>{t.rotulo}</option>)}</select></div>
       {d.carregando && <p role="status">Calculando…</p>}
       <Tabela colunas={[
         { chave: "turma_codigo", rotulo: "Turma" }, { chave: "uc", rotulo: "UC", render: (l: any) => <>{l.uc_codigo} – {l.uc_nome}</> },
         { chave: "estado_planejamento", rotulo: "Situação", render: (l: any) => <Badge tipo={l.estado_planejamento === "programada_integralmente" ? "ok" : l.estado_planejamento === "pendente_alocacao" ? "alerta" : "info"}>{l.estado_planejamento.replaceAll("_", " ")}</Badge> },
-        { chave: "total_h", rotulo: "Total (h)", alinhar: "dir" }, { chave: "realizada_h", rotulo: "Realizada", alinhar: "dir" }, { chave: "programada_h", rotulo: "Programada", alinhar: "dir" },
-        { chave: "restante_h", rotulo: "Restante", alinhar: "dir" }, { chave: "encontros_necessarios", rotulo: "Encontros nec.", alinhar: "dir" },
+        { chave: "andamento", rotulo: "Andamento", render: (l: any) => <BarraCH total={l.total_h} realizada={l.realizada_h} programada={l.programada_h} /> },
+        { chave: "total_h", rotulo: "Total (h)", alinhar: "dir" }, { chave: "encontros_necessarios", rotulo: "Aulas que faltam", alinhar: "dir" },
         { chave: "data_limite", rotulo: "Prazo", render: (l: any) => dataBR(l.data_limite) },
         { chave: "inst", rotulo: "Instrutores elegíveis", render: (l: any) => l.instrutores_elegiveis.length ? l.instrutores_elegiveis.map((i: any) => i.nome).join(", ") : <Badge tipo="bloqueio">nenhum</Badge> },
         { chave: "amb", rotulo: "Ambientes compatíveis", render: (l: any) => l.ambientes_compativeis.length ? l.ambientes_compativeis.map((a: any) => a.codigo).join(", ") : <Badge tipo="bloqueio">nenhum</Badge> },
-        { chave: "por", rotulo: "", render: (l: any) => l.restante_h > 0 && <button className="btn-link" onClick={async () => setExplicacao(await api.get(`/api/recomendacoes/nao_alocacao${qs({ cenario_id: cenario!.id, turma_uc_id: l.turma_uc_id })}`))}>Por que está pendente?</button> },
+        { chave: "por", rotulo: "", render: (l: any) => l.restante_h > 0 && <button className="btn" onClick={async () => setExplicacao(await api.get(`/api/recomendacoes/nao_alocacao${qs({ cenario_id: cenario!.id, turma_uc_id: l.turma_uc_id })}`))}>Por que está pendente?</button> },
       ]} linhas={d.dados || []} chave={(l) => l.turma_uc_id} />
       <Modal titulo="Recomendação explicável" aberto={!!explicacao} fechar={() => setExplicacao(null)} largo>{explicacao && <Recomendacao r={explicacao} />}</Modal>
     </>
@@ -174,6 +179,12 @@ function Validacao() {
         <select aria-label="Severidade" value={sev} onChange={(e) => setSev(e.target.value)}><option value="">Todas as severidades</option>
           {["bloqueio", "alerta", "preferencia", "recomendacao"].map((s) => <option key={s}>{s}</option>)}</select>
       </div>
+      {v.dados?.validacao && <div className="kpis">
+        <Kpi rotulo="⛔ Bloqueios (conflitos)" valor={v.dados.validacao.total_bloqueios} tom={v.dados.validacao.total_bloqueios ? "erro" : "ok"} detalhe="precisam ser resolvidos" onClick={() => setSev("bloqueio")} />
+        <Kpi rotulo="⚠ Alertas" valor={v.dados.validacao.total_alertas} tom={v.dados.validacao.total_alertas ? "alerta" : "ok"} detalhe="recomenda-se revisar" onClick={() => setSev("alerta")} />
+        <Kpi rotulo="◐ Preferências não atendidas" valor={v.dados.validacao.total_preferencias} onClick={() => setSev("preferencia")} />
+        <Kpi rotulo="💡 Recomendações" valor={v.dados.validacao.total_recomendacoes} onClick={() => setSev("recomendacao")} />
+      </div>}
       {v.dados?.validacao && <p className="sub">Última validação em {new Date(v.dados.validacao.executado_em).toLocaleString("pt-BR")}: {v.dados.validacao.total_bloqueios} bloqueio(s),
         {" "}{v.dados.validacao.total_alertas} alerta(s), {v.dados.validacao.total_preferencias} preferência(s) não atendida(s), {v.dados.validacao.total_recomendacoes} recomendação(ões).</p>}
       <Tabela colunas={[{ chave: "severidade", rotulo: "Severidade", render: (o: any) => <Badge tipo={o.severidade} /> }, { chave: "regra", rotulo: "Regra" },
