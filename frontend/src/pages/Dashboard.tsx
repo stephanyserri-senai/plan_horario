@@ -60,8 +60,10 @@ export default function Dashboard() {
         </div>
         <div className="grid-2">
           <Card titulo="Ocupação por turno (%)">
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={a.por_turno}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="turno" /><YAxis unit="%" /><Tooltip /><Bar dataKey="taxa_ocupacao_pct" name="Ocupação %" fill={COR} /></BarChart>
+            <ResponsiveContainer width="100%" height={240}>
+              <BarChart data={a.por_turno} margin={{ bottom: 8 }}><CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="turno" interval={0} height={44} tick={<RotuloDuasLinhas />} /><YAxis unit="%" /><Tooltip />
+                <Bar dataKey="taxa_ocupacao_pct" name="Ocupação %" fill={COR} /></BarChart>
             </ResponsiveContainer>
             <Tabela colunas={[{ chave: "turno", rotulo: "Turno" }, { chave: "horas_ocupadas", rotulo: "Ocupadas (h)", alinhar: "dir" }, { chave: "horas_disponiveis", rotulo: "Disponíveis (h)", alinhar: "dir" }, { chave: "taxa_ocupacao_pct", rotulo: "%", alinhar: "dir" }]} linhas={a.por_turno} chave={(l) => l.turno_id} />
           </Card>
@@ -95,5 +97,16 @@ export default function Dashboard() {
         {detalhe && <Tabela colunas={detalhe.colunas} linhas={detalhe.linhas} chave={(_l, k) => k} />}
       </Modal>
     </Pagina>
+  );
+}
+
+/** Rótulo do eixo em duas linhas ("Tarde – Beira Mar" → "Tarde" / "Beira Mar"), para todas as colunas caberem. */
+function RotuloDuasLinhas({ x, y, payload }: any) {
+  const [l1, ...resto] = String(payload?.value ?? "").split(" – ");
+  return (
+    <text x={x} y={y + 12} textAnchor="middle" fontSize={12} fill="currentColor">
+      <tspan x={x}>{l1}</tspan>
+      {resto.length > 0 && <tspan x={x} dy={14} opacity={0.75}>{resto.join(" – ")}</tspan>}
+    </text>
   );
 }
