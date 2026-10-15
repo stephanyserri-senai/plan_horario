@@ -76,6 +76,12 @@ const LARGOS = new Set(["multiref", "competencias", "disponibilidade", "jornada"
 
 /** Formulário em seções: o essencial de cara, o resto em "Mais opções"; campos que vêm de outro cadastro não aparecem. */
 export function Formulario({ meta, valores, setValores }: { meta: EntMeta; valores: any; setValores: (v: any) => void }) {
+  const { unidade: unidadeTopo } = useApp();
+  const temUnidade = meta.campos.some((c) => c.nome === "unidade_id");
+  // com a unidade escolhida no topo, o cadastro novo já nasce nela (o campo nem aparece)
+  useEffect(() => {
+    if (unidadeTopo && temUnidade && !valores.unidade_id) setValores({ ...valores, unidade_id: Number(unidadeTopo) });
+  }, [unidadeTopo, temUnidade, valores.unidade_id]);
   const areas = useOpcoes(meta.chave === "instrutores" || meta.chave === "ambientes" ? "areas" : null) as any[];
   const cursos = useOpcoes(meta.chave === "turmas" ? "cursos" : null) as any[];
   const set = (k: string, v: any) => {
@@ -109,7 +115,8 @@ export function Formulario({ meta, valores, setValores }: { meta: EntMeta; valor
   const unidadeAuto = meta.chave === "instrutores" || meta.chave === "ambientes";
   const editaveis = meta.campos.filter((c) => !c.somente_leitura && !(c.nome === "id" && meta.pk.length === 1) && c.secao !== "auto"
     && !(valores.todas_areas && (c.nome === "area_id" || c.nome === "areas_ids"))
-    && !(unidadeAuto && c.nome === "unidade_id" && !valores.todas_areas));
+    && !(unidadeAuto && c.nome === "unidade_id" && !valores.todas_areas)
+    && !(unidadeTopo && c.nome === "unidade_id"));
   // unidade de contexto (para listar só turnos e áreas da unidade certa)
   const unidadeCtx = valores.unidade_id || (meta.chave === "turmas" ? cursos.find((x: any) => String(x.id) === String(valores.curso_id))?.unidade_id : undefined);
   const render = (c: CampoMeta) => {
@@ -144,12 +151,13 @@ function novoPadrao(ent: string, cenario: any): any {
 function CampoEntrada({ c, v, set, unidadeId, excluir }: { c: CampoMeta; v: any; set: (v: any) => void; unidadeId?: any; excluir?: any }) {
   const todas = useOpcoes(c.tipo === "ref" || c.tipo === "multiref" ? c.ref : null);
   // a área precisa ser da mesma unidade do cadastro
-  const unidadesOps = useOpcoes(c.nome === "area_id" ? "unidades" : null);
+  const { unidade: unidadeTopo } = useApp();
+  const unidadesOps = useOpcoes(c.nome === "area_id" && !unidadeTopo ? "unidades" : null);
   const porUnidade = (c.ref === "areas" && c.nome !== "area_id") || c.ref === "turnos" || c.ref === "periodos";
   const ops = (porUnidade && unidadeId ? todas.filter((o: any) => String(o.unidade_id) === String(unidadeId)) : todas)
     .filter((o: any) => excluir == null || String(o.id) !== String(excluir))
     // área principal: todas as áreas, com a unidade (a unidade do cadastro vem dela)
-    .map((o: any) => c.nome === "area_id" && o.unidade_id ? { ...o, rotulo: `${o.rotulo} – ${(unidadesOps.find((u) => u.id === o.unidade_id)?.rotulo || "").replace("Unidade ", "")}` } : o);
+    .map((o: any) => c.nome === "area_id" && o.unidade_id && !unidadeTopo ? { ...o, rotulo: `${o.rotulo} – ${(unidadesOps.find((u) => u.id === o.unidade_id)?.rotulo || "").replace("Unidade ", "")}` } : o);
   const rotulo = c.rotulo;
   let input;
   switch (c.tipo) {
@@ -205,7 +213,7 @@ function CampoEntrada({ c, v, set, unidadeId, excluir }: { c: CampoMeta; v: any;
 export function ListaEntidade({ ent }: { ent: string }) {
   const metas = useMeta();
   const meta = metas.find((m) => m.chave === ent);
-  const { pode, aviso, cenario, auth } = useApp();
+  const { pode, aviso, cenario, auth, unidade: unidadeTopo } = useApp();
   const [sp] = useSearchParams();
   const [q, setQ] = useState("");
   const [pagina, setPagina] = useState(1);
@@ -219,10 +227,12 @@ export function ListaEntidade({ ent }: { ent: string }) {
   useEffect(() => { setPagina(1); setFiltros((sp.get("id") ? { id: sp.get("id")! } : {}) as Record<string, string>); }, [ent, sp]);
   const lista = useCarregar(() => api.get(`/api/cadastros/${ent}${qs({ q, pagina, por_pagina: 25, ativo: meta?.inativavel ? ativo : "", ...filtros })}`),
     [ent, q, pagina, ativo, JSON.stringify(filtros), meta?.inativavel]);
-  const colunas = useMemo(() => [...(meta?.campos || [])].sort((a, b) => Number(!["codigo", "matricula", "nome"].includes(a.nome)) - Number(!["codigo", "matricula", "nome"].includes(b.nome))).filter((c) => !OCULTAR_LISTA.has(c.nome) && !LARGOS.has(c.tipo) && !c.nome.startsWith("_") && c.tipo !== "oferta").slice(0, 9).map((c) => ({
+  const colunas = useMemo(() => [...(meta?.campos || [])].sort((a, b) => Number(!["codigo", "matricula", "nome"].includes(a.nome)) - Number(!["codigo", "matricula", "nome"].includes(b.nome))).filter((c) => !OCULTAR_LISTA.has(c.nome) && !LARGOS.has(c.tipo) && !c.nome.startsWith("_") && c.tipo !== "oferta")
+    .filter((c) => !(unidadeTopo && c.nome === "unidade_id"))  // unidade já escolhida no topo: coluna redundante
+    .slice(0, 9).map((c) => ({
     chave: c.nome, rotulo: c.rotulo, render: (l: any) => valorCelula(c, l[c.nome]),
-  })), [meta]);
-  const refsFiltro = (meta?.campos || []).filter((c) => c.tipo === "ref" || c.tipo === "enum").slice(0, 3);
+  })), [meta, unidadeTopo]);
+  const refsFiltro = (meta?.campos || []).filter((c) => (c.tipo === "ref" || c.tipo === "enum") && !(unidadeTopo && c.nome === "unidade_id")).slice(0, 3);
   if (!meta) return <p>Carregando…</p>;
 
   const salvar = async () => {
@@ -416,21 +426,21 @@ export default function Cadastro() {
 
 /** Atalho: cria manhã, tarde e noite com 4 aulas cada (padrão da instituição) numa unidade sem turnos. */
 function TurnosPadrao({ aoCriar }: { aoCriar: () => void }) {
-  const { pode, aviso } = useApp();
+  const { pode, aviso, unidade: unidadeTopo } = useApp();
   const unidades = useOpcoes("unidades");
-  const [u, setU] = useState("");
+  const [u, setU] = useState(unidadeTopo);
   if (!pode("cadastros.editar")) return null;
   return (
     <div className="card turnos-padrao">
       <b>Unidade nova?</b> Crie de uma vez os turnos padrão: manhã 07:30–11:30 e tarde 13:30–17:30 (4 aulas de 55 min, intervalos 09:20–09:40 e 15:20–15:40)
       e noite 18:30–22:00 (4 aulas de 50 min, intervalo 20:10–20:20).
       <div className="filtros">
-        <select aria-label="Unidade" value={u} onChange={(e) => setU(e.target.value)}><option value="">Escolha a unidade…</option>
-          {unidades.map((x) => <option key={x.id} value={x.id}>{x.rotulo}</option>)}</select>
+        {!unidadeTopo && <select aria-label="Unidade" value={u} onChange={(e) => setU(e.target.value)}><option value="">Escolha a unidade…</option>
+          {unidades.map((x) => <option key={x.id} value={x.id}>{x.rotulo}</option>)}</select>}
         <button className="btn btn-primario" disabled={!u} onClick={async () => {
-          try { const r = await api.post(`/api/unidades/${u}/turnos-padrao`); aviso(r.mensagem); invalidarOpcoes("turnos"); invalidarOpcoes("periodos"); setU(""); aoCriar(); }
+          try { const r = await api.post(`/api/unidades/${u}/turnos-padrao`); aviso(r.mensagem); invalidarOpcoes("turnos"); invalidarOpcoes("periodos"); setU(unidadeTopo); aoCriar(); }
           catch (e: any) { aviso(e.message, "erro"); }
-        }}>Criar turnos padrão</button>
+        }}>Criar turnos padrão{unidadeTopo ? ` em ${(unidades.find((x) => String(x.id) === unidadeTopo)?.rotulo || "").replace(/^Unidade\s+/i, "")}` : ""}</button>
       </div>
     </div>
   );

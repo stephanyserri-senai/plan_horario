@@ -43,8 +43,8 @@ const NIVEL: Record<string, number> = { area: 0, curso: 1, turma: 2, uc: 3 };
 const ROTULO_TIPO: Record<string, string> = { area: "Área", curso: "Curso", turma: "Turma", uc: "UC" };
 
 export default function Cronograma() {
-  // unidade = filtro do topo (trocar aqui troca o filtro de todas as páginas)
-  const { cenario, unidade, setUnidade } = useApp();
+  // unidade: vem do filtro do topo (sem seletor próprio aqui)
+  const { cenario, unidade } = useApp();
   const [area, setArea] = useState("");
   const [curso, setCurso] = useState("");
   const [zoom, setZoom] = useState<"semanas" | "meses">("semanas");
@@ -55,7 +55,6 @@ export default function Cronograma() {
   const [agrupar, setAgrupar] = useState<"area" | "instrutor">("area");
   const [sel, setSel] = useState<Item | null>(null);
   const nav = useNavigate();
-  const unidades = useOpcoes("unidades");
   const areas = useOpcoes("areas").filter((a: any) => !unidade || String(a.unidade_id) === unidade);
   const cursos = useOpcoes("cursos").filter((c: any) => (!unidade || String(c.unidade_id) === unidade) && (!area || String(c.area_id) === area));
   const d = useCarregar<any>(() => cenario ? api.get(`/api/cronograma${qs({ cenario_id: cenario.id, unidade_id: unidade, area_id: area, curso_id: curso })}`) : Promise.resolve(null),
@@ -123,8 +122,6 @@ export default function Cronograma() {
         <Kpi rotulo="UCs com carga sem horário" valor={r.ucs_sem_horario} tom={r.ucs_sem_horario ? "alerta" : "ok"} detalhe="fim projetado (tracejado)" />
       </div>}
       <div className="filtros">
-        <select aria-label="Unidade" value={unidade} onChange={(e) => { setUnidade(e.target.value); setArea(""); setCurso(""); }}>
-          <option value="">Todas as unidades</option>{unidades.map((u) => <option key={u.id} value={u.id}>{u.rotulo}</option>)}</select>
         <select aria-label="Área" value={area} onChange={(e) => { setArea(e.target.value); setCurso(""); }}>
           <option value="">Todas as áreas</option>{areas.map((a) => <option key={a.id} value={a.id}>{a.rotulo}</option>)}</select>
         <select aria-label="Curso" value={curso} onChange={(e) => setCurso(e.target.value)}>

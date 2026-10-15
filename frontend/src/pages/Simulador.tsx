@@ -13,8 +13,10 @@ const VIAB: Record<string, [string, string]> = {
 };
 
 export default function Simulador() {
-  const { cenario, cenarios, aviso } = useApp();
-  const [p, setP] = useState<any>({ quantidade_turmas: 1, alunos_por_turma: 30, dias_semana: [0, 1, 2, 3, 4], num_grupos: 1, ucs_sequenciais: true });
+  const { cenario, cenarios, aviso, unidade: unidadeTopo } = useApp();
+  // com a unidade escolhida no topo, a simulação já é nela
+  const [p, setP] = useState<any>({ quantidade_turmas: 1, alunos_por_turma: 30, dias_semana: [0, 1, 2, 3, 4], num_grupos: 1, ucs_sequenciais: true,
+    unidade_id: unidadeTopo || "" });
   const [base, setBase] = useState<string>("");
   const [res, setRes] = useState<any | null>(null);
   const [erro, setErro] = useState<any>(null);
@@ -53,7 +55,7 @@ export default function Simulador() {
             <Campo rotulo="Cenário base" obrigatorio><select value={base} onChange={(e) => setBase(e.target.value)}>{cenarios.filter((c) => c.tipo !== "simulacao").map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}</select></Campo>
             <Campo rotulo="Curso" obrigatorio><select value={p.curso_id || ""} onChange={(e) => setP({ ...p, curso_id: e.target.value, matriz_id: "" })}><option value="">—</option>{cursos.map((c) => <option key={c.id} value={c.id}>{c.rotulo}</option>)}</select></Campo>
             <Campo rotulo="Matriz curricular" obrigatorio><select value={p.matriz_id || ""} onChange={(e) => set("matriz_id", e.target.value)}><option value="">—</option>{(matrizes.dados?.itens || []).map((m: any) => <option key={m.id} value={m.id}>{m.versao}</option>)}</select></Campo>
-            <Campo rotulo="Unidade de oferta" obrigatorio><select value={p.unidade_id || ""} onChange={(e) => set("unidade_id", e.target.value)}><option value="">—</option>{unidades.map((c) => <option key={c.id} value={c.id}>{c.rotulo}</option>)}</select></Campo>
+            {!unidadeTopo && <Campo rotulo="Unidade de oferta" obrigatorio><select value={p.unidade_id || ""} onChange={(e) => set("unidade_id", e.target.value)}><option value="">—</option>{unidades.map((c) => <option key={c.id} value={c.id}>{c.rotulo}</option>)}</select></Campo>}
             <Campo rotulo="Turno desejado"><select value={p.turno_id || ""} onChange={(e) => set("turno_id", e.target.value)}><option value="">Qualquer</option>{turnos.map((c) => <option key={c.id} value={c.id}>{c.rotulo}</option>)}</select></Campo>
             <Campo rotulo="Calendário"><select value={p.calendario_id || ""} onChange={(e) => set("calendario_id", e.target.value)}><option value="">Da unidade</option>{calendarios.map((c) => <option key={c.id} value={c.id}>{c.rotulo}</option>)}</select></Campo>
             <Campo rotulo="Quantidade de turmas"><input type="number" min={1} value={p.quantidade_turmas} onChange={(e) => set("quantidade_turmas", e.target.value)} /></Campo>

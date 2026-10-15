@@ -167,6 +167,8 @@ def turma_ucs_do_escopo(db: Session, cenario: CenarioPlanejamento, escopo: dict)
     q = q.where((Turma.simulacao_id.is_(None)) | (Turma.simulacao_id == sim_id)) if sim_id else q.where(Turma.simulacao_id.is_(None))
     if cenario.unidade_id:
         q = q.where(Turma.unidade_id == cenario.unidade_id)
+    if escopo.get("unidade_id"):  # unidade escolhida no topo da tela: gera só para ela
+        q = q.where(Turma.unidade_id == int(escopo["unidade_id"]))
     tipo, ids = escopo.get("tipo", "instituicao"), escopo.get("ids") or []
     if tipo == "turma":
         q = q.where(Turma.id.in_(ids))

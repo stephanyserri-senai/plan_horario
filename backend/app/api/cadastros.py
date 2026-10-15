@@ -518,9 +518,13 @@ def opcoes(ent: str, q: str | None = None, limite: int = 500, db: Session = Depe
         for cond in _condicoes_unidade(ent, M, ctx):
             stmt = stmt.where(cond)
     res = []
+    filtrada = "filtro_unidade" in ctx.extra
     for o in db.scalars(stmt.limit(limite)):
         s = serializar(o, ent, ctx)
-        item = {"id": s.get("id"), "rotulo": s["_rotulo"]}
+        rotulo = s["_rotulo"]
+        if filtrada and s.get("_unidade") and rotulo.endswith(f" – {s['_unidade']}"):
+            rotulo = rotulo[: -len(f" – {s['_unidade']}")]  # com uma unidade só na tela, o sufixo "– Porto" é redundante
+        item = {"id": s.get("id"), "rotulo": rotulo}
         if "unidade_id" in s:
             item["unidade_id"] = s["unidade_id"]
         if "area_id" in s:

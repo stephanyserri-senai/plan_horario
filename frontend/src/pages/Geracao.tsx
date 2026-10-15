@@ -27,7 +27,7 @@ const SITUACAO: Record<string, [string, string]> = {
 const ESCOPO: Record<string, string> = { pendentes: "Aulas pendentes", instituicao: "Tudo", unidade: "Unidade", curso: "Curso", turno: "Turno", turma: "Turma", simulacao: "Simulação" };
 
 export default function Geracao() {
-  const { cenario, pode, aviso, recarregarCenarios } = useApp();
+  const { cenario, pode, aviso, recarregarCenarios, unidade } = useApp();
   const [escopo, setEscopo] = useState<any>({ tipo: "pendentes", ids: [] as string[], regenerar_flexiveis: false });
   const [modo, setModo] = useState("parcial");
   const [limite, setLimite] = useState(60);
@@ -51,7 +51,7 @@ export default function Geracao() {
   const executar = async () => {
     setErro(null);
     try {
-      const r = await api.post("/api/otimizacao/executar", { cenario_id: cenario.id, escopo: { ...escopo, ids: escopo.ids.map(Number) }, modo, limite_tempo_s: limite, parametros_id: paramId || undefined });
+      const r = await api.post("/api/otimizacao/executar", { cenario_id: cenario.id, escopo: { ...escopo, ids: escopo.ids.map(Number), unidade_id: unidade ? Number(unidade) : undefined }, modo, limite_tempo_s: limite, parametros_id: paramId || undefined });
       aviso(r.modo_execucao === "fila" ? "Pedido registrado! A grade está sendo gerada; isso costuma levar de 2 a 5 minutos." : "Geração iniciada.", "info");
       execs.recarregar();
       recarregarCenarios();
@@ -63,8 +63,9 @@ export default function Geracao() {
       <div className="grid-2">
         <Card titulo="1. O que deseja gerar?">
           <Campo rotulo="Gerar horários para"><select value={escopo.tipo} onChange={(e) => setEscopo({ ...escopo, tipo: e.target.value, ids: [] })}>
-            <option value="pendentes">Somente as aulas que ainda não têm horário (recomendado)</option><option value="instituicao">Todas as turmas do semestre</option>
-            <option value="unidade">Unidades específicas</option><option value="curso">Cursos específicos</option><option value="turno">Turnos específicos</option><option value="turma">Turmas específicas</option></select></Campo>
+            <option value="pendentes">Somente as aulas que ainda não têm horário (recomendado)</option>
+            <option value="instituicao">{unidade ? "Todas as turmas da unidade" : "Todas as turmas do semestre"}</option>
+            {!unidade && <option value="unidade">Unidades específicas</option>}<option value="curso">Cursos específicos</option><option value="turno">Turnos específicos</option><option value="turma">Turmas específicas</option></select></Campo>
           {ENT[escopo.tipo] && <Campo rotulo="Selecione (Ctrl/⌘ + clique para escolher vários)"><select multiple size={5} value={escopo.ids} onChange={(e) => setEscopo({ ...escopo, ids: [...e.target.selectedOptions].map((o) => o.value) })}>
             {ops.map((o) => <option key={o.id} value={o.id}>{o.rotulo}</option>)}</select></Campo>}
           <Campo rotulo="Se não couber tudo"><select value={modo} onChange={(e) => setModo(e.target.value)}>

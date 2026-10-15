@@ -28,3 +28,18 @@ def test_filtro_unidade(db, mundo):
     # relatórios seguem o filtro e dizem qual unidade
     r = c.get(f"/api/exportar/grade?cenario_id={m.cen.id}&formato=xlsx", headers=fora)
     assert r.status_code == 200
+
+
+def test_filtro_sem_redundancia(db, mundo):
+    """Com uma unidade no topo, os rótulos não repetem a unidade e a geração de horários fica só nela."""
+    from app.services import otimizacao
+    m = mundo
+    c = TestClient(app)
+    h = {"Authorization": "Bearer " + c.post("/api/auth/login", json={"email": "admin@teste", "senha": "senha-forte-1"}).json()["token"]}
+    sem = c.get("/api/cadastros/turnos/opcoes", headers=h).json()
+    com = c.get("/api/cadastros/turnos/opcoes", headers={**h, "X-Unidade": str(m.unidade.id)}).json()
+    assert sem and all(" – " in o["rotulo"] for o in sem)
+    assert com and all(" – " not in o["rotulo"] for o in com)
+    assert otimizacao.turma_ucs_do_escopo(db, m.cen, {"tipo": "instituicao"})
+    assert otimizacao.turma_ucs_do_escopo(db, m.cen, {"tipo": "instituicao", "unidade_id": m.unidade.id})
+    assert otimizacao.turma_ucs_do_escopo(db, m.cen, {"tipo": "instituicao", "unidade_id": m.unidade.id + 999}) == []

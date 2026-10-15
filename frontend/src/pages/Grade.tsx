@@ -195,12 +195,12 @@ export default function Grade() {
       </>}>
       {!editavel && <AvisoSomenteLeitura />}
       <SubstituicoesEmVigor cenarioId={cenario.id} podeEditar={!!podeSubstituir} versao={versaoSub} mudou={() => aulas.recarregar()} />
-      <div className="seletor-unidade" role="group" aria-label="Unidade">
+      {!unidadeTopo && <div className="seletor-unidade" role="group" aria-label="Unidade">
         {unidades.map((u) => (
           <button key={u.id} className={String(u.id) === unidade ? "ativo" : ""} aria-pressed={String(u.id) === unidade} onClick={() => trocarUnidade(String(u.id))}>
             🏫 {u.rotulo}{contagem.dados && <small> · {contagem.dados[u.id] ?? 0} aula(s) na semana</small>}
           </button>))}
-      </div>
+      </div>}
       <div className="filtros">
         <select aria-label="Visualização" value={modo} onChange={(e) => { setModo(e.target.value); setAlvo(""); setSp({}); setMostrarLivres(false); }}>
           {MODOS.map((m) => <option key={m.id} value={m.id}>{m.rotulo}</option>)}
