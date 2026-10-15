@@ -111,7 +111,9 @@ FORMULARIOS: dict[str, dict] = {
                                    "carga_horaria_contratual", "max_horas_dia", "limite_ch_letiva", "jornada", "situacao", "ucs_competencia"],
                     "avancados": ["intervalo_minimo_h", "areas_competencia", "restricoes_deslocamento"],
                     "rotulos": {"areas_competencia": "Formação e especialidades", "max_horas_dia": "Horas de aula por dia"},
-                    "ajuda": {"max_horas_dia": "Calculada pela carga contratual (40 h/sem = 8 h/dia). Até 4 h = 1 turno por dia; 8 h = 2 turnos (MV ou VN).",
+                    "ajuda": {"limite_ch_letiva": "Até 90% da jornada com aula (40 h → 36 h = 9 de 10 turnos; 20 h → 16 h = 4 de 5). "
+                                                  "O turno restante fica para planejamento. Vazio = o máximo.",
+                              "max_horas_dia": "Calculada pela carga contratual (40 h/sem = 8 h/dia). Até 4 h = 1 turno por dia; 8 h = 2 turnos (MV ou VN).",
                               "unidade_id": "Só quando atende todas as áreas; senão é a unidade da área principal.",
                               "carga_horaria_contratual": "Define as horas por dia: carga ÷ 5 dias.",
                               "modalidade": "Mensalista: 40 h ou 20 h garantidas (aula, planejamento ou projeto). Horista: horas não garantidas; "

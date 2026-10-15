@@ -434,6 +434,20 @@ def _preparar_estrutura(db, r, v, E, A):
     return d, ex, E, A
 
 
+def _regra_90(d, E):
+    """Aulas em no máximo 90% dos turnos da jornada (40 h → 36 h; 20 h → 16 h); vazio = o máximo."""
+    from app.services.regras_aula import teto_letivo
+    if not d.get("carga_horaria_contratual"):
+        return
+    teto = teto_letivo(d["carga_horaria_contratual"])
+    if not teto:
+        return
+    if d.get("limite_ch_letiva") is None:
+        d["limite_ch_letiva"] = teto
+    elif d["limite_ch_letiva"] > teto + 1e-6:
+        E.append(f"limite de aulas por semana acima de 90% da jornada: com {d['carga_horaria_contratual']:g} h, no máximo {teto:g} h")
+
+
 def _modalidade(v, d, E):
     m = (v.get("modalidade") or "").strip().lower()
     if m:
@@ -454,6 +468,7 @@ def _preparar_levantamento(db, r, v, E, A):
             d[k] = v[k]
     if d.get("limite_ch_letiva") and d.get("carga_horaria_contratual") and d["limite_ch_letiva"] > d["carga_horaria_contratual"]:
         E.append("limite de aulas por semana maior que a carga contratual")
+    _regra_90(d, E)
     _modalidade(v, d, E)
     _area(r, v, d, E, A, multiplas=True)
     disp = []
@@ -569,6 +584,7 @@ def _preparar(db: Session, r: Resolvedor, tipo: str, v: dict) -> tuple[dict | No
         d = {k: v[k] for k in ("matricula", "nome", "email", "carga_horaria_contratual", "limite_ch_letiva", "areas_competencia") if v[k] is not None}
         d["unidade_id"] = uid
         _modalidade(v, d, E)
+        _regra_90(d, E)
         _area(r, v, d, E, A, multiplas=True)
         return d, db.scalars(select(Instrutor).where(Instrutor.matricula == v["matricula"])).first(), E, A
     if tipo == "competencias":

@@ -123,6 +123,14 @@ def explicar_nao_alocacao(db: Session, cenario_id: int, turma_uc_id: int, grupo:
     if recurso in ("ambiente", "combinação"):
         alternativas.append({"tipo": "ambientes", "descricao": "Ambientes compatíveis (verifique ampliação de horário ou liberação):",
                              "itens": [a["codigo"] for a in ambs]})
+    analise_inst = None
+    if recurso in ("instrutor", "combinação"):
+        # quem poderia dar a aula, por que não pode (inclusive o teto de 90%) e o que mudar no horário
+        from app.services import diagnostico_instrutor
+        analise_inst = diagnostico_instrutor.analisar(db, cenario_id, tuc.id)
+        problema = f"{problema} {analise_inst['resumo']}"
+        alternativas = [{"tipo": s["tipo"], "descricao": s["descricao"]} for s in analise_inst["sugestoes"]] + \
+                       [a for a in alternativas if a["tipo"] != "instrutores"]
     turnos_alt = [t.nome for t in db.scalars(select(Turno).where(Turno.unidade_id == turma.unidade_id, Turno.id != turma.turno_id))]
     if turnos_alt:
         alternativas.append({"tipo": "turno", "descricao": "Avaliar mudança de turno no simulador (impacto calculado antes de aplicar).", "itens": turnos_alt})
@@ -133,7 +141,7 @@ def explicar_nao_alocacao(db: Session, cenario_id: int, turma_uc_id: int, grupo:
                              "blocos_com_instrutor_livre": inst_livre, "blocos_com_ambiente_livre": amb_livre,
                              "instrutores_habilitados": len(elegiveis), "ambientes_compativeis": len(ambs),
                              "carga_restante_h": info["restante_h"], "motivos_bloqueio_mais_frequentes": dict(motivos.most_common(6))},
-        "alternativas": alternativas,
+        "alternativas": alternativas, "analise_instrutores": analise_inst,
         "restricoes_atendidas": "Os horários listados passaram por todas as restrições obrigatórias da validação central.",
         "impacto": f"{len(viaveis)} bloco(s) viável(is) identificado(s) na semana de referência.",
         "limitacoes": "Análise na semana de referência; semanas com feriados ou bloqueios pontuais podem diferir. Os horários viáveis são independentes entre si: usar um pode inviabilizar outro.",

@@ -125,7 +125,7 @@ def carregar(db, ano: int = 2026):
     for mat_i, nome, ar, comps, periodo in instrutores:
         noite = periodo == "N"  # turno único (N) = 20 h, 4 h por dia; manhã e tarde (MV) = 40 h
         i = Instrutor(matricula=mat_i, nome=nome, unidade_id=un.id, area_id=ar.id, carga_horaria_contratual=20 if noite else 40,
-                      limite_ch_letiva=20 if noite else 24, max_horas_dia=4 if noite else 8)
+                      limite_ch_letiva=16 if noite else 24, max_horas_dia=4 if noite else 8)
         db.add(i)
         db.flush()
         if mat_i == "DEMO-I06":

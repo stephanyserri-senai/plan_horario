@@ -14,6 +14,7 @@ from datetime import timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.services.regras_aula import limite_letivo_efetivo
 from app.models import (
     Alocacao,
     Ambiente,
@@ -100,8 +101,8 @@ def avaliar_cenario(db: Session, cenario_id: int, pesos: dict | None = None, ref
     for a in aulas:
         if a.instrutor_id:
             carga[a.instrutor_id] += a.minutos_aula
-    ocup = [100 * (mins / n_sem) / (float(instrutores[i].limite_ch_letiva) * 60) for i, mins in carga.items()
-            if i in instrutores and float(instrutores[i].limite_ch_letiva) > 0]
+    ocup = [100 * (mins / n_sem) / (limite_letivo_efetivo(instrutores[i]) * 60) for i, mins in carga.items()
+            if i in instrutores and limite_letivo_efetivo(instrutores[i]) > 0]
     v["equilibrio_carga"] = max(ocup) if ocup else 0.0
 
     pref = 0

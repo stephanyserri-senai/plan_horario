@@ -40,7 +40,7 @@ def test_portal_do_instrutor_ponta_a_ponta(db, mundo):
 
     # meus dados: atualiza direto no cadastro
     i_db = db.get(Instrutor, inst.id)
-    i_db.max_horas_dia, i_db.limite_ch_letiva, i_db.carga_horaria_contratual = 4, 20, 20  # um turno por dia
+    i_db.max_horas_dia, i_db.limite_ch_letiva, i_db.carga_horaria_contratual = 4, 16, 20  # um turno por dia (4 de 5 turnos com aula)
     db.commit()
     eu = c.get("/api/portal/eu", headers=h).json()
     assert eu["nome"] == inst.nome and eu["turnos"]

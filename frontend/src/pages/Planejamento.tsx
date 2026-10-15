@@ -169,6 +169,22 @@ function Alternativa({ a }: { a: any }) {
   );
 }
 
+/** Quem poderia dar a aula e por que não pode (habilitação, teto de 90%, turnos livres). */
+function AnaliseInstrutores({ a }: { a: any }) {
+  const linhas = [...(a.habilitados || []).map((x: any) => ({ ...x, grupo: "Habilitado" })), ...(a.quase || []).map((x: any) => ({ ...x, grupo: "Não habilitado" }))];
+  if (!linhas.length) return null;
+  return (
+    <>
+      <h4>Quem poderia dar a aula e por que não pode</h4>
+      <p className="sub">Semana típica a partir de {dataBR(a.semana_referencia)} · a turma precisa de {a.encontros_semanais} {String(a.turno || "").toLowerCase()}(s) por semana ·
+        cada instrutor pode ter aula em no máximo 90% dos turnos da jornada (40 h: 9 de 10; 20 h: 4 de 5).</p>
+      <Tabela colunas={[{ chave: "nome", rotulo: "Instrutor" }, { chave: "grupo", rotulo: "Situação na UC" },
+        { chave: "oc", rotulo: "Turnos com aula", alinhar: "dir", render: (x: any) => <span className={x.turnos_com_aula >= x.teto_turnos ? "txt-alerta" : ""}>{x.turnos_com_aula} / {x.teto_turnos}</span> },
+        { chave: "motivo", rotulo: "Por que não assume" }]} linhas={linhas} chave={(x: any) => x.id} />
+    </>
+  );
+}
+
 export function Recomendacao({ r }: { r: any }) {
   const alts: any[] = Array.isArray(r.alternativas) ? r.alternativas : [];
   const gargalos = alts.filter((a) => a.gargalo);
@@ -180,6 +196,7 @@ export function Recomendacao({ r }: { r: any }) {
       {r.problema && <p><b>O que aconteceu:</b> {r.problema}</p>}
       {r.recurso_limitante && <p><b>Principal causa:</b> {LIMITANTE[r.recurso_limitante] || r.recurso_limitante}</p>}
       {r.impacto && <p><b>Resultado:</b> {r.impacto}</p>}
+      {r.analise_instrutores && <AnaliseInstrutores a={r.analise_instrutores} />}
       {(comDescricao.length > 0 || gargalos.length > 0 || linhas.length > 0) && <h4>O que você pode fazer</h4>}
       {comDescricao.length > 0 && <ul>{comDescricao.map((a, i) => <Alternativa key={i} a={a} />)}</ul>}
       {gargalos.length > 0 && <Tabela colunas={[{ chave: "gargalo", rotulo: "Onde falta capacidade" }, { chave: "deficit_h", rotulo: "Falta (h/semana)", alinhar: "dir" },

@@ -7,6 +7,7 @@ from fastapi import APIRouter, Body, Depends, Query
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from app.services.regras_aula import limite_letivo_efetivo
 from app.core.db import SessionLocal, get_db
 from app.core.deps import Contexto, get_contexto, requer
 from app.core.errors import AcessoNegado, ConflitoValidacao, EntradaInvalida, NaoEncontrado
@@ -450,6 +451,14 @@ def marcar_agenda_instrutor(iid: int, d: dict = Body(...), ctx: Contexto = Depen
     return r
 
 
+@router.get("/turma-ucs/{tuc_id}/diagnostico-instrutor")
+def diagnostico_instrutor(tuc_id: int, cenario_id: int, ctx: Contexto = Depends(requer("alocacoes.ler")), db: Session = Depends(get_db)):
+    """Por que nenhum instrutor pode assumir a turma × UC (teto de 90%, habilitação, turnos livres) e sugestões de mudança."""
+    from app.services import diagnostico_instrutor as diag
+    _exigir_turma(db, ctx, tuc_id)
+    return diag.analisar(db, cenario_id, tuc_id)
+
+
 @router.post("/alocacoes/alternativas")
 def alternativas(d: dict = Body(...), ctx: Contexto = Depends(requer("alocacoes.ler")), db: Session = Depends(get_db)):
     dados = _dados_aula(d)
@@ -728,7 +737,7 @@ def sugestoes_aula(turma_uc_id: int, data: date, periodo_inicio_id: int, num_per
         pontos = (3 if comp and comp.nivel == "pleno" else 1 if comp else 0) + (2 if mesma else 1 if todas else 0) - carga / 40
         instrutores.append({"id": i.id, "nome": i.nome, "area": "todas as áreas" if todas else ", ".join(sorted(areas[x] for x in ars if x in areas)) or None,
                             "mesma_area": mesma,
-                            "competencia": comp.nivel if comp else None, "carga_semana_h": round(carga, 1), "limite_h": float(i.limite_ch_letiva),
+                            "competencia": comp.nivel if comp else None, "carga_semana_h": round(carga, 1), "limite_h": limite_letivo_efetivo(i),
                             "grupo": grupo_i, "motivos": motivos, "_p": pontos})
     ambientes = []
     for a in db.scalars(select(Ambiente).where(Ambiente.ativo.is_(True), Ambiente.unidade_id == turma.unidade_id)):

@@ -13,6 +13,8 @@ from datetime import date, datetime, time
 
 from sqlalchemy import func, select, update
 
+from app.services.regras_aula import teto_letivo
+
 from app.models import (Alocacao, Ambiente, AmbienteArea, Area, Calendario, CalendarioExcecao, CenarioPlanejamento, CompetenciaInstrutor,
                         Curso, DisponibilidadeInstrutor, HabilitacaoInstrutor, Instrutor, InstrutorArea, MatrizCurricular, ObservacaoInstrutor,
                         TipoAmbiente, Turma, TurmaUC, Turno, UCTipoAmbiente, Unidade, UnidadeCurricular)
@@ -101,6 +103,15 @@ CURSOS = [
         ("DGR-TIM", "Tratamento de Imagens", 64, 2, ["CRI"], None),
         ("DGR-ILD", "Ilustração Digital", 48, 1, ["CRI"], None),
         ("DGR-IDV", "Identidade Visual", 64, 2, ["CRI"], None)]),
+    # cursos do Wagner Prado (único habilitado): carga já é a do semestre (sem ajuste)
+    ("ELI", "Eletricista Instalador", "ENERGIAS", "qualificação", [
+        ("ELI-NR10", "Segurança em Instalações Elétricas (NR-10)", 204, 3, ["SALA"], "NR-10"),
+        ("ELI-INS", "Instalações Elétricas Básicas", 136, 2, ["SALA"], None)]),
+    ("MNT", "Manutenção Elétrica Industrial (empresa)", "ENERGIAS", "qualificação", [
+        ("MNT-NR10", "NR-10 Aplicada à Manutenção", 136, 2, ["SALA"], "NR-10"),
+        ("MNT-MPE", "Manutenção Preventiva Elétrica", 136, 2, ["SALA"], None)]),
+    ("NRB", "NR-10 Básico", "ENERGIAS", "qualificação", [
+        ("NRB-SEP", "Segurança em Eletricidade – NR-10 Básico", 40, 2, ["SALA"], "NR-10")]),
     ("ADM", "Assistente Administrativo", "GESTAO", "qualificação", [
         ("ADM-ROT", "Rotinas Administrativas", 48, 1, ["SALA"], None),
         ("ADM-PLA", "Planilhas Eletrônicas", 48, 1, ["INFO"], None),
@@ -122,7 +133,11 @@ TURMAS = [
     ("HTC-DDS-09", "DDS", "Desenvolvimento de Sistemas 09 – Habilitação técnica", "T", 30, None, {}),
     ("QUA-DGR-01", "DGR", "Design Gráfico 01 – Qualificação profissional", "N", 24, None, {}),
     ("EMP-ADM-02", "ADM", "Assistente Administrativo 02 – Turma para empresa", "T", 20, [0, 2, 4], {}),
+    # Wagner Prado: 5 manhãs + 4 tardes = 9 de 10 turnos (teto de 90%)
+    ("QUA-ELI-01", "ELI", "Eletricista Instalador 01 – Qualificação", "M", 24, None, {}),
+    ("EMP-MNT-01", "MNT", "Manutenção Elétrica 01 – Turma para empresa", "T", 18, [0, 1, 2, 3], {}),
 ]
+CH_SEM_AJUSTE = {"ELI", "MNT", "NRB"}  # carga já calculada para ocupar o semestre
 
 # matrícula, nome, unidade, área principal, outras áreas, turnos de trabalho (M/V/N; 40 h = MV ou VN), UCs (pleno), certificações, formação
 INSTRUTORES = [
@@ -155,7 +170,10 @@ INSTRUTORES = [
     ("PT-2010", "Rafael Torres", "PORTO", "ECONOMIA-CRIATIVA", [], "VN", ["DGR-ILD", "DGR-TIM", "DGR-IDV"], [], "Ilustrador; animação 2D"),
     ("PT-2011", "Sabrina Lopes", "PORTO", "GESTAO", [], "V", ["ADM-ROT", "ADM-ATC", "ADM-PLA"], [], "Administradora; rotinas de RH e financeiro"),
     ("PT-2012", "Thiago Moreira", "PORTO", "GESTAO", ["LOGISTICA"], "VN", ["ADM-ROT", "LOG-CUS"], [], "Contador; custos e orçamento"),
+    ("BM-1018", "Wagner Prado", "BEIRA-MAR", "ENERGIAS", [], "MV", ["ELI-NR10", "ELI-INS", "MNT-NR10", "MNT-MPE", "NRB-SEP"], ["NR-10"],
+     "Eletrotécnico; instrutor de NR-10 e manutenção elétrica"),
 ]
+LIMITE_NO_TETO = {"BM-1018"}  # aulas até o teto de 90% (36 h); os demais de 40 h ficam com 28 h
 
 # horistas e mensalistas em todos os turnos (a modalidade não depende do turno nem da carga)
 HORISTAS = {"BM-1003", "BM-1006", "BM-1012", "BM-1015", "PT-2003", "PT-2005", "PT-2006", "PT-2010"}
@@ -205,8 +223,9 @@ def montar(db, ctx, limite_s: float = 120) -> dict:
     ucs, cursos = {}, {}
     for sigla, nome, ar, tipo, lista in CURSOS:
         u_cod = area[ar].unidade_id
+        ajuste = (lambda ch, enc: ch) if sigla in CH_SEM_AJUSTE else carga_no_semestre
         c = Curso(codigo=sigla, nome=nome, area_id=area[ar].id, unidade_id=u_cod, modalidade="presencial", tipo=tipo,
-                  carga_horaria_total=sum(carga_no_semestre(x[2], x[3]) for x in lista) * (4 if tipo == "técnico" else 1))
+                  carga_horaria_total=sum(ajuste(x[2], x[3]) for x in lista) * (4 if tipo == "técnico" else 1))
         db.add(c)
         db.flush()
         m = MatrizCurricular(curso_id=c.id, versao=f"{ANO}.1", situacao="vigente", vigencia_inicio=date(ANO, 1, 1))
@@ -214,7 +233,7 @@ def montar(db, ctx, limite_s: float = 120) -> dict:
         db.flush()
         cursos[sigla] = (c, m)
         for seq, (cod, nome_uc, ch, enc, tps, cert) in enumerate(lista, start=1):
-            ch = carga_no_semestre(ch, enc)
+            ch = ajuste(ch, enc)
             uc = UnidadeCurricular(matriz_id=m.id, codigo=cod, nome=nome_uc, carga_horaria_total=ch, encontros_semanais=enc,
                                    duracao_bloco_periodos=4, sequencia=seq, certificacao_exigida=cert, modulo="Módulo específico")
             db.add(uc)
@@ -228,7 +247,8 @@ def montar(db, ctx, limite_s: float = 120) -> dict:
         u = unid[un]
         dois = len(turnos_i) == 2  # MV ou VN = 40 h (8 h por dia); um turno = 20 h (4 h por dia)
         i = Instrutor(matricula=mat, nome=nome, email=f"{LOGINS_PORTAL.get(mat, mat.lower())}@demo.senai.br", unidade_id=u.id,
-                      area_id=area[ar].id, carga_horaria_contratual=40 if dois else 20, limite_ch_letiva=28 if dois else 20,
+                      area_id=area[ar].id, carga_horaria_contratual=40 if dois else 20,
+                      limite_ch_letiva=teto_letivo(40) if mat in LIMITE_NO_TETO else 28 if dois else teto_letivo(20),
                       max_horas_dia=8 if dois else 4, areas_competencia=formacao, situacao="ativo", ativo=True,
                       modalidade="horista" if mat in HORISTAS else "mensalista")
         db.add(i)
@@ -339,7 +359,9 @@ def pendencias(db, ctx, cen, instrutores, unid, area, turno, cursos, cal) -> dic
     - licença médica de um instrutor com aulas marcadas → conflito, resolver por substituição;
     - laboratório em manutenção numa semana com aulas → conflito, trocar a sala;
     - ponto facultativo no Porto num dia com aulas → dia não letivo, remarcar;
-    - turma nova (HTC-ELT-14, início em 19/10) sem nenhuma aula → gerar horários só dela.
+    - turma nova (HTC-ELT-14, início em 19/10) sem nenhuma aula → gerar horários só dela;
+    - turma QUA-NRB-01 (início em 03/11) sem instrutor possível: o único habilitado (Wagner Prado) já dá aula
+      em 9 de 10 turnos, o teto de 90% → a geração aponta a falta de instrutor (contratar/habilitar alguém).
     Numa proposta de alteração do semestre publicado (em edição):
     - aulas sem instrutor (instrutor remanejado para projeto) → alocar instrutor;
     - aulas sem sala (turma vai mudar de sala) → alocar sala.
@@ -347,7 +369,7 @@ def pendencias(db, ctx, cen, instrutores, unid, area, turno, cursos, cal) -> dic
     from app.services import cenarios
     from app.models import Bloqueio
     amb = {a.codigo: a for a in db.scalars(select(Ambiente))}
-    fabio, leandro = instrutores["BM-1005"], instrutores["BM-1016"]
+    fabio = instrutores["BM-1005"]
     db.add(Bloqueio(alvo_tipo="instrutor", alvo_id=fabio.id, inicio=datetime(ANO, 10, 26, 0, 0), fim=datetime(ANO, 11, 6, 23, 59),
                     tipo="afastamento", motivo="Licença médica (atestado de 12 dias)", ativo=True))
     db.add(Bloqueio(alvo_tipo="ambiente", alvo_id=amb["BM-LCLP"].id, inicio=datetime(ANO, 11, 3, 0, 0), fim=datetime(ANO, 11, 6, 23, 59),
@@ -364,15 +386,33 @@ def pendencias(db, ctx, cen, instrutores, unid, area, turno, cursos, cal) -> dic
     # começa no meio do semestre: só a primeira UC agora; as demais entram em {ANO + 1}/1
     ela = db.scalar(select(UnidadeCurricular).where(UnidadeCurricular.matriz_id == m.id, UnidadeCurricular.codigo == "ELT-ELA"))
     db.add(TurmaUC(turma_id=t.id, uc_id=ela.id, situacao="ofertada"))
+    # turma que vai começar sem instrutor possível: só o Wagner é habilitado em NR-10 e já está no teto de 90%
+    c2, m2 = cursos["NRB"]
+    nrb = Turma(codigo="QUA-NRB-01", nome="NR-10 Básico 01 – Qualificação (início em 03/11)", curso_id=c2.id, matriz_id=m2.id,
+                unidade_id=c2.unidade_id, area_id=c2.area_id, calendario_id=cal["BEIRA-MAR"].id, turno_id=turno[(c2.unidade_id, "T")].id,
+                qtd_alunos=20, data_inicio=date(ANO, 11, 3), data_fim=FIM, dias_possiveis=[0, 1, 2, 3, 4], num_grupos=1, situacao="planejada")
+    db.add(nrb)
+    db.flush()
+    for uc in db.scalars(select(UnidadeCurricular).where(UnidadeCurricular.matriz_id == m2.id)):
+        db.add(TurmaUC(turma_id=nrb.id, uc_id=uc.id, situacao="ofertada"))
     db.commit()
 
     prop = cenarios.proposta_alteracao(db, ctx, cen.id, f"Ajustes de novembro {ANO}/2",
-                                       "Proposta de alteração: Leandro remanejado para projeto a partir de 03/11 e "
-                                       "Design Gráfico 01 mudando de sala a partir de 09/11.")
+                                       "Proposta de alteração do semestre publicado.")
     db.flush()
-    sem_instrutor = db.execute(update(Alocacao).where(Alocacao.cenario_id == prop.id, Alocacao.instrutor_id == leandro.id,
-                                                      Alocacao.data >= date(ANO, 11, 3))
-                               .values(instrutor_id=None, fixa=False, observacao="Instrutor remanejado para projeto: definir substituto")).rowcount
+    # aulas sem instrutor: o instrutor de uma UC da HTC-INS-02 vai para um projeto a partir de 03/11
+    ins = db.scalar(select(Turma).where(Turma.codigo == "HTC-INS-02"))
+    alvo = db.scalars(select(Alocacao).where(Alocacao.cenario_id == prop.id, Alocacao.turma_id == ins.id, Alocacao.instrutor_id.isnot(None),
+                                             Alocacao.data >= date(ANO, 11, 3)).order_by(Alocacao.data)).first()
+    sem_instrutor = 0
+    if alvo:
+        nome = db.get(Instrutor, alvo.instrutor_id).nome
+        sem_instrutor = db.execute(update(Alocacao).where(Alocacao.cenario_id == prop.id, Alocacao.turma_uc_id == alvo.turma_uc_id,
+                                                          Alocacao.instrutor_id == alvo.instrutor_id, Alocacao.data >= date(ANO, 11, 3))
+                                   .values(instrutor_id=None, fixa=False,
+                                           observacao="Instrutor remanejado para projeto: definir substituto")).rowcount
+        prop.descricao = (f"Proposta de alteração: {nome} remanejado(a) para projeto a partir de 03/11 (HTC-INS-02 sem instrutor) "
+                          "e Design Gráfico 01 mudando de sala a partir de 09/11.")
     dgr = db.scalar(select(Turma).where(Turma.codigo == "QUA-DGR-01"))
     sem_sala = db.execute(update(Alocacao).where(Alocacao.cenario_id == prop.id, Alocacao.turma_id == dgr.id, Alocacao.data >= date(ANO, 11, 9))
                           .values(ambiente_id=None, observacao="Turma muda de sala: definir o novo ambiente")).rowcount

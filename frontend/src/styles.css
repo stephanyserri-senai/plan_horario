@@ -533,3 +533,4 @@ button.chip-status { cursor: pointer; } .chip-status.alerta { background: #fff3d
 .tag-presenca { display: inline-block; width: fit-content; align-self: flex-start; justify-self: start; font-size: .74rem; font-weight: 600; padding: 1px 8px; border-radius: 999px; margin-left: 4px; white-space: nowrap; }
 .tag-presenca.na-escola { background: color-mix(in srgb, #7b5ea7 18%, var(--superficie)); color: var(--texto); }
 .tag-presenca.vazio { background: var(--fundo); color: var(--mudo); border: 1px solid var(--borda); }
+.txt-alerta { color: var(--alerta); font-weight: 700; }

@@ -15,6 +15,7 @@ from datetime import date, datetime, timedelta
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.services.regras_aula import limite_letivo_efetivo
 from app.models import (
     Alocacao,
     Ambiente,
@@ -243,7 +244,7 @@ def ocupacao_instrutores(db: Session, cenario_id: int, d0: date, d1: date, unida
                            .order_by(Alocacao.inicio)).all()
         disp_sem = sum(minutos(j.hora_fim) - minutos(j.hora_inicio) for j in
                        db.scalars(select(DisponibilidadeInstrutor).where(DisponibilidadeInstrutor.instrutor_id == inst.id))) / 60
-        efetiva = min(float(inst.limite_ch_letiva), disp_sem)
+        efetiva = min(limite_letivo_efetivo(inst), disp_sem)
         total_h = sum(a.minutos_aula for a in aulas) / 60
         media = total_h / n_sem
         por_semana = defaultdict(float)
@@ -266,11 +267,11 @@ def ocupacao_instrutores(db: Session, cenario_id: int, d0: date, d1: date, unida
                 if 0 < gap < 3:
                     janelas += gap
             deslocamentos += max(0, len({u for _, u in lst}) - 1)
-        semanas_excesso = sum(1 for h in por_semana.values() if h > float(inst.limite_ch_letiva) + 1e-6)
+        semanas_excesso = sum(1 for h in por_semana.values() if h > limite_letivo_efetivo(inst) + 1e-6)
         ocup = 100 * media / efetiva if efetiva else 0.0
         linha = {
             "instrutor_id": inst.id, "nome": inst.nome, "matricula": inst.matricula, "unidade_id": inst.unidade_id,
-            "carga_contratual_h": float(inst.carga_horaria_contratual), "limite_letivo_h": float(inst.limite_ch_letiva),
+            "carga_contratual_h": float(inst.carga_horaria_contratual), "limite_letivo_h": limite_letivo_efetivo(inst),
             "disponibilidade_declarada_h": round(disp_sem, 2), "capacidade_efetiva_h": round(efetiva, 2),
             "alocada_total_h": round(total_h, 2), "alocada_media_semanal_h": round(media, 2),
             "restante_semanal_h": round(max(efetiva - media, 0), 2), "ocupacao_pct": round(ocup, 1),

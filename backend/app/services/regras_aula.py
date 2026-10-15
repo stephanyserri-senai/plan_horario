@@ -74,6 +74,25 @@ def turnos_por_dia(max_horas_dia) -> int:
     return max(1, int(float(max_horas_dia or HORAS_POR_TURNO) // HORAS_POR_TURNO))
 
 
+# Ocupação máxima com aulas: 90% dos turnos da jornada (40 h = 10 turnos → até 9 com aula; 20 h = 5 → até 4).
+# O turno que sobra fica para planejamento (PL), projeto (PJ) ou reserva. Vale no cadastro, na importação,
+# na validação das aulas e no gerador de horários.
+OCUPACAO_MAXIMA = 0.9
+
+
+def teto_letivo(carga_semanal) -> float:
+    """Horas de aula por semana permitidas pela regra dos 90%, em turnos inteiros (40 h → 36 h; 20 h → 16 h)."""
+    turnos = int(float(carga_semanal or 0) // HORAS_POR_TURNO)
+    return float(int(turnos * OCUPACAO_MAXIMA + 1e-9) * HORAS_POR_TURNO)
+
+
+def limite_letivo_efetivo(inst) -> float:
+    """Limite semanal de aulas do instrutor: o cadastrado, sem passar dos 90% da jornada."""
+    teto = teto_letivo(inst.carga_horaria_contratual)
+    lim = float(inst.limite_ch_letiva or teto)
+    return min(lim, teto) if teto > 0 else lim
+
+
 def horas_dia_pela_carga(carga_semanal) -> float:
     """Jornada diária pela carga contratual em 5 dias (40 h/sem = 8 h/dia), limitada a 12 h."""
     return float(min(12, max(1, round(float(carga_semanal) / 5))))

@@ -22,6 +22,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 
+from app.services.regras_aula import limite_letivo_efetivo
 from app.services import fluxo as max_flow
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -246,7 +247,7 @@ def analisar(db: Session, cenario_id: int | None, d0: date, d1: date, unidade_id
             mf.add_arc_with_capacity(idx, no(("i", i)), int(round(h * 60)))
     for k, idx in list(nos.items()):
         if isinstance(k, tuple) and k[0] == "i":
-            mf.add_arc_with_capacity(idx, 1, int(round(float(instrutores[k[1]].limite_ch_letiva) * 60)))
+            mf.add_arc_with_capacity(idx, 1, int(round(limite_letivo_efetivo(instrutores[k[1]]) * 60)))
     mf.solve(0, 1)
     atend_i = defaultdict(float)
     inv = {v: k for k, v in nos.items()}

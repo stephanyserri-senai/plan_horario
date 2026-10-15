@@ -14,6 +14,7 @@ from datetime import date, datetime, timedelta
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
+from app.services.regras_aula import limite_letivo_efetivo
 from app.core.config import get_settings
 from app.core.db import SessionLocal
 from app.models import (
@@ -324,7 +325,7 @@ def montar_entrada(db: Session, cenario: CenarioPlanejamento, escopo: dict, peso
         disp = [Janela(*j) for j in disp]
         uns = sorted({i.unidade_id, *db.scalars(select(InstrutorUnidade.unidade_id).where(InstrutorUnidade.instrutor_id == i.id))})
         unidades.update(uns)
-        instrutores.append(InstrutorS(i.id, uns, disp, int(float(i.limite_ch_letiva) * 60), int(float(i.max_horas_dia) * 60),
+        instrutores.append(InstrutorS(i.id, uns, disp, int(limite_letivo_efetivo(i) * 60), int(float(i.max_horas_dia) * 60),
                                       int(float(i.intervalo_minimo_h or 0) * 60), i.turno_preferencial_id))
     tipos = {t.id: t for t in db.scalars(select(TipoAmbiente))}
     ambientes = []

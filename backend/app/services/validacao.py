@@ -20,6 +20,7 @@ from datetime import date, datetime, timedelta
 from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 
+from app.services.regras_aula import limite_letivo_efetivo
 from app.models import (
     Alocacao,
     Area,
@@ -541,8 +542,10 @@ def validar_aula(b: BaseDados, a: AulaProposta, ignorar: set[int] | None = None)
         seg = segunda_da_semana(d)
         da_semana = [s for s in b.sessoes_instrutor_periodo(instrutor.id, seg, seg + timedelta(days=6)) if s.id not in ignorar]
         min_sem = sum(s.minutos_aula for s in da_semana) + a.minutos_aula
-        if min_sem > float(instrutor.limite_ch_letiva) * 60:
-            add(BLOQUEIO, "LIMITE_SEMANAL", f"{instrutor.nome} somaria {min_sem / 60:.1f} h letivas na semana (limite {float(instrutor.limite_ch_letiva):.1f} h).", "instrutor", instrutor.id)
+        lim = limite_letivo_efetivo(instrutor)
+        if min_sem > lim * 60:
+            regra90 = " = 90% da jornada; o restante fica para planejamento" if lim < float(instrutor.limite_ch_letiva) - 1e-6 else ""
+            add(BLOQUEIO, "LIMITE_SEMANAL", f"{instrutor.nome} somaria {min_sem / 60:.1f} h letivas na semana (limite {lim:.1f} h{regra90}).", "instrutor", instrutor.id)
         descanso = timedelta(hours=float(instrutor.intervalo_minimo_h or 0))
         if descanso:
             for s in b.sessoes_instrutor(instrutor.id, d - timedelta(days=1)):

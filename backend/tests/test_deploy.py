@@ -561,7 +561,9 @@ def test_sql_do_semestre_de_demonstracao():
         eng = create_engine(url)
         with eng.connect() as c:
             cont = lambda t: c.scalar(text(f"SELECT count(*) FROM {t}"))  # noqa: E731
-            assert (cont("turmas"), cont("cursos"), cont("instrutores")) == (14, 11, 29)
+            assert (cont("turmas"), cont("cursos"), cont("instrutores")) == (17, 14, 30)
+            # regra dos 90%: nenhum limite letivo acima de 9 de 10 turnos (40 h) ou 4 de 5 (20 h)
+            assert c.scalar(text("SELECT count(*) FROM instrutores WHERE limite_ch_letiva > floor(carga_horaria_contratual / 4 * 0.9) * 4")) == 0
             assert c.scalar(text("SELECT count(*) FROM turmas WHERE codigo LIKE 'DEMO-%'")) == 0  # a demonstração antiga foi limpa
             cens = dict(c.execute(text("SELECT tipo || ':' || estado, id FROM cenarios_planejamento")).all())
             assert set(cens) == {"planejamento:publicado", "proposta:em_elaboracao"}
@@ -572,7 +574,7 @@ def test_sql_do_semestre_de_demonstracao():
             assert aulas(prop, "AND instrutor_id IS NULL") > 0 and aulas(prop, "AND ambiente_id IS NULL") > 0
             assert aulas(pub, "AND instrutor_id IS NULL") == 0
             assert c.scalar(text("SELECT count(*) FROM bloqueios WHERE tipo IN ('afastamento', 'manutencao')")) == 2
-            assert c.scalar(text("SELECT count(*) FROM alocacoes a JOIN turmas t ON t.id = a.turma_id WHERE t.codigo = 'HTC-ELT-14'")) == 0
+            assert c.scalar(text("SELECT count(*) FROM alocacoes a JOIN turmas t ON t.id = a.turma_id WHERE t.codigo IN ('HTC-ELT-14', 'QUA-NRB-01')")) == 0
             assert cont("notificacoes") > 0 and cont("observacoes_instrutor") == 3
             assert aulas(pub, "AND instrutor_titular_id IS NOT NULL") == 1
             assert c.scalar(text("SELECT count(*) FROM usuarios WHERE perfil = 'instrutor' AND instrutor_id IS NOT NULL")) == 4
@@ -592,6 +594,17 @@ def test_sql_do_semestre_de_demonstracao():
             assert val["resumo"]["bloqueios"] > 0  # licença, manutenção e ponto facultativo colocados de propósito
             assert {o["regra"] for o in val["ocorrencias"] if o["severidade"] == "bloqueio"} <= CONFLITOS_DA_DEMO, val["ocorrencias"][:5]
             assert any(e["chave"] == "conferir" for e in painel["etapas"]), painel["etapas"]
+            # turma sem instrutor possível: o único habilitado (Wagner) está no teto de 90%; justificativa e sugestões
+            from datetime import date as _date
+            from app.core.db import SessionLocal
+            from app.services import diagnostico_instrutor
+            with SessionLocal() as s2:
+                tuc = s2.execute(text("SELECT tu.id FROM turma_uc tu JOIN turmas t ON t.id = tu.turma_id WHERE t.codigo = 'QUA-NRB-01'")).scalar()
+                d = diagnostico_instrutor.analisar(s2, cen["id"], tuc, hoje=_date(2026, 10, 16))
+            assert [x["nome"] for x in d["habilitados"]] == ["Wagner Prado"] and d["habilitados"][0]["turnos_com_aula"] >= 9
+            assert "teto de 90%" in d["habilitados"][0]["motivo"] and "teto de 90%" in d["resumo"]
+            tipos = {x["tipo"] for x in d["sugestoes"]}
+            assert {"habilitar", "liberar_instrutor", "adiar", "contratar"} <= tipos, d["sugestoes"]
             prop = cli.post(f"/api/cenarios/{cen['id']}/proposta", json={"nome": "Ajustes de novembro"}, headers=h)
             assert prop.status_code == 200, prop.text
             hi = {"Authorization": "Bearer " + cli.post("/api/auth/login", json={"email": "juliana.prates", "senha": "portal@2026"}).json()["token"]}

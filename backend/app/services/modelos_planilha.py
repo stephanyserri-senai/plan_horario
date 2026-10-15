@@ -81,7 +81,7 @@ MODELOS: dict[str, dict] = {
             ("Modalidade", False, "MENSALISTA (horas garantidas: aula, planejamento ou projeto) ou HORISTA (horas não garantidas). Padrão: mensalista.",
              "modalidades_instrutor", 14, "Mensalista", "Horista"),
             ("Carga horária contratual (h/semana)", False, "Jornada contratual: 40 h = dois turnos por dia (MV ou VN); 20 h = um turno.", None, 14, 40, 20),
-            ("Limite de aulas por semana (h)", False, "Máximo de horas de aula na semana (≤ contratual).", None, 14, 28, 16),
+            ("Limite de aulas por semana (h)", False, "Máximo de horas de aula na semana: até 90% da jornada (40 h → 36 h; 20 h → 16 h). Vazio = o máximo.", None, 14, 28, 16),
             ("Máximo de horas por dia", False, "Padrão: carga contratual ÷ 5 (40 h/sem = 8 h/dia). 4 h = 1 turno por dia; 8 h = até 2 turnos.", None, 12, 8, 4),
             ("Turnos de trabalho", False, "M (manhã), V (tarde) ou N (noite) para um turno; com 40 h semanais (8 h por dia), MV ou VN.", "jornadas", 14, "MV", "N"),
             ("Dias disponíveis", False, "Ex.: seg a sex; seg;qua;sex.", None, 14, "seg a sex", "seg a qui"),

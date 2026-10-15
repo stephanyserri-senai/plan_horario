@@ -83,6 +83,11 @@ export function Formulario({ meta, valores, setValores }: { meta: EntMeta; valor
     // instrutor: horas por dia acompanham a carga contratual (40 h/sem = 8 h/dia = até 2 turnos), salvo ajuste manual
     if (meta.chave === "instrutores" && k === "carga_horaria_contratual" && !valores.__horas_manual && Number(v) > 0)
       n.max_horas_dia = Math.min(12, Math.max(1, Math.round(Number(v) / 5)));
+    // regra dos 90%: aulas em até 9 de 10 turnos (40 h → 36 h) ou 4 de 5 (20 h → 16 h)
+    if (meta.chave === "instrutores" && k === "carga_horaria_contratual" && Number(v) > 0) {
+      const teto = Math.floor(Math.floor(Number(v) / 4) * 0.9 + 1e-9) * 4;
+      if (teto > 0 && (!n.limite_ch_letiva || Number(n.limite_ch_letiva) > teto)) n.limite_ch_letiva = teto;
+    }
     if (meta.chave === "instrutores" && (k === "carga_horaria_contratual" || k === "max_horas_dia") && n.jornada) {
       const dois = Number(n.max_horas_dia) >= 8;
       if (dois !== (n.jornada.length === 2)) { n.jornada = ""; n.__disp = true; }  // a jornada antiga não vale mais: escolher de novo
@@ -132,7 +137,7 @@ export function Formulario({ meta, valores, setValores }: { meta: EntMeta; valor
 /** Valores iniciais de um registro novo (ex.: turma já com as datas do semestre selecionado). */
 function novoPadrao(ent: string, cenario: any): any {
   if (ent === "turmas") return { dias_possiveis: [0, 1, 2, 3, 4], data_inicio: cenario?.periodo_inicio || "", data_fim: cenario?.periodo_fim || "" };
-  if (ent === "instrutores") return { carga_horaria_contratual: 40, max_horas_dia: 8, disp_dias: [0, 1, 2, 3, 4], ucs_competencia: [] };
+  if (ent === "instrutores") return { carga_horaria_contratual: 40, max_horas_dia: 8, limite_ch_letiva: 36, disp_dias: [0, 1, 2, 3, 4], ucs_competencia: [] };
   return {};
 }
 

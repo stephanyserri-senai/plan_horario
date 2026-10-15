@@ -81,7 +81,7 @@ def test_substituicao_e_notificacoes(db, mundo, monkeypatch):
     # alteração no cadastro pela coordenação gera aviso; a do próprio instrutor no portal, não
     antes = db.scalar(select(Notificacao).where(Notificacao.instrutor_id == sub.id).order_by(Notificacao.id.desc())).id
     inst = c.get(f"/api/cadastros/instrutores/{sub.id}", headers=adm).json()
-    r = c.put(f"/api/cadastros/instrutores/{sub.id}", json={**inst, "carga_horaria_contratual": 20, "limite_ch_letiva": 20, "max_horas_dia": 4}, headers=adm)
+    r = c.put(f"/api/cadastros/instrutores/{sub.id}", json={**inst, "carga_horaria_contratual": 20, "limite_ch_letiva": 16, "max_horas_dia": 4}, headers=adm)
     assert r.status_code == 200, r.text
     novas = c.get("/api/portal/notificacoes", headers=h_sub).json()
     assert novas[0]["titulo"] == "Seu cadastro foi atualizado" and "carga contratual" in novas[0]["texto"] and "nome" not in novas[0]["texto"]

@@ -195,6 +195,11 @@ def _regras_especificas(db: Session, ent: str, obj, dados: dict, novo: bool):
         l = dados.get("limite_ch_letiva", getattr(obj, "limite_ch_letiva", None))
         if c is not None and l is not None and float(l) > float(c):
             raise ConflitoValidacao("O limite de carga letiva não pode exceder a carga contratual.")
+        from app.services.regras_aula import teto_letivo
+        if c is not None and l is not None and teto_letivo(c) > 0 and float(l) > teto_letivo(c) + 1e-6:
+            t = teto_letivo(c)
+            raise ConflitoValidacao(f"Com {float(c):g} h semanais, o instrutor pode ter no máximo {t:g} h de aula por semana "
+                                    f"({int(t // 4)} de {int(float(c) // 4)} turnos = 90% da jornada; o restante fica para planejamento).")
 
 
 def _traduzir_integridade(e: IntegrityError):
@@ -249,7 +254,8 @@ def _derivar(db: Session, ent: str, dados: dict, obj=None) -> dict:
     if ent == "instrutores" and vazio("max_horas_dia") and not vazio("carga_horaria_contratual"):
         d["max_horas_dia"] = horas_dia_pela_carga(d["carga_horaria_contratual"])
     if ent == "instrutores" and obj is None and vazio("limite_ch_letiva") and not vazio("carga_horaria_contratual"):
-        d["limite_ch_letiva"] = min(30.0, float(d["carga_horaria_contratual"]))  # padrão do cadastro, sem passar da carga contratual
+        from app.services.regras_aula import teto_letivo
+        d["limite_ch_letiva"] = teto_letivo(d["carga_horaria_contratual"]) or float(d["carga_horaria_contratual"])  # 90% da jornada
     if ent == "ambientes" and obj is None and vazio("capacidade_operacional") and not vazio("capacidade_fisica"):
         d["capacidade_operacional"] = d["capacidade_fisica"]
     if ent == "ucs" and obj is None and vazio("duracao_bloco_periodos"):
