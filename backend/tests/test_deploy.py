@@ -525,6 +525,9 @@ def test_scripts_do_sql_editor_funcionam_comando_a_comando():
         adm.dispose()
 
 
+CONFLITOS_DA_DEMO = {"BLOQUEIO_INSTRUTOR", "BLOQUEIO_AMBIENTE", "DIA_NAO_LETIVO"}
+
+
 def test_sql_do_semestre_de_demonstracao():
     """demo_semestre_completo.sql (SQL Editor, comando a comando, duas vezes): limpa, carrega o semestre publicado e o sistema funciona em cima dele."""
     import psycopg
@@ -558,11 +561,20 @@ def test_sql_do_semestre_de_demonstracao():
         eng = create_engine(url)
         with eng.connect() as c:
             cont = lambda t: c.scalar(text(f"SELECT count(*) FROM {t}"))  # noqa: E731
-            assert (cont("turmas"), cont("cursos"), cont("instrutores"), cont("alocacoes")) == (13, 11, 29, 909)
+            assert (cont("turmas"), cont("cursos"), cont("instrutores")) == (14, 11, 29)
             assert c.scalar(text("SELECT count(*) FROM turmas WHERE codigo LIKE 'DEMO-%'")) == 0  # a demonstração antiga foi limpa
-            assert c.scalar(text("SELECT estado FROM cenarios_planejamento")) == "publicado"
+            cens = dict(c.execute(text("SELECT tipo || ':' || estado, id FROM cenarios_planejamento")).all())
+            assert set(cens) == {"planejamento:publicado", "proposta:em_elaboracao"}
+            pub, prop = cens["planejamento:publicado"], cens["proposta:em_elaboracao"]
+            aulas = lambda cid, extra="": c.scalar(text(f"SELECT count(*) FROM alocacoes WHERE cenario_id = {cid} {extra}"))
+            assert aulas(pub) >= 900 and aulas(prop) == aulas(pub)  # a proposta parte de uma cópia da grade publicada
+            # casos para testar conflitos e ações
+            assert aulas(prop, "AND instrutor_id IS NULL") > 0 and aulas(prop, "AND ambiente_id IS NULL") > 0
+            assert aulas(pub, "AND instrutor_id IS NULL") == 0
+            assert c.scalar(text("SELECT count(*) FROM bloqueios WHERE tipo IN ('afastamento', 'manutencao')")) == 2
+            assert c.scalar(text("SELECT count(*) FROM alocacoes a JOIN turmas t ON t.id = a.turma_id WHERE t.codigo = 'HTC-ELT-14'")) == 0
             assert cont("notificacoes") > 0 and cont("observacoes_instrutor") == 3
-            assert c.scalar(text("SELECT count(*) FROM alocacoes WHERE instrutor_titular_id IS NOT NULL")) == 1
+            assert aulas(pub, "AND instrutor_titular_id IS NOT NULL") == 1
             assert c.scalar(text("SELECT count(*) FROM usuarios WHERE perfil = 'instrutor' AND instrutor_id IS NOT NULL")) == 4
             # sequências acertadas: novos registros não colidem
             c.execute(text("INSERT INTO tipos_ambiente (codigo, nome, especializado, ativo) VALUES ('NOVO', 'Novo', false, true)"))
@@ -572,11 +584,14 @@ def test_sql_do_semestre_de_demonstracao():
         try:
             cli = TestClient(app)
             h = {"Authorization": "Bearer " + cli.post("/api/auth/login", json={"email": "admin", "senha": "admin@123"}).json()["token"]}
-            cen = cli.get("/api/cenarios", headers=h).json()[0]
+            cen = next(x for x in cli.get("/api/cenarios", headers=h).json() if x["estado"] == "publicado")
             painel = cli.get(f"/api/painel?cenario_id={cen['id']}", headers=h).json()
-            assert painel["indicadores"]["aulas"] == 909 and painel["indicadores"]["pct_com_horario"] == 100
-            assert cli.post(f"/api/cenarios/{cen['id']}/validar", headers=h).json()["resumo"]["bloqueios"] == 0
-            assert any(e["chave"] == "conferir" and e["status"] == "ok" for e in painel["etapas"]), painel["etapas"]
+            # só a turma nova (HTC-ELT-14, de propósito sem aulas) fica sem horário
+            assert painel["indicadores"]["aulas"] >= 900 and 95 <= painel["indicadores"]["pct_com_horario"] < 100
+            val = cli.post(f"/api/cenarios/{cen['id']}/validar", headers=h).json()
+            assert val["resumo"]["bloqueios"] > 0  # licença, manutenção e ponto facultativo colocados de propósito
+            assert {o["regra"] for o in val["ocorrencias"] if o["severidade"] == "bloqueio"} <= CONFLITOS_DA_DEMO, val["ocorrencias"][:5]
+            assert any(e["chave"] == "conferir" for e in painel["etapas"]), painel["etapas"]
             prop = cli.post(f"/api/cenarios/{cen['id']}/proposta", json={"nome": "Ajustes de novembro"}, headers=h)
             assert prop.status_code == 200, prop.text
             hi = {"Authorization": "Bearer " + cli.post("/api/auth/login", json={"email": "juliana.prates", "senha": "portal@2026"}).json()["token"]}
@@ -653,7 +668,8 @@ def test_migracao_0006_noite_1830_2200_desloca_aulas():
                 ["18:30:00", "19:20:00", "20:20:00", "21:10:00"]
             assert q("SELECT count(*) FROM disponibilidade_instrutores WHERE hora_fim = '21:50'") == 0
             v = cenarios.validar(db, ctx, r["cenario_id"])
-            assert v["resumo"]["bloqueios"] == 0, v["resumo"]
+            # nenhum conflito novo com o horário da noite: só os casos colocados de propósito na demonstração
+            assert {o["regra"] for o in v["ocorrencias"] if o["severidade"] == "bloqueio"} <= CONFLITOS_DA_DEMO, v["resumo"]
     finally:
         os.environ.pop("ALEMBIC_DATABASE_URL", None)
         reset_engine(URL)

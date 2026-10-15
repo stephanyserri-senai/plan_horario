@@ -324,5 +324,58 @@ def montar(db, ctx, limite_s: float = 120) -> dict:
     obs("PT-2004", "HTC-POR-03", "POR-GCT", "horario", "A UC de Gestão de Contêineres tem prazo em 13/11. Se possível, incluir mais um encontro semanal.")
     db.commit()
 
+    casos = pendencias(db, ctx, cen, instrutores, unid, area, turno, cursos, cal)
+
     n_aulas = db.scalar(select(func.count()).select_from(Alocacao).where(Alocacao.cenario_id == cen.id))
-    return {"cenario_id": cen.id, "aulas": n_aulas, "execucao": ex.id, "substituicao": sub_info}
+    return {"cenario_id": cen.id, "aulas": n_aulas, "execucao": ex.id, "substituicao": sub_info, **casos}
+
+
+def pendencias(db, ctx, cen, instrutores, unid, area, turno, cursos, cal) -> dict:
+    """Situações para testar conflitos e ações (depois da publicação, como acontece no dia a dia).
+
+    No cadastro (valem para o semestre publicado e para a proposta):
+    - licença médica de um instrutor com aulas marcadas → conflito, resolver por substituição;
+    - laboratório em manutenção numa semana com aulas → conflito, trocar a sala;
+    - ponto facultativo no Porto num dia com aulas → dia não letivo, remarcar;
+    - turma nova (HTC-ELT-14, início em 19/10) sem nenhuma aula → gerar horários só dela.
+    Numa proposta de alteração do semestre publicado (em edição):
+    - aulas sem instrutor (instrutor remanejado para projeto) → alocar instrutor;
+    - aulas sem sala (turma vai mudar de sala) → alocar sala.
+    """
+    from app.services import cenarios
+    from app.models import Bloqueio
+    amb = {a.codigo: a for a in db.scalars(select(Ambiente))}
+    fabio, leandro = instrutores["BM-1005"], instrutores["BM-1016"]
+    db.add(Bloqueio(alvo_tipo="instrutor", alvo_id=fabio.id, inicio=datetime(ANO, 10, 26, 0, 0), fim=datetime(ANO, 11, 6, 23, 59),
+                    tipo="afastamento", motivo="Licença médica (atestado de 12 dias)", ativo=True))
+    db.add(Bloqueio(alvo_tipo="ambiente", alvo_id=amb["BM-LCLP"].id, inicio=datetime(ANO, 11, 3, 0, 0), fim=datetime(ANO, 11, 6, 23, 59),
+                    tipo="manutencao", motivo="Troca do quadro de alimentação das bancadas", ativo=True))
+    db.add(CalendarioExcecao(calendario_id=cal["PORTO"].id, data=date(ANO, 10, 28), tipo="feriado",
+                             descricao="Ponto facultativo – Dia do Servidor Público"))
+    c, m = cursos["ELT"]
+    u_id = c.unidade_id
+    t = Turma(codigo="HTC-ELT-14", nome="Eletrotécnica 14 – Habilitação técnica (início em 19/10, 1ª UC neste semestre)", curso_id=c.id, matriz_id=m.id,
+              unidade_id=u_id, area_id=c.area_id, calendario_id=cal["BEIRA-MAR"].id, turno_id=turno[(u_id, "T")].id, qtd_alunos=26,
+              data_inicio=date(ANO, 10, 19), data_fim=FIM, dias_possiveis=[0, 1, 2, 3, 4], num_grupos=1, situacao="planejada")
+    db.add(t)
+    db.flush()
+    # começa no meio do semestre: só a primeira UC agora; as demais entram em {ANO + 1}/1
+    ela = db.scalar(select(UnidadeCurricular).where(UnidadeCurricular.matriz_id == m.id, UnidadeCurricular.codigo == "ELT-ELA"))
+    db.add(TurmaUC(turma_id=t.id, uc_id=ela.id, situacao="ofertada"))
+    db.commit()
+
+    prop = cenarios.proposta_alteracao(db, ctx, cen.id, f"Ajustes de novembro {ANO}/2",
+                                       "Proposta de alteração: Leandro remanejado para projeto a partir de 03/11 e "
+                                       "Design Gráfico 01 mudando de sala a partir de 09/11.")
+    db.flush()
+    sem_instrutor = db.execute(update(Alocacao).where(Alocacao.cenario_id == prop.id, Alocacao.instrutor_id == leandro.id,
+                                                      Alocacao.data >= date(ANO, 11, 3))
+                               .values(instrutor_id=None, fixa=False, observacao="Instrutor remanejado para projeto: definir substituto")).rowcount
+    dgr = db.scalar(select(Turma).where(Turma.codigo == "QUA-DGR-01"))
+    sem_sala = db.execute(update(Alocacao).where(Alocacao.cenario_id == prop.id, Alocacao.turma_id == dgr.id, Alocacao.data >= date(ANO, 11, 9))
+                          .values(ambiente_id=None, observacao="Turma muda de sala: definir o novo ambiente")).rowcount
+    db.commit()
+    for cid in (cen.id, prop.id):  # o painel de validação já abre com as ocorrências
+        cenarios.validar(db, ctx, cid)
+        db.commit()
+    return {"proposta_id": prop.id, "aulas_sem_instrutor": sem_instrutor, "aulas_sem_sala": sem_sala}
