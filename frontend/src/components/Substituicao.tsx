@@ -43,11 +43,22 @@ export default function Substituicao({ cenarioId, publicado, aula, fechar }: { c
     } catch (e) { setErro(e); }
   };
   const lista: any[] = cand.dados?.instrutores || [];
-  const escolhido = lista.find((i) => i.id === sub);
+  const escolhido = lista.find((i) => i.id === sub) || (sub ? { nome: instrutores.find((i) => Number(i.id) === sub)?.rotulo } : null);
+  const SITUACAO: Record<string, string> = { recomendado: "✓ livre, da área", excecao: "⚠ livre, outra área/sem a UC", parcial: "◐ livre só em parte", indisponivel: "✗ sem horário" };
+  const situacao = (id: number) => { const c = lista.find((i) => i.id === id); return c ? ` — ${SITUACAO[c.grupo]}` : ""; };
+  const titularId = escopo === "aula" ? aula?.instrutor_id : Number(ausente) || null;
+  const campoSubstituto = (
+    <Campo rotulo="Instrutor substituto" obrigatorio ajuda={pronto ? "A situação de cada um na(s) aula(s) aparece ao lado do nome; as sugestões estão logo abaixo." : undefined}>
+      <select aria-label="Instrutor substituto" value={sub ?? ""} onChange={(e) => { setSub(e.target.value ? Number(e.target.value) : null); setPrevia(null); }}>
+        <option value="">— escolha quem vai assumir —</option>
+        {instrutores.filter((i) => Number(i.id) !== titularId).map((i) => <option key={i.id} value={i.id}>{i.rotulo}{situacao(Number(i.id))}</option>)}
+      </select>
+    </Campo>);
   return (
     <Modal titulo="🔁 Substituir instrutor" aberto fechar={() => fechar(false)} largo>
       <p className="sub">Para imprevistos (falta, afastamento, ninguém da área disponível). O substituto pode ser de outra área ou não ter a UC cadastrada:
-        isso fica registrado com o motivo. Só não é possível escolher quem já tem aula no mesmo horário. A aula fica fixa e pode ser desfeita depois.</p>
+        isso fica registrado com o motivo. Escolha o substituto direto no campo ou pelas sugestões; se ele já tiver aula no mesmo horário,
+        o botão Conferir mostra quais aulas não podem ser trocadas. A aula fica fixa e pode ser desfeita depois.</p>
       {publicado && <p className="aviso-inline">⚠ Este horário já está <b>publicado</b>: a troca vale imediatamente e os instrutores recebem um aviso no portal.</p>}
       <div className="sub-escopo">
         {aula && <label><input type="radio" checked={escopo === "aula"} onChange={() => { setEscopo("aula"); setPrevia(null); }} />
@@ -59,11 +70,13 @@ export default function Substituicao({ cenarioId, publicado, aula, fechar }: { c
           <option value="">—</option>{instrutores.map((i) => <option key={i.id} value={i.id}>{i.rotulo}</option>)}</select></Campo>
         <Campo rotulo="De" obrigatorio><input type="date" value={inicio} onChange={(e) => { setInicio(e.target.value); if (!fim || fim < e.target.value) setFim(e.target.value); setPrevia(null); }} /></Campo>
         <Campo rotulo="Até"><input type="date" value={fim} min={inicio} onChange={(e) => { setFim(e.target.value); setPrevia(null); }} /></Campo>
+        {campoSubstituto}
         {aula && <Campo rotulo="Turma"><label><input type="checkbox" checked={soTurma} onChange={(e) => { setSoTurma(e.target.checked); setPrevia(null); }} /> Só {aula.turma} · {aula.uc}</label></Campo>}
       </div>}
+      {escopo === "aula" && <div className="form-grid">{campoSubstituto}</div>}
 
       {pronto && <fieldset className="painel-campo">
-        <legend>Quem assume {cand.dados ? <small>({cand.dados.aulas} aula(s) em {cand.dados.dias} dia(s){cand.dados.dias > cand.dados.dias_avaliados ? `; avaliados os primeiros ${cand.dados.dias_avaliados} dias` : ""})</small> : null}</legend>
+        <legend>Sugestões: quem pode assumir {cand.dados ? <small>({cand.dados.aulas} aula(s) em {cand.dados.dias} dia(s){cand.dados.dias > cand.dados.dias_avaliados ? `; avaliados os primeiros ${cand.dados.dias_avaliados} dias` : ""})</small> : null}</legend>
         {cand.carregando && <p role="status">Verificando a agenda de cada instrutor…</p>}
         {cand.erro && <div className="erro-box">{cand.erro}</div>}
         {cand.dados && cand.dados.aulas === 0 && <p className="sub">Nenhuma aula desse instrutor no período escolhido.</p>}
@@ -73,7 +86,7 @@ export default function Substituicao({ cenarioId, publicado, aula, fechar }: { c
           return <div key={g} className="sub-grupo"><Badge tipo={tom}>{titulo}</Badge>
             {xs.map((i) => (
               <label key={i.id} className={`sub-cand ${sub === i.id ? "marcada" : ""} ${g === "indisponivel" ? "desabilitado" : ""}`}>
-                <input type="radio" name="substituto" disabled={g === "indisponivel"} checked={sub === i.id} onChange={() => { setSub(i.id); setPrevia(null); }} />
+                <input type="radio" name="substituto" checked={sub === i.id} onChange={() => { setSub(i.id); setPrevia(null); }} />
                 <span><b>{i.nome}</b> <small className="mudo">{i.area || "sem área"}{i.ministra_uc ? " · ministra a UC" : ""}{i.outra_unidade ? " · outra unidade" : ""}
                   {g === "parcial" ? ` · livre em ${i.dias_livres} de ${i.dias_avaliados} dias` : ""}</small>
                   {i.motivos.length > 0 && <small className="sub-motivos">{i.motivos.join(" · ")}</small>}</span>
