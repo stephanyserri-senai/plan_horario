@@ -5,6 +5,7 @@ import { Alternativas, Badge, Campo, Erro, Modal, OcorrenciasLista, Pagina, Sele
 import { AvisoSomenteLeitura } from "../components/AvisoSomenteLeitura";
 import { useApp } from "../contexto";
 import Substituicao, { ESTADOS_SUBSTITUICAO, SubstituicoesEmVigor } from "../components/Substituicao";
+import AgendaInstrutor from "../components/AgendaInstrutor";
 import { useOpcoes } from "../hooks";
 import { Diferenca } from "./Cadastro";
 
@@ -270,6 +271,8 @@ export default function Grade() {
           <p>Escolha outra unidade no seletor acima ou cadastre os turnos e os horários de cada aula em <Link to="/cadastros/turnos">Cadastros → Turnos e horários</Link>.</p>
         </div>}
       </div>
+      {modo === "instrutor" && alvo && <AgendaInstrutor cenarioId={cenario.id} instrutorId={alvo} semana={iso(semana)} fimSemestre={cenario.periodo_fim}
+        editavel={!!pode("alocacoes.editar")} versao={aulas.dados} />}
       <p className="sub">Dica: clique duas vezes em uma célula para alocar; arraste uma aula para movê-la (a validação é refeita no servidor). Legenda: 📌 fixa · área verde = livre para todos os recursos filtrados.</p>
       {form && <FormAula inicial={form} cenarioId={cenario.id} unidadeId={unidade} periodos={linhas} fechar={(ok) => { setForm(null); if (ok) aulas.recarregar(); }} />}
       {aulaSel && <DetalheAula aula={aulaSel} editavel={!!editavel} substituir={podeSubstituir ? () => { const a = aulaSel; setAulaSel(null); setSubstituir({ aula: a }); } : undefined}

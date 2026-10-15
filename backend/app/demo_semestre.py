@@ -226,7 +226,8 @@ def montar(db, ctx, limite_s: float = 120) -> dict:
         dois = len(turnos_i) == 2  # MV ou VN = 40 h (8 h por dia); um turno = 20 h (4 h por dia)
         i = Instrutor(matricula=mat, nome=nome, email=f"{LOGINS_PORTAL.get(mat, mat.lower())}@demo.senai.br", unidade_id=u.id,
                       area_id=area[ar].id, carga_horaria_contratual=40 if dois else 20, limite_ch_letiva=28 if dois else 20,
-                      max_horas_dia=8 if dois else 4, areas_competencia=formacao, situacao="ativo", ativo=True)
+                      max_horas_dia=8 if dois else 4, areas_competencia=formacao, situacao="ativo", ativo=True,
+                      modalidade="horista" if turnos_i == "N" else "mensalista")
         db.add(i)
         db.flush()
         instrutores[mat] = i
@@ -284,6 +285,26 @@ def montar(db, ctx, limite_s: float = 120) -> dict:
             r = substituicao.substituir(db, ctx, cen.id, [alvo], livres[0]["id"], "Atestado médico da titular (1 dia)")
             db.commit()
             sub_info = {"data": alvo.data.isoformat(), "substituto": livres[0]["nome"], "substituidas": r["substituidas"]}
+
+    # mensalistas: turnos da jornada sem aula viram planejamento (PL) ou projeto (PJ), toda semana; horistas ficam com dispensa
+    from datetime import timedelta
+    from app.models import Notificacao
+    from app.services import agenda_instrutor
+    ref = date(ANO, 10, 19)
+    for k, (mat, i) in enumerate(sorted(instrutores.items())):
+        if i.modalidade != "mensalista":
+            continue
+        ag = agenda_instrutor.semana(db, cen.id, i.id, ref)
+        vazios = [c for c in ag["celulas"] if c["estado"] == "vazio"]
+        for n, c in enumerate(vazios[:2]):  # dois turnos por semana; o resto aparece como "sem atribuição"
+            primeiro = INICIO + timedelta(days=(c["dia"] - INICIO.weekday()) % 7)
+            sigla = "PJ" if n == 0 and k % 3 == 0 else "PL"
+            agenda_instrutor.marcar(db, ctx, cen.id, i.id, primeiro, c["turno_id"], sigla, FIM,
+                                    "Projeto: laboratório aberto / apoio a TCC" if sigla == "PJ" else None)
+    # só os instrutores com login no portal ficam com o aviso da agenda (os demais não teriam onde ler)
+    sem_login = [instrutores[m].id for m in instrutores if m not in LOGINS_PORTAL]
+    db.execute(Notificacao.__table__.delete().where(Notificacao.instrutor_id.in_(sem_login), Notificacao.titulo.like("Agenda atualizada%")))
+    db.commit()
 
     # observações enviadas pelos instrutores no portal (uma nova, uma já respondida)
     def obs(mat, turma_cod, uc_cod, tipo, texto, resposta=None):

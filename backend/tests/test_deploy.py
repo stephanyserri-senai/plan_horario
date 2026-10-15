@@ -88,7 +88,7 @@ def test_api_importa_sem_ortools():
 def test_saude_informa_fila_e_migracao(mundo):
     from app.main import app
     r = TestClient(app).get("/api/saude").json()
-    assert r["status"] == "ok" and r["migracao"] == "0006" and "execucoes_pendentes" in r["fila"]
+    assert r["status"] == "ok" and r["migracao"] == "0007" and "execucoes_pendentes" in r["fila"]
 
 
 # ------------------------------------------------------------------ RLS / Data API do Supabase
@@ -151,7 +151,7 @@ def test_sql_offline_das_migracoes_reproduz_banco_novo():
             assert c.scalar(text("SELECT count(*) FROM usuarios WHERE email = 'admin'")) == 1
             assert c.scalar(text("SELECT count(*) FROM pg_class cl JOIN pg_namespace n ON n.oid = cl.relnamespace "
                                  "WHERE n.nspname = 'public' AND cl.relkind = 'r' AND NOT cl.relrowsecurity")) == 0
-            assert c.scalar(text("SELECT version_num FROM alembic_version")) == "0006"
+            assert c.scalar(text("SELECT version_num FROM alembic_version")) == "0007"
             assert c.scalar(text("SELECT count(*) FROM pg_constraint WHERE conname LIKE 'excl_alocacao_%'")) == 3
             # estrutura fixa da instituição (migração 0003), idêntica a app/core/estrutura.py
             from app.core.estrutura import AREAS, UNIDADES
@@ -490,14 +490,14 @@ def test_scripts_do_sql_editor_funcionam_comando_a_comando():
             os.environ.pop("ALEMBIC_DATABASE_URL", None)
         dsn = url.replace("postgresql+psycopg://", "postgresql://")
         sql_dir = RAIZ / "backend" / "sql"
-        for arq, vezes in (("atualizacao_0003.sql", 1), ("atualizacao_0004.sql", 1), ("atualizacao_0005.sql", 1), ("atualizacao_0006.sql", 1), ("seed_inicial.sql", 1), ("demo_recarregar.sql", 2)):
+        for arq, vezes in (("atualizacao_0003.sql", 1), ("atualizacao_0004.sql", 1), ("atualizacao_0005.sql", 1), ("atualizacao_0006.sql", 1), ("atualizacao_0007.sql", 1), ("seed_inicial.sql", 1), ("demo_recarregar.sql", 2)):
             for _ in range(vezes):
                 for cmd in _comandos_sql((sql_dir / arq).read_text(encoding="utf-8")):
                     with psycopg.connect(dsn, autocommit=True) as conn:
                         conn.execute(cmd.encode())
         eng = create_engine(url)
         with eng.connect() as c:
-            assert c.scalar(text("SELECT version_num FROM alembic_version")) == "0006"
+            assert c.scalar(text("SELECT version_num FROM alembic_version")) == "0007"
             assert c.scalar(text("SELECT count(*) FROM areas")) == 11
             assert c.scalar(text("SELECT count(*) FROM turmas WHERE codigo LIKE 'DEMO-%'")) == 3
             assert c.scalar(text("SELECT count(*) FROM turma_uc tu JOIN turmas t ON t.id = tu.turma_id WHERE t.codigo LIKE 'DEMO-%'")) == 12
@@ -624,17 +624,25 @@ def test_migracao_0006_noite_1830_2200_desloca_aulas():
     cfg.set_main_option("script_location", str(RAIZ / "backend" / "alembic"))
     os.environ["ALEMBIC_DATABASE_URL"] = url
     try:
-        command.upgrade(cfg, "0005")
+        # semestre montado no esquema atual e levado de volta à noite antiga (a volta da 0006 desloca −10 min)
+        command.upgrade(cfg, "head")
         reset_engine(url)
         with SessionLocal() as db:
             seed.executar(db, "adm@noite", "senha-forte-9")
             db.commit()
             ctx = carregar_contexto(db, db.query(Usuario).filter(Usuario.email == "adm@noite").one())
             r = montar(db, ctx, limite_s=60)
-            antes = db.execute(text("SELECT count(*) FROM alocacoes WHERE inicio::time = '18:20'")).scalar()
-            assert antes > 0
+        reset_engine(URL)
+        command.downgrade(cfg, "0005")
+        reset_engine(url)
+        with SessionLocal() as db:
+            antes = db.execute(text("SELECT count(*) FROM alocacoes WHERE inicio::time = '18:20' AND fim::time = '21:50'")).scalar()
+            assert antes > 0 and db.execute(text("SELECT count(*) FROM alocacoes WHERE inicio::time = '18:30'")).scalar() == 0
+        reset_engine(URL)
         command.upgrade(cfg, "0006")
         command.upgrade(cfg, "0006")  # idempotente
+        command.upgrade(cfg, "head")
+        reset_engine(url)
         with SessionLocal() as db:
             q = lambda s: db.execute(text(s)).scalar()  # noqa: E731
             assert q("SELECT count(*) FROM alocacoes WHERE inicio::time = '18:20' OR fim::time = '21:50'") == 0

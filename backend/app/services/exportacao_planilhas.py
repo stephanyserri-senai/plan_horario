@@ -331,7 +331,7 @@ def linhas_cadastro(db: Session, tipo: str, unidades=None) -> list[list]:
             sup = sorted({ucs[c.uc_id] for c in comp if c.uc_id in ucs and c.nivel == "supervisionado"})
             cert = [h.nome for h in db.scalars(select(HabilitacaoInstrutor).where(HabilitacaoInstrutor.instrutor_id == i.id, HabilitacaoInstrutor.ativo.is_(True)))]
             res.append([i.matricula, i.nome, i.email, unid.get(i.unidade_id), _areas_de(db, i.area_id, InstrutorArea, "instrutor_id", i.id, i.todas_areas, areas),
-                        float(i.carga_horaria_contratual), float(i.limite_ch_letiva), float(i.max_horas_dia), jornada,
+                        (i.modalidade or "mensalista").capitalize(), float(i.carga_horaria_contratual), float(i.limite_ch_letiva), float(i.max_horas_dia), jornada,
                         "; ".join(abrev[d] for d in dias), "; ".join(pleno), "; ".join(sup), "; ".join(cert), i.areas_competencia])
     elif tipo == "turmas":
         cursos = {c.id: c.codigo for c in db.scalars(select(Curso))}

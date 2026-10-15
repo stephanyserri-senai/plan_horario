@@ -385,7 +385,8 @@ class TurmaUC(TimestampMixin, Base):
 # --------------------------------------------------------------------------- Instrutores
 class Instrutor(TimestampMixin, Base):
     __tablename__ = "instrutores"
-    __table_args__ = (CheckConstraint("limite_ch_letiva <= carga_horaria_contratual"),)
+    __table_args__ = (CheckConstraint("limite_ch_letiva <= carga_horaria_contratual"),
+                      CheckConstraint("modalidade in ('mensalista','horista')", name="instrutores_modalidade_check"))
     id: Mapped[int] = mapped_column(primary_key=True)
     matricula: Mapped[str] = mapped_column(String(40), unique=True)
     nome: Mapped[str] = mapped_column(String(200))
@@ -402,6 +403,8 @@ class Instrutor(TimestampMixin, Base):
     restricoes_deslocamento: Mapped[str | None] = mapped_column(Text)
     situacao: Mapped[str] = mapped_column(String(20), default="ativo")
     ativo: Mapped[bool] = mapped_column(Boolean, default=True)
+    # mensalista: horas garantidas (turnos sem aula = planejamento/projeto); horista: horas não garantidas (pode haver dispensa)
+    modalidade: Mapped[str] = mapped_column(String(12), default="mensalista", server_default="mensalista")
     # última vez que o próprio instrutor atualizou os dados pelo portal
     atualizado_pelo_instrutor_em: Mapped[datetime | None] = mapped_column(DateTime)
 

@@ -444,7 +444,12 @@ def validar_aula(b: BaseDados, a: AulaProposta, ignorar: set[int] | None = None)
         alvos.append(("ambiente", ambiente.id))
     for tipo, id_ in alvos:
         for bl in b.bloqueios(tipo, id_, a.inicio, a.fim):
-            texto = f"Bloqueio de {tipo} ({bl.tipo}: {bl.motivo or 'sem motivo'}) entre {bl.inicio:%d/%m %H:%M} e {bl.fim:%d/%m %H:%M}."
+            if tipo == "instrutor" and bl.tipo in ("planejamento", "projeto"):
+                sigla = "PL" if bl.tipo == "planejamento" else "PJ"
+                texto = (f"O instrutor tem {sigla} ({bl.motivo or bl.tipo}) em {bl.inicio:%d/%m} das {bl.inicio:%H:%M} às {bl.fim:%H:%M}. "
+                         "Libere o turno na agenda do instrutor (grade por instrutor) ou escolha outro horário.")
+            else:
+                texto = f"Bloqueio de {tipo} ({bl.tipo}: {bl.motivo or 'sem motivo'}) entre {bl.inicio:%d/%m %H:%M} e {bl.fim:%d/%m %H:%M}."
             if excecao_tipo == "feriado_bloqueio" and tipo in ("turma", "unidade"):
                 add(ALERTA, "EXCECAO_BLOQUEIO", texto + f" Autorizado pela exceção #{excecao.id}.", tipo, id_)
             else:

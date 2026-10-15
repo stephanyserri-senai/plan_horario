@@ -502,3 +502,30 @@ button.chip-status { cursor: pointer; } .chip-status.alerta { background: #fff3d
 .jornadas { display: flex; gap: 8px; flex-wrap: wrap; }
 .jornadas label { border: 1px solid var(--borda); border-radius: 999px; padding: 5px 12px; cursor: pointer; display: inline-flex; gap: 6px; align-items: center; }
 .jornadas label.marcada { border-color: var(--primaria); background: var(--info-bg); color: var(--info); font-weight: 600; }
+
+/* agenda do instrutor (PL / PJ / vazio) */
+.agenda-instrutor { margin-top: 16px; background: var(--superficie); border: 1px solid var(--borda); border-radius: 10px; padding: 14px 16px; }
+.agenda-topo { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.agenda-topo h3 { margin: 0; font-size: 1.05rem; }
+.modalidade { font-size: .8rem; font-weight: 600; padding: 3px 10px; border-radius: 999px; }
+.modalidade-mensalista { background: var(--info-bg); color: var(--info); }
+.modalidade-horista { background: var(--alerta-bg); color: var(--alerta); }
+.barra-carga { display: flex; height: 10px; border-radius: 6px; overflow: hidden; background: var(--ch-falta); margin: 8px 0; }
+.barra-carga span { display: block; height: 100%; }
+.seg-aula { background: var(--ch-programada); }
+.seg-pl { background: #7b5ea7; }
+.seg-pj { background: #c2662d; }
+.seg-vazio { background: var(--ch-falta); border: 1px solid var(--borda); }
+.resumo-carga { display: flex; gap: 14px; flex-wrap: wrap; list-style: none; padding: 0; margin: 0 0 8px; font-size: .88rem; }
+.resumo-carga i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 4px; vertical-align: -1px; }
+.resumo-carga .alerta { color: var(--alerta); }
+.agenda-instrutor .repetir { display: block; font-size: .88rem; margin: 4px 0 8px; }
+.agenda-tabela { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.agenda-tabela th, .agenda-tabela td { border: 1px solid var(--borda); padding: 6px; vertical-align: top; font-size: .85rem; }
+.agenda-tabela th small, .agenda-tabela td small { display: block; color: var(--mudo); font-weight: 400; font-size: .75rem; }
+.agenda-tabela td select { width: 100%; font-size: .8rem; }
+.agenda-tabela .ag-aula { background: color-mix(in srgb, var(--ch-programada) 14%, var(--superficie)); }
+.agenda-tabela .ag-PL { background: color-mix(in srgb, #7b5ea7 16%, var(--superficie)); }
+.agenda-tabela .ag-PJ { background: color-mix(in srgb, #c2662d 14%, var(--superficie)); }
+.agenda-tabela .ag-indisponivel, .agenda-tabela .ag-nao_letivo { background: var(--fundo); color: var(--mudo); }
+.portal-reserva { background: color-mix(in srgb, #7b5ea7 14%, var(--superficie)); border-radius: 6px; padding: 4px 6px; font-size: .8rem; margin-top: 4px; }

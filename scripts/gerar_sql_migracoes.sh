@@ -32,3 +32,9 @@ echo "Gerado backend/sql/atualizacao_0005.sql"
   ALEMBIC_DATABASE_URL="postgresql+psycopg://usuario:senha@host/banco" python -m alembic upgrade 0005:0006 --sql
 } > sql/atualizacao_0006.sql
 echo "Gerado backend/sql/atualizacao_0006.sql"
+{
+  echo "-- Atualização 0006 -> 0007: modalidade do instrutor (mensalista ou horista). Os turnos de planejamento (PL) e projeto (PJ) usam a tabela de bloqueios."
+  echo "-- Não destrutiva (todos os instrutores começam como mensalista). Cole o arquivo inteiro no SQL Editor do Supabase e clique em Run."
+  ALEMBIC_DATABASE_URL="postgresql+psycopg://usuario:senha@host/banco" python -m alembic upgrade 0006:0007 --sql
+} > sql/atualizacao_0007.sql
+echo "Gerado backend/sql/atualizacao_0007.sql"

@@ -44,6 +44,7 @@ from app.services import auditoria
 from app.services.calendario import Calendarios, bloco_de_periodos, combinar, minutos
 from app.services.planejamento import ambientes_compativeis, area_da_turma, instrutores_elegiveis, periodos_por_encontro
 from app.services.regras_aula import credito_bloco, credito_periodo, periodos_do_turno, periodos_para_fechar, regras_aula
+from app.services import agenda_instrutor
 from app.services.validacao import AulaProposta, BaseDados, SessaoExistente, carga_horaria_minutos, possui_bloqueio, validar_aula
 from app.solver.contrato import (
     AmbienteS,
@@ -314,8 +315,13 @@ def montar_entrada(db: Session, cenario: CenarioPlanejamento, escopo: dict, peso
     # instrutores e ambientes
     instrutores = []
     for i in db.scalars(select(Instrutor).where(Instrutor.id.in_(instr_ids))):
-        disp = [Janela(j.dia_semana, minutos(j.hora_inicio), minutos(j.hora_fim))
+        disp = [(j.dia_semana, minutos(j.hora_inicio), minutos(j.hora_fim))
                 for j in db.scalars(select(DisponibilidadeInstrutor).where(DisponibilidadeInstrutor.instrutor_id == i.id))]
+        # turnos de planejamento (PL) / projeto (PJ) marcados toda semana não recebem aula
+        reservas = agenda_instrutor.reservas_semanais(db, i.id, cenario.periodo_inicio, cenario.periodo_fim)
+        if reservas and disp:
+            disp = agenda_instrutor.subtrair(disp, reservas)
+        disp = [Janela(*j) for j in disp]
         uns = sorted({i.unidade_id, *db.scalars(select(InstrutorUnidade.unidade_id).where(InstrutorUnidade.instrutor_id == i.id))})
         unidades.update(uns)
         instrutores.append(InstrutorS(i.id, uns, disp, int(float(i.limite_ch_letiva) * 60), int(float(i.max_horas_dia) * 60),

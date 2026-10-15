@@ -32,7 +32,7 @@ ENTIDADES: dict[str, dict] = {
                                "busca": [], "unidade_col": "unidade_id", "dia": ["dia_semana"]},
     "bloqueios": {"model": Bloqueio, "rotulo": "Bloqueios e indisponibilidades", "grupo": "Calendário", "label": "{alvo_tipo} {alvo_id}",
                   "busca": ["motivo", "tipo"], "opcoes": {"alvo_tipo": ["instrutor", "ambiente", "turma", "unidade", "recurso"],
-                                                          "tipo": ["indisponibilidade", "manutencao", "atividade_administrativa", "atividade_pedagogica", "evento", "afastamento"]}},
+                                                          "tipo": ["indisponibilidade", "planejamento", "projeto", "manutencao", "atividade_administrativa", "atividade_pedagogica", "evento", "afastamento"]}},
     "cursos": {"model": Curso, "rotulo": "Cursos", "grupo": "Acadêmico", "label": "{codigo} – {nome}", "busca": ["codigo", "nome", "eixo_tecnologico"],
                "unidade_col": "unidade_id", "obrigatorios": ["area_id"]},
     "matrizes": {"model": MatrizCurricular, "rotulo": "Matrizes curriculares", "grupo": "Acadêmico", "label": "{versao}", "busca": ["versao"],
@@ -60,7 +60,8 @@ ENTIDADES: dict[str, dict] = {
     "instrutores": {"model": Instrutor, "rotulo": "Instrutores", "grupo": "Instrutores", "label": "{nome} ({matricula})", "busca": ["nome", "matricula", "areas_competencia"],
                     "unidade_col": "unidade_id", "obrigatorios": ["area_id"], "extras": {"areas_ids": {"tipo": "multiref", "ref": "areas", "rotulo": "Outras áreas em que também atua"},
                                "ucs_competencia": {"tipo": "competencias", "rotulo": "UCs que ministra"},
-                               "jornada": {"tipo": "jornada", "rotulo": "Turnos de trabalho"}}, "pessoais": ["email"], "opcoes": {"situacao": ["ativo", "afastado", "ferias", "desligado"]}},
+                               "jornada": {"tipo": "jornada", "rotulo": "Turnos de trabalho"}}, "pessoais": ["email"], "opcoes": {"situacao": ["ativo", "afastado", "ferias", "desligado"],
+                                                                                                 "modalidade": ["mensalista", "horista"]}},
     "instrutor_unidades": {"model": InstrutorUnidade, "rotulo": "Unidades de atuação", "grupo": "Instrutores", "label": "{unidade_id}", "busca": [],
                            "pk": ["instrutor_id", "unidade_id"]},
     "competencias": {"model": CompetenciaInstrutor, "rotulo": "Matriz de competências", "grupo": "Instrutores", "label": "{instrutor_id}/{uc_id}",
@@ -106,13 +107,15 @@ FORMULARIOS: dict[str, dict] = {
                "ajuda": {"_numero": "Só o número: o código fica tipo de oferta + sigla do curso + número (ex.: HTC-ELT-12).",
                          "data_inicio": "Vem com o início do semestre; ajuste se a turma tiver outro prazo.",
                          "data_fim": "Vem com o fim do semestre; ajuste conforme o prazo da turma."}},
-    "instrutores": {"principais": ["matricula", "nome", "email", "unidade_id", "todas_areas", "area_id", "areas_ids", "carga_horaria_contratual",
-                                   "max_horas_dia", "limite_ch_letiva", "jornada", "situacao", "ucs_competencia"],
+    "instrutores": {"principais": ["matricula", "nome", "email", "unidade_id", "todas_areas", "area_id", "areas_ids", "modalidade",
+                                   "carga_horaria_contratual", "max_horas_dia", "limite_ch_letiva", "jornada", "situacao", "ucs_competencia"],
                     "avancados": ["intervalo_minimo_h", "areas_competencia", "restricoes_deslocamento"],
                     "rotulos": {"areas_competencia": "Formação e especialidades", "max_horas_dia": "Horas de aula por dia"},
                     "ajuda": {"max_horas_dia": "Calculada pela carga contratual (40 h/sem = 8 h/dia). Até 4 h = 1 turno por dia; 8 h = 2 turnos (MV ou VN).",
                               "unidade_id": "Só quando atende todas as áreas; senão é a unidade da área principal.",
-                              "carga_horaria_contratual": "Define as horas por dia: carga ÷ 5 dias."}},
+                              "carga_horaria_contratual": "Define as horas por dia: carga ÷ 5 dias.",
+                              "modalidade": "Mensalista: 40 h ou 20 h garantidas (aula, planejamento ou projeto). Horista: horas não garantidas; "
+                                            "turno sem aula pode ser dispensa. Os turnos PL/PJ são marcados na grade (visão por instrutor)."}},
 }
 
 # tabela -> chave da entidade (para referências)

@@ -74,14 +74,14 @@ function MinhasTurmas({ aoEnviar }: { aoEnviar: () => void }) {
         {s.publicado ? <Badge tipo="ok">Horário publicado</Badge> : <Badge tipo="alerta">Proposta em planejamento: pode mudar até a publicação</Badge>}
         <button className="btn" onClick={() => baixar(`/api/portal/agenda?cenario_id=${s.cenario_id}`, `minha_agenda_${s.semestre.replace("/", "-")}.xlsx`)}>⬇ Baixar minha agenda (Excel)</button>
       </div>
-      <SemanaInstrutor aulas={s.aulas} inicio={s.inicio} />
+      <SemanaInstrutor aulas={s.aulas} reservas={s.reservas || []} inicio={s.inicio} />
       <h2 className="portal-sub">Turmas e UCs atribuídas ({s.turmas_ucs.length})</h2>
       <div className="portal-cards">{s.turmas_ucs.map((t: any) => <CartaoTurma key={t.turma_uc_id} t={t} aoEnviar={() => { aoEnviar(); r.recarregar(); }} />)}</div>
     </>
   );
 }
 
-function SemanaInstrutor({ aulas, inicio }: { aulas: any[]; inicio: string }) {
+function SemanaInstrutor({ aulas, reservas, inicio }: { aulas: any[]; reservas: any[]; inicio: string }) {
   const hoje = iso(new Date());
   const primeira = aulas.find((a) => a.data >= hoje)?.data || aulas[0]?.data || inicio;
   const [seg, setSeg] = useState(() => segundaDe(new Date(primeira + "T12:00:00")));
@@ -89,7 +89,8 @@ function SemanaInstrutor({ aulas, inicio }: { aulas: any[]; inicio: string }) {
   const dias = Array.from({ length: 6 }, (_, i) => addDias(seg, i));
   const naSemana = aulas.filter((a) => a.data >= iso(dias[0]) && a.data <= iso(dias[5]));
   const usaSab = naSemana.some((a) => a.data === iso(dias[5]));
-  const turnos = [...new Set(aulas.map((a) => a.turno || "—"))].sort((a, b) => ordemTurno(a) - ordemTurno(b));
+  const resSemana = reservas.filter((r) => r.data >= iso(dias[0]) && r.data <= iso(dias[5]));
+  const turnos = [...new Set([...aulas.map((a) => a.turno || "—"), ...reservas.map(turnoDaHora)])].sort((a, b) => ordemTurno(a) - ordemTurno(b));
   const blocos = (turno: string, d: Date) => {
     const xs = naSemana.filter((a) => a.data === iso(d) && (a.turno || "—") === turno);
     const g = new Map<string, any>();
@@ -108,19 +109,23 @@ function SemanaInstrutor({ aulas, inicio }: { aulas: any[]; inicio: string }) {
         <b>Semana de {dataBR(iso(dias[0]))} a {dataBR(iso(dias[usaSab ? 5 : 4]))}</b>
         <button className="btn" aria-label="Próxima semana" onClick={() => setSeg(addDias(seg, 7))}>›</button>
         <button className="btn-link" onClick={() => setSeg(segundaDe(new Date()))}>esta semana</button>
-        <small className="mudo">{naSemana.length ? `${new Set(naSemana.map((a) => a.data)).size} dia(s) com aula` : "sem aulas nesta semana"}</small>
+        <small className="mudo">{naSemana.length ? `${new Set(naSemana.map((a) => a.data)).size} dia(s) com aula` : "sem aulas nesta semana"}
+          {resSemana.length ? ` · ${resSemana.length} turno(s) de PL/PJ` : ""}</small>
       </div>
       <div className="tabela-wrap"><table className="tabela portal-grade">
         <thead><tr><th>Turno</th>{dias.slice(0, usaSab ? 6 : 5).map((d, i) => <th key={i} className={iso(d) === hoje ? "hoje" : ""}>{DIAS_CURTOS[i]} {dataBR(iso(d)).slice(0, 5)}</th>)}</tr></thead>
         <tbody>{turnos.map((t) => <tr key={t}><th>{t}</th>{dias.slice(0, usaSab ? 6 : 5).map((d, i) => (
           <td key={i}>{blocos(t, d).map((b) => <div key={b.turma + b.uc} className="bloco-aula" style={{ background: corDe(b.turma + b.uc) }}>
             <b>{b.turma}{b.substituindo ? " 🔁" : ""}</b><span>{b.uc} · {b.uc_nome}</span><small>{b.ini}–{b.fimB}{b.sala ? ` · ${b.sala}` : ""}</small>
-            {b.substituindo && <small>substituindo {b.substituindo}</small>}</div>)}</td>))}</tr>)}</tbody>
+            {b.substituindo && <small>substituindo {b.substituindo}</small>}</div>)}
+            {resSemana.filter((r) => r.data === iso(d) && turnoDaHora(r) === t).map((r) => <div key={r.inicio} className="portal-reserva" title={r.descricao}>
+              <b>{r.sigla}</b> {r.sigla === "PL" ? "Planejamento" : "Projeto / outra atividade"} <small>{r.inicio}–{r.fim}</small></div>)}</td>))}</tr>)}</tbody>
       </table></div>
     </section>
   );
 }
 
+function turnoDaHora(r: { inicio: string }) { return r.inicio < "12:00" ? "Manhã" : r.inicio < "18:00" ? "Tarde" : "Noite"; }
 function ordemTurno(t: string) { return t.startsWith("Manh") ? 0 : t.startsWith("Tard") ? 1 : t.startsWith("Noit") ? 2 : 3; }
 function corDe(k: string) {
   let h = 0;
@@ -195,6 +200,7 @@ function MeusDados({ eu, salvo }: { eu: any; salvo: () => void }) {
         <dl className="portal-info">
           <dt>Nome</dt><dd>{eu.nome}</dd><dt>Matrícula</dt><dd>{eu.matricula}</dd><dt>Unidade</dt><dd>{eu.unidade}</dd>
           <dt>Área principal</dt><dd>{eu.todas_areas ? "Todas as áreas" : eu.area_principal?.nome || "—"}</dd>
+          <dt>Modalidade</dt><dd>{eu.modalidade === "horista" ? "Horista (horas não garantidas)" : "Mensalista (horas garantidas: aula, planejamento ou projeto)"}</dd>
           <dt>Carga contratual</dt><dd>{eu.carga_horaria_contratual} h/semana · {eu.max_horas_dia} h de aula por dia</dd>
         </dl>
         <p className="sub">Esses dados são mantidos pela coordenação. Se algo estiver errado, avise por uma observação.</p>

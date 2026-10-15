@@ -8,7 +8,7 @@ os horários atribuídos a ele e envia observações sobre cada turma × UC para
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, Body, Depends
 from fastapi.responses import Response
@@ -22,9 +22,10 @@ from app.core.db import get_db
 from app.core.deps import Contexto, get_contexto, requer
 from app.core.errors import AcessoNegado, ConflitoValidacao, EntradaInvalida, NaoEncontrado
 from app.core.security import hash_senha
-from app.models import (Alocacao, Ambiente, Area, CenarioPlanejamento, CompetenciaInstrutor, HabilitacaoInstrutor, Instrutor, InstrutorArea,
+from app.models import (Alocacao, Ambiente, Area, Bloqueio, CenarioPlanejamento, CompetenciaInstrutor, HabilitacaoInstrutor, Instrutor, InstrutorArea,
                         Notificacao, ObservacaoInstrutor, Turma, TurmaUC, Turno, Unidade, UnidadeCurricular, Usuario)
 from app.services import auditoria
+from app.services.agenda_instrutor import TIPO_PARA_SIGLA
 
 router = APIRouter(prefix="/api", tags=["portal do instrutor"])
 
@@ -54,7 +55,7 @@ def _eu(db: Session, inst: Instrutor) -> dict:
     certs = db.scalars(select(HabilitacaoInstrutor.nome).where(HabilitacaoInstrutor.instrutor_id == inst.id, HabilitacaoInstrutor.ativo.is_(True))
                        .order_by(HabilitacaoInstrutor.nome)).all()
     return {
-        "id": inst.id, "nome": inst.nome, "matricula": inst.matricula, "email": inst.email,
+        "id": inst.id, "nome": inst.nome, "matricula": inst.matricula, "email": inst.email, "modalidade": inst.modalidade,
         "unidade": un.nome if un else None, "unidade_id": inst.unidade_id,
         "area_principal": {"id": principal.id, "nome": principal.nome} if principal else None,
         "todas_areas": inst.todas_areas, "areas_ids": _areas_ids(db, inst),
@@ -186,6 +187,15 @@ def minhas_turmas(ctx: Contexto = Depends(get_contexto), db: Session = Depends(g
                        "sala": salas[a.ambiente_id].nome if a.ambiente_id in salas else None, "turno": turnos.get(turmas[a.turma_id].turno_id),
                        "substituindo": titulares.get(a.instrutor_titular_id)}
                       for a in sorted(aulas, key=lambda a: a.inicio)],
+            # turnos de planejamento (PL) e projeto/outra atividade (PJ) marcados pela coordenação
+            "reservas": [{"data": b.inicio.date().isoformat(), "inicio": b.inicio.strftime("%H:%M"), "fim": b.fim.strftime("%H:%M"),
+                          "sigla": TIPO_PARA_SIGLA[b.tipo], "descricao": b.motivo}
+                         for b in db.scalars(select(Bloqueio).where(
+                             Bloqueio.alvo_tipo == "instrutor", Bloqueio.alvo_id == inst.id, Bloqueio.ativo.is_(True),
+                             Bloqueio.tipo.in_(list(TIPO_PARA_SIGLA)),
+                             Bloqueio.inicio >= datetime.combine(cen.periodo_inicio or min(a.data for a in aulas), datetime.min.time()),
+                             Bloqueio.inicio < datetime.combine((cen.periodo_fim or max(a.data for a in aulas)) + timedelta(days=1), datetime.min.time()),
+                         ).order_by(Bloqueio.inicio))],
         })
     return res
 

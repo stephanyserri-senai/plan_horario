@@ -42,6 +42,8 @@ BEGIN
     UPDATE disponibilidade_ambientes SET hora_inicio = '{novo_ini}' WHERE hora_inicio = '{antigo_ini}';
     UPDATE disponibilidade_ambientes SET hora_fim = '{novo_fim}' WHERE hora_fim = '{antigo_fim}';
     UPDATE horarios_funcionamento SET hora_fim = '{novo_fim}' WHERE hora_fim = '{antigo_fim}';
+    UPDATE bloqueios SET inicio = inicio {sinal} interval '10 minutes', fim = fim {sinal} interval '10 minutes'
+     WHERE alvo_tipo = 'instrutor' AND inicio::time = '{antigo_ini}' AND fim::time = '{antigo_fim}';
   END IF;
 END $$
 """

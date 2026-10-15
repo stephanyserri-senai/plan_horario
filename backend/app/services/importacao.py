@@ -179,7 +179,7 @@ SPECS: dict[str, dict] = {
         "matricula": ("str", True, ["registro", "identificacao", "id_institucional"]), "nome": ("str", True, ["instrutor", "docente", "professor"]),
         "email": ("str", False, ["e_mail"]), "unidade_codigo": ("str", True, ["unidade"]), "carga_horaria_contratual": ("float", False, ["ch_contratual", "jornada"]),
         "limite_ch_letiva": ("float", False, ["ch_letiva", "limite_letivo"]), "areas_competencia": ("str", False, ["areas"]),
-        "area": ("str", False, ["area_tecnologica"])}},
+        "area": ("str", False, ["area_tecnologica"]), "modalidade": ("str", False, ["vinculo"])}},
     "competencias": {"chave": ["matricula", "uc_codigo"], "campos": {
         "matricula": ("str", True, ["instrutor"]), "uc_codigo": ("str", True, ["uc"]), "curso_codigo": ("str", False, ["curso"]),
         "versao": ("str", False, ["matriz"]), "nivel": ("str", False, []), "valido_ate": ("date", False, ["validade"])}},
@@ -206,6 +206,7 @@ SPECS: dict[str, dict] = {
     "levantamento_instrutores": {"chave": ["matricula"], "campos": {
         "matricula": ("str", True, ["matricula_ou_registro"]), "nome": ("str", True, ["nome_completo", "instrutor"]), "email": ("str", False, ["e_mail"]),
         "unidade": ("str", True, ["unidade_principal"]), "area": ("str", True, ["areas_em_que_atua", "areas"]),
+        "modalidade": ("str", False, ["modalidade_do_instrutor", "vinculo"]),
         "carga_horaria_contratual": ("float", False, ["carga_horaria_contratual_h_semana", "jornada"]),
         "limite_ch_letiva": ("float", False, ["limite_de_aulas_por_semana_h", "limite_letivo"]),
         "max_horas_dia": ("float", False, ["maximo_de_horas_por_dia"]),
@@ -433,6 +434,15 @@ def _preparar_estrutura(db, r, v, E, A):
     return d, ex, E, A
 
 
+def _modalidade(v, d, E):
+    m = (v.get("modalidade") or "").strip().lower()
+    if m:
+        if m not in ("mensalista", "horista"):
+            E.append(f"modalidade '{v['modalidade']}' inválida: use Mensalista ou Horista")
+        else:
+            d["modalidade"] = m
+
+
 def _preparar_levantamento(db, r, v, E, A):
     """Uma linha = um instrutor com áreas, disponibilidade (turnos × dias), competências e certificações."""
     uid = r.unidade(v["unidade"])
@@ -444,6 +454,7 @@ def _preparar_levantamento(db, r, v, E, A):
             d[k] = v[k]
     if d.get("limite_ch_letiva") and d.get("carga_horaria_contratual") and d["limite_ch_letiva"] > d["carga_horaria_contratual"]:
         E.append("limite de aulas por semana maior que a carga contratual")
+    _modalidade(v, d, E)
     _area(r, v, d, E, A, multiplas=True)
     disp = []
     from app.services.regras_aula import JORNADAS, horas_dia_pela_carga, normalizar_jornada, validar_jornada
@@ -557,6 +568,7 @@ def _preparar(db: Session, r: Resolvedor, tipo: str, v: dict) -> tuple[dict | No
         uid = r.unidade(v["unidade_codigo"]) or E.append(f"unidade '{v['unidade_codigo']}' não cadastrada")
         d = {k: v[k] for k in ("matricula", "nome", "email", "carga_horaria_contratual", "limite_ch_letiva", "areas_competencia") if v[k] is not None}
         d["unidade_id"] = uid
+        _modalidade(v, d, E)
         _area(r, v, d, E, A, multiplas=True)
         return d, db.scalars(select(Instrutor).where(Instrutor.matricula == v["matricula"])).first(), E, A
     if tipo == "competencias":

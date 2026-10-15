@@ -1182,10 +1182,20 @@ BEGIN
     UPDATE disponibilidade_ambientes SET hora_inicio = '18:30' WHERE hora_inicio = '18:20';
     UPDATE disponibilidade_ambientes SET hora_fim = '22:00' WHERE hora_fim = '21:50';
     UPDATE horarios_funcionamento SET hora_fim = '22:00' WHERE hora_fim = '21:50';
+    UPDATE bloqueios SET inicio = inicio + interval '10 minutes', fim = fim + interval '10 minutes'
+     WHERE alvo_tipo = 'instrutor' AND inicio::time = '18:20' AND fim::time = '21:50';
   END IF;
 END $$;
 
 UPDATE alembic_version SET version_num='0006' WHERE alembic_version.version_num = '0005';
+
+-- Running upgrade 0006 -> 0007
+
+ALTER TABLE instrutores ADD COLUMN modalidade VARCHAR(12) DEFAULT 'mensalista' NOT NULL;
+
+ALTER TABLE instrutores ADD CONSTRAINT instrutores_modalidade_check CHECK (modalidade in ('mensalista','horista'));
+
+UPDATE alembic_version SET version_num='0007' WHERE alembic_version.version_num = '0006';
 
 COMMIT;
 

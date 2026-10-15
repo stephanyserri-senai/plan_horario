@@ -416,6 +416,40 @@ def listar_substituicoes(cenario_id: int, ctx: Contexto = Depends(requer("alocac
     return list(grupos.values())
 
 
+def _instrutor_acessivel(db, ctx, instrutor_id: int) -> Instrutor:
+    inst = db.get(Instrutor, instrutor_id)
+    if inst is None:
+        raise NaoEncontrado("Instrutor não encontrado.")
+    if not ctx.acessa_unidade(inst.unidade_id):
+        raise AcessoNegado("Instrutor fora do seu escopo.")
+    return inst
+
+
+@router.get("/grade/agenda-instrutor")
+def agenda_instrutor(cenario_id: int, instrutor_id: int, semana: date, ctx: Contexto = Depends(requer("alocacoes.ler")),
+                     db: Session = Depends(get_db)):
+    """Semana do instrutor turno a turno: aula, PL (planejamento), PJ (projeto/outra atividade), vazio — e o saldo da carga."""
+    from app.services import agenda_instrutor as ag
+    _instrutor_acessivel(db, ctx, instrutor_id)
+    return ag.semana(db, cenario_id, instrutor_id, semana)
+
+
+@router.post("/instrutores/{iid}/agenda")
+def marcar_agenda_instrutor(iid: int, d: dict = Body(...), ctx: Contexto = Depends(requer("alocacoes.editar")), db: Session = Depends(get_db)):
+    """Marca um turno sem aula como PL ou PJ (ou volta a vazio), numa data ou toda semana até `repetir_ate`."""
+    from app.services import agenda_instrutor as ag
+    _instrutor_acessivel(db, ctx, iid)
+    try:
+        dia = date.fromisoformat(d["data"])
+        ate = date.fromisoformat(d["repetir_ate"]) if d.get("repetir_ate") else None
+        turno_id, cenario_id = int(d["turno_id"]), int(d["cenario_id"])
+    except (KeyError, TypeError, ValueError):
+        raise EntradaInvalida("Informe semestre, data e turno.")
+    r = ag.marcar(db, ctx, cenario_id, iid, dia, turno_id, d.get("sigla") or None, ate, d.get("descricao"))
+    db.commit()
+    return r
+
+
 @router.post("/alocacoes/alternativas")
 def alternativas(d: dict = Body(...), ctx: Contexto = Depends(requer("alocacoes.ler")), db: Session = Depends(get_db)):
     dados = _dados_aula(d)
