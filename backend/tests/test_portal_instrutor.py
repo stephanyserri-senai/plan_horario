@@ -81,3 +81,26 @@ def test_portal_do_instrutor_ponta_a_ponta(db, mundo):
     db.commit()
     r = c.get("/api/portal/eu", headers=h)
     assert r.status_code == 403 and "coordenação" in r.text
+
+
+def test_sql_do_instrutor_de_teste(db, mundo):
+    """backend/sql/instrutor_teste_portal.sql: roda duas vezes sem duplicar e o login do portal funciona."""
+    from pathlib import Path
+
+    from sqlalchemy import text
+
+    from app.core.estrutura import garantir_estrutura_fixa
+    garantir_estrutura_fixa(db)
+    db.commit()
+    sql = (Path(__file__).resolve().parents[1] / "sql" / "instrutor_teste_portal.sql").read_text(encoding="utf-8")
+    conn = db.connection().connection.driver_connection
+    for _ in range(2):
+        conn.execute(sql.encode())
+    conn.commit()
+    assert db.scalar(text("SELECT count(*) FROM usuarios WHERE email = 'instrutor.teste'")) == 1
+    assert db.scalar(text("SELECT count(*) FROM disponibilidade_instrutores d JOIN instrutores i ON i.id = d.instrutor_id WHERE i.matricula = 'TESTE-PORTAL'")) == 10
+    c = TestClient(app)
+    h = _login(c, "instrutor.teste", "instrutor@123")
+    eu = c.get("/api/portal/eu", headers=h).json()
+    assert eu["matricula"] == "TESTE-PORTAL" and eu["area_principal"]["nome"] == "ENERGIAS" and len(eu["disp_turnos"]) == 2
+    assert eu["notificacoes_novas"] == 1

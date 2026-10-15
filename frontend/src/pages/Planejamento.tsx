@@ -92,15 +92,21 @@ function Cenarios() {
       ]} linhas={cenarios} />
       <Modal titulo="Novo semestre" aberto={!!novo} fechar={() => setNovo(null)}>
         {novo && <>
-          <Campo rotulo="Semestre" obrigatorio><select value={novo._sem} onChange={(e) => setNovo({ ...novoSemestre(e.target.value), unidade_id: novo.unidade_id })}>
-            {opcoesSemestre().map((sm) => <option key={sm} value={sm}>{sm}</option>)}</select></Campo>
+          <Campo rotulo="Ano" obrigatorio ajuda="Digite qualquer ano (ex.: 2027).">
+            <input type="number" min={2000} max={2100} step={1} value={novo._sem.split("/")[0]}
+              onChange={(e) => { const a = e.target.value.replace(/\D/g, "").slice(0, 4); setNovo({ ...novoSemestre(`${a}/${novo._sem.split("/")[1]}`), unidade_id: novo.unidade_id }); }} /></Campo>
+          <Campo rotulo="Semestre" obrigatorio><select value={novo._sem.split("/")[1]}
+            onChange={(e) => setNovo({ ...novoSemestre(`${novo._sem.split("/")[0]}/${e.target.value}`), unidade_id: novo.unidade_id })}>
+            <option value="1">1º semestre</option><option value="2">2º semestre</option></select></Campo>
           <Campo rotulo="Nome"><input value={novo.nome} onChange={(e) => setNovo({ ...novo, nome: e.target.value })} /></Campo>
           <Campo rotulo="Unidade" ajuda="Vazio = as duas unidades no mesmo planejamento."><select value={novo.unidade_id ?? ""} onChange={(e) => setNovo({ ...novo, unidade_id: e.target.value || null })}>
             <option value="">Todas as unidades</option>{unidades.map((u) => <option key={u.id} value={u.id}>{u.rotulo}</option>)}</select></Campo>
           <Campo rotulo="Período letivo — início"><input type="date" value={novo.periodo_inicio} onChange={(e) => setNovo({ ...novo, periodo_inicio: e.target.value })} /></Campo>
           <Campo rotulo="Período letivo — fim"><input type="date" value={novo.periodo_fim} onChange={(e) => setNovo({ ...novo, periodo_fim: e.target.value })} /></Campo>
           <Campo rotulo="Descrição"><textarea value={novo.descricao ?? ""} onChange={(e) => setNovo({ ...novo, descricao: e.target.value })} /></Campo>
-          <div className="rodape-modal"><button className="btn btn-primario" onClick={async () => {
+          {!/^(20|21)\d{2}$/.test(novo._sem.split("/")[0]) && <p className="aviso-inline">Informe o ano com 4 dígitos (ex.: 2027).</p>}
+          {listarSemestres(cenarios).includes(novo._sem) && <p className="aviso-inline">Já existe o semestre {novo._sem}: será criada mais uma versão dele.</p>}
+          <div className="rodape-modal"><button className="btn btn-primario" disabled={!/^(20|21)\d{2}$/.test(novo._sem.split("/")[0])} onClick={async () => {
             const { _sem, ...dados } = novo;
             try { const c = await api.post("/api/cenarios", dados); await recarregarCenarios(); setCenarioId(c.id); setNovo(null); aviso(`Semestre ${_sem} criado e aberto.`); } catch (e) { setErro(e); setNovo(null); }
           }}>Criar</button></div>
