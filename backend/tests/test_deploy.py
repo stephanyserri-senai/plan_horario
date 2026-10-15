@@ -88,7 +88,7 @@ def test_api_importa_sem_ortools():
 def test_saude_informa_fila_e_migracao(mundo):
     from app.main import app
     r = TestClient(app).get("/api/saude").json()
-    assert r["status"] == "ok" and r["migracao"] == "0005" and "execucoes_pendentes" in r["fila"]
+    assert r["status"] == "ok" and r["migracao"] == "0006" and "execucoes_pendentes" in r["fila"]
 
 
 # ------------------------------------------------------------------ RLS / Data API do Supabase
@@ -151,7 +151,7 @@ def test_sql_offline_das_migracoes_reproduz_banco_novo():
             assert c.scalar(text("SELECT count(*) FROM usuarios WHERE email = 'admin'")) == 1
             assert c.scalar(text("SELECT count(*) FROM pg_class cl JOIN pg_namespace n ON n.oid = cl.relnamespace "
                                  "WHERE n.nspname = 'public' AND cl.relkind = 'r' AND NOT cl.relrowsecurity")) == 0
-            assert c.scalar(text("SELECT version_num FROM alembic_version")) == "0005"
+            assert c.scalar(text("SELECT version_num FROM alembic_version")) == "0006"
             assert c.scalar(text("SELECT count(*) FROM pg_constraint WHERE conname LIKE 'excl_alocacao_%'")) == 3
             # estrutura fixa da instituição (migração 0003), idêntica a app/core/estrutura.py
             from app.core.estrutura import AREAS, UNIDADES
@@ -490,14 +490,14 @@ def test_scripts_do_sql_editor_funcionam_comando_a_comando():
             os.environ.pop("ALEMBIC_DATABASE_URL", None)
         dsn = url.replace("postgresql+psycopg://", "postgresql://")
         sql_dir = RAIZ / "backend" / "sql"
-        for arq, vezes in (("atualizacao_0003.sql", 1), ("atualizacao_0004.sql", 1), ("atualizacao_0005.sql", 1), ("seed_inicial.sql", 1), ("demo_recarregar.sql", 2)):
+        for arq, vezes in (("atualizacao_0003.sql", 1), ("atualizacao_0004.sql", 1), ("atualizacao_0005.sql", 1), ("atualizacao_0006.sql", 1), ("seed_inicial.sql", 1), ("demo_recarregar.sql", 2)):
             for _ in range(vezes):
                 for cmd in _comandos_sql((sql_dir / arq).read_text(encoding="utf-8")):
                     with psycopg.connect(dsn, autocommit=True) as conn:
                         conn.execute(cmd.encode())
         eng = create_engine(url)
         with eng.connect() as c:
-            assert c.scalar(text("SELECT version_num FROM alembic_version")) == "0005"
+            assert c.scalar(text("SELECT version_num FROM alembic_version")) == "0006"
             assert c.scalar(text("SELECT count(*) FROM areas")) == 11
             assert c.scalar(text("SELECT count(*) FROM turmas WHERE codigo LIKE 'DEMO-%'")) == 3
             assert c.scalar(text("SELECT count(*) FROM turma_uc tu JOIN turmas t ON t.id = tu.turma_id WHERE t.codigo LIKE 'DEMO-%'")) == 12
@@ -598,5 +598,56 @@ def test_sql_do_semestre_de_demonstracao():
             assert cont("historico_auditoria") > 0 and (cont("unidades"), cont("areas")) == (2, 11)
         eng.dispose()
     finally:
+        with adm.connect() as c:
+            c.execute(text(f"DROP DATABASE IF EXISTS {nome} WITH (FORCE)"))
+
+
+def test_migracao_0006_noite_1830_2200_desloca_aulas():
+    """Semestre montado com a noite antiga (18:20–21:50); a 0006 leva turno, períodos, aulas e disponibilidades para 18:30–22:00 sem conflitos."""
+    from alembic import command
+    from alembic.config import Config
+    from sqlalchemy import create_engine
+
+    from app import seed
+    from app.core.db import SessionLocal, reset_engine
+    from app.core.deps import carregar_contexto
+    from app.demo_semestre import montar
+    from app.models import Usuario
+    from app.services import cenarios
+    base = URL.rsplit("/", 1)[0]
+    nome = f"plan_noite_{uuid.uuid4().hex[:6]}"
+    adm = create_engine(base + "/postgres", isolation_level="AUTOCOMMIT")
+    with adm.connect() as c:
+        c.execute(text(f"CREATE DATABASE {nome}"))
+    url = f"{base}/{nome}"
+    cfg = Config(str(RAIZ / "backend" / "alembic.ini"))
+    cfg.set_main_option("script_location", str(RAIZ / "backend" / "alembic"))
+    os.environ["ALEMBIC_DATABASE_URL"] = url
+    try:
+        command.upgrade(cfg, "0005")
+        reset_engine(url)
+        with SessionLocal() as db:
+            seed.executar(db, "adm@noite", "senha-forte-9")
+            db.commit()
+            ctx = carregar_contexto(db, db.query(Usuario).filter(Usuario.email == "adm@noite").one())
+            r = montar(db, ctx, limite_s=60)
+            antes = db.execute(text("SELECT count(*) FROM alocacoes WHERE inicio::time = '18:20'")).scalar()
+            assert antes > 0
+        command.upgrade(cfg, "0006")
+        command.upgrade(cfg, "0006")  # idempotente
+        with SessionLocal() as db:
+            q = lambda s: db.execute(text(s)).scalar()  # noqa: E731
+            assert q("SELECT count(*) FROM alocacoes WHERE inicio::time = '18:20' OR fim::time = '21:50'") == 0
+            assert q("SELECT count(*) FROM alocacoes WHERE inicio::time = '18:30' AND fim::time = '22:00'") == antes
+            assert q("SELECT count(*) FROM turnos WHERE codigo = 'N' AND hora_inicio = '18:30' AND hora_fim = '22:00'") == 2
+            assert [str(x) for x in db.execute(text("SELECT p.hora_inicio FROM periodos_horarios p JOIN turnos t ON t.id = p.turno_id "
+                                                   "JOIN unidades u ON u.id = t.unidade_id WHERE t.codigo = 'N' AND u.codigo = 'PORTO' ORDER BY p.ordem")).scalars()] == \
+                ["18:30:00", "19:20:00", "20:20:00", "21:10:00"]
+            assert q("SELECT count(*) FROM disponibilidade_instrutores WHERE hora_fim = '21:50'") == 0
+            v = cenarios.validar(db, ctx, r["cenario_id"])
+            assert v["resumo"]["bloqueios"] == 0, v["resumo"]
+    finally:
+        os.environ.pop("ALEMBIC_DATABASE_URL", None)
+        reset_engine(URL)
         with adm.connect() as c:
             c.execute(text(f"DROP DATABASE IF EXISTS {nome} WITH (FORCE)"))

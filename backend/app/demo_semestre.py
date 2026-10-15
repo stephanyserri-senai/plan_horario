@@ -124,37 +124,37 @@ TURMAS = [
     ("EMP-ADM-02", "ADM", "Assistente Administrativo 02 – Turma para empresa", "T", 20, [0, 2, 4], {}),
 ]
 
-# matrícula, nome, unidade, área principal, outras áreas, turnos, UCs (pleno), certificações, formação
+# matrícula, nome, unidade, área principal, outras áreas, turnos de trabalho (M/V/N; 40 h = MV ou VN), UCs (pleno), certificações, formação
 INSTRUTORES = [
-    ("BM-1001", "Marcos Vieira", "BEIRA-MAR", "ENERGIAS", [], "MT", ["ELT-IEP", "ELT-CMD"], ["NR-10"], "Eng. eletricista; 12 anos em manutenção industrial"),
-    ("BM-1002", "Juliana Prates", "BEIRA-MAR", "ENERGIAS", ["AUTOMACAO"], "MN", ["ELT-CMD", "ELT-ELA", "ELT-IEP"], ["NR-10"], "Tecnóloga em automação; comandos e acionamentos"),
+    ("BM-1001", "Marcos Vieira", "BEIRA-MAR", "ENERGIAS", [], "MV", ["ELT-IEP", "ELT-CMD"], ["NR-10"], "Eng. eletricista; 12 anos em manutenção industrial"),
+    ("BM-1002", "Juliana Prates", "BEIRA-MAR", "ENERGIAS", ["AUTOMACAO"], "VN", ["ELT-CMD", "ELT-ELA", "ELT-IEP"], ["NR-10"], "Tecnóloga em automação; comandos e acionamentos"),
     ("BM-1003", "Ricardo Nunes", "BEIRA-MAR", "ENERGIAS", [], "N", ["ELT-IEP", "ELT-CMD"], ["NR-10", "NR-35"], "Técnico em eletrotécnica; instalações prediais e industriais"),
-    ("BM-1004", "Patrícia Lemos", "BEIRA-MAR", "ENERGIAS", ["MECATRONICA", "INSTRUMENTACAO"], "MN", ["ELT-ELA", "MCT-MIC"], [], "Eng. eletrônica; sistemas embarcados"),
-    ("BM-1005", "Fábio Teixeira", "BEIRA-MAR", "AUTOMACAO", ["MECATRONICA"], "TN", ["AUT-CLP", "MCT-ROB", "INS-MCT"], ["NR-10"], "Eng. de controle e automação; CLP Siemens e Rockwell"),
-    ("BM-1006", "Larissa Campos", "BEIRA-MAR", "AUTOMACAO", [], "MT", ["AUT-RDI", "AUT-CLP"], [], "Tecnóloga em redes industriais (Profinet, Modbus)"),
-    ("BM-1007", "Henrique Duarte", "BEIRA-MAR", "AUTOMACAO", ["INSTRUMENTACAO"], "TN", ["AUT-INB", "INS-MCV", "INS-CAL"], [], "Técnico em instrumentação; 15 anos em refinaria"),
-    ("BM-1008", "Sérgio Andrade", "BEIRA-MAR", "MECANICA", [], "TN", ["MEC-USI", "MEC-MET"], [], "Técnico em mecânica; ferramentaria"),
-    ("BM-1009", "Camila Rocha", "BEIRA-MAR", "MECANICA", ["MECATRONICA", "AUTOMACAO"], "TN", ["MEC-DTM", "MCT-CAD", "MEC-HID", "AUT-PNE"], [], "Eng. mecânica; projetos em CAD/CAE"),
+    ("BM-1004", "Patrícia Lemos", "BEIRA-MAR", "ENERGIAS", ["MECATRONICA", "INSTRUMENTACAO"], "MV", ["ELT-ELA", "MCT-MIC"], [], "Eng. eletrônica; sistemas embarcados"),
+    ("BM-1005", "Fábio Teixeira", "BEIRA-MAR", "AUTOMACAO", ["MECATRONICA"], "VN", ["AUT-CLP", "MCT-ROB", "INS-MCT"], ["NR-10"], "Eng. de controle e automação; CLP Siemens e Rockwell"),
+    ("BM-1006", "Larissa Campos", "BEIRA-MAR", "AUTOMACAO", [], "MV", ["AUT-RDI", "AUT-CLP"], [], "Tecnóloga em redes industriais (Profinet, Modbus)"),
+    ("BM-1007", "Henrique Duarte", "BEIRA-MAR", "AUTOMACAO", ["INSTRUMENTACAO"], "VN", ["AUT-INB", "INS-MCV", "INS-CAL"], [], "Técnico em instrumentação; 15 anos em refinaria"),
+    ("BM-1008", "Sérgio Andrade", "BEIRA-MAR", "MECANICA", [], "VN", ["MEC-USI", "MEC-MET"], [], "Técnico em mecânica; ferramentaria"),
+    ("BM-1009", "Camila Rocha", "BEIRA-MAR", "MECANICA", ["MECATRONICA", "AUTOMACAO"], "VN", ["MEC-DTM", "MCT-CAD", "MEC-HID", "AUT-PNE"], [], "Eng. mecânica; projetos em CAD/CAE"),
     ("BM-1010", "Paulo Mendes", "BEIRA-MAR", "MECANICA", [], "N", ["MEC-USI", "MEC-MET", "MEC-HID"], [], "Técnico em mecânica; usinagem CNC"),
-    ("BM-1011", "Rogério Lima", "BEIRA-MAR", "AUTOMOTIVA", [], "MT", ["MAU-MCI", "MAU-SDF"], [], "Mecânico automotivo; 20 anos em concessionária"),
+    ("BM-1011", "Rogério Lima", "BEIRA-MAR", "AUTOMOTIVA", [], "MV", ["MAU-MCI", "MAU-SDF"], [], "Mecânico automotivo; 20 anos em concessionária"),
     ("BM-1012", "Tiago Barbosa", "BEIRA-MAR", "AUTOMOTIVA", [], "M", ["MAU-MCI", "MAU-SDF", "MAU-ELA"], [], "Técnico em manutenção automotiva; injeção eletrônica"),
-    ("BM-1013", "Elaine Souza", "BEIRA-MAR", "AUTOMOTIVA", ["ENERGIAS"], "MT", ["MAU-ELA", "MAU-SDF"], ["NR-10"], "Tecnóloga em eletrônica automotiva"),
-    ("BM-1014", "Gustavo Pires", "BEIRA-MAR", "MECATRONICA", ["AUTOMACAO"], "T", ["MCT-ROB", "MCT-EPN", "AUT-PNE"], [], "Eng. mecatrônico; robótica colaborativa"),
-    ("BM-1015", "Renata Alves", "BEIRA-MAR", "MECATRONICA", ["ENERGIAS"], "TN", ["MCT-MIC", "MCT-EPN", "MCT-CAD"], [], "Tecnóloga em mecatrônica; Arduino e ESP32"),
+    ("BM-1013", "Elaine Souza", "BEIRA-MAR", "AUTOMOTIVA", ["ENERGIAS"], "MV", ["MAU-ELA", "MAU-SDF"], ["NR-10"], "Tecnóloga em eletrônica automotiva"),
+    ("BM-1014", "Gustavo Pires", "BEIRA-MAR", "MECATRONICA", ["AUTOMACAO"], "V", ["MCT-ROB", "MCT-EPN", "AUT-PNE"], [], "Eng. mecatrônico; robótica colaborativa"),
+    ("BM-1015", "Renata Alves", "BEIRA-MAR", "MECATRONICA", ["ENERGIAS"], "VN", ["MCT-MIC", "MCT-EPN", "MCT-CAD"], [], "Tecnóloga em mecatrônica; Arduino e ESP32"),
     ("BM-1016", "Leandro Costa", "BEIRA-MAR", "INSTRUMENTACAO", [], "N", ["INS-MCV", "INS-MCT", "INS-CAL"], [], "Técnico em instrumentação; calibração RBC"),
-    ("BM-1017", "Vanessa Martins", "BEIRA-MAR", "INSTRUMENTACAO", ["AUTOMACAO"], "TN", ["INS-CAL", "AUT-INB", "INS-MCT"], [], "Eng. química; controle de processos"),
-    ("PT-2001", "Aline Ferreira", "PORTO", "LOGISTICA", [], "MN", ["LOG-GAR", "LOG-TRD", "LOG-CUS"], [], "Administradora; gestão de centros de distribuição"),
-    ("PT-2002", "Bruno Cardoso", "PORTO", "LOGISTICA", ["PORTOS"], "MN", ["LOG-WMS", "LOG-GAR", "POR-GCT"], [], "Tecnólogo em logística; WMS e TMS"),
-    ("PT-2003", "Débora Ramos", "PORTO", "LOGISTICA", ["GESTAO"], "MT", ["LOG-TRD", "LOG-CUS", "ADM-ATC"], [], "Economista; custos e transportes"),
+    ("BM-1017", "Vanessa Martins", "BEIRA-MAR", "INSTRUMENTACAO", ["AUTOMACAO"], "VN", ["INS-CAL", "AUT-INB", "INS-MCT"], [], "Eng. química; controle de processos"),
+    ("PT-2001", "Aline Ferreira", "PORTO", "LOGISTICA", [], "MV", ["LOG-GAR", "LOG-TRD", "LOG-CUS"], [], "Administradora; gestão de centros de distribuição"),
+    ("PT-2002", "Bruno Cardoso", "PORTO", "LOGISTICA", ["PORTOS"], "VN", ["LOG-WMS", "LOG-GAR", "POR-GCT"], [], "Tecnólogo em logística; WMS e TMS"),
+    ("PT-2003", "Débora Ramos", "PORTO", "LOGISTICA", ["GESTAO"], "MV", ["LOG-TRD", "LOG-CUS", "ADM-ATC", "LOG-WMS"], [], "Economista; custos e transportes"),
     ("PT-2004", "Eduardo Salles", "PORTO", "PORTOS", [], "N", ["POR-OPP", "POR-GCT", "POR-SEG"], ["NR-29", "NR-35"], "Oficial de náutica; operações em terminal de contêineres"),
-    ("PT-2005", "Flávia Moura", "PORTO", "PORTOS", ["LOGISTICA"], "N", ["POR-LPA", "POR-SEG", "POR-OPP"], ["NR-29"], "Advogada; comércio exterior e aduana"),
-    ("PT-2006", "Igor Batista", "PORTO", "DDS-TI", [], "T", ["DDS-LOP", "DDS-BDD"], [], "Desenvolvedor back-end; Python e PostgreSQL"),
-    ("PT-2007", "Natália Freitas", "PORTO", "DDS-TI", ["GESTAO"], "TN", ["DDS-WEB", "DDS-LOP", "ADM-PLA"], [], "Desenvolvedora front-end; React"),
-    ("PT-2008", "Otávio Ribeiro", "PORTO", "DDS-TI", [], "T", ["DDS-BDD", "DDS-ANS", "DDS-WEB"], [], "Analista de sistemas; UML e metodologias ágeis"),
+    ("PT-2005", "Flávia Moura", "PORTO", "PORTOS", ["LOGISTICA"], "N", ["POR-LPA", "POR-SEG", "POR-OPP", "LOG-TRD"], ["NR-29"], "Advogada; comércio exterior e aduana"),
+    ("PT-2006", "Igor Batista", "PORTO", "DDS-TI", [], "V", ["DDS-LOP", "DDS-BDD"], [], "Desenvolvedor back-end; Python e PostgreSQL"),
+    ("PT-2007", "Natália Freitas", "PORTO", "DDS-TI", ["GESTAO"], "VN", ["DDS-WEB", "DDS-LOP", "ADM-PLA"], [], "Desenvolvedora front-end; React"),
+    ("PT-2008", "Otávio Ribeiro", "PORTO", "DDS-TI", [], "V", ["DDS-BDD", "DDS-ANS", "DDS-WEB"], [], "Analista de sistemas; UML e metodologias ágeis"),
     ("PT-2009", "Priscila Gomes", "PORTO", "ECONOMIA-CRIATIVA", [], "N", ["DGR-TIM", "DGR-IDV"], [], "Designer gráfica; branding"),
-    ("PT-2010", "Rafael Torres", "PORTO", "ECONOMIA-CRIATIVA", [], "TN", ["DGR-ILD", "DGR-TIM", "DGR-IDV"], [], "Ilustrador; animação 2D"),
-    ("PT-2011", "Sabrina Lopes", "PORTO", "GESTAO", [], "T", ["ADM-ROT", "ADM-ATC", "ADM-PLA"], [], "Administradora; rotinas de RH e financeiro"),
-    ("PT-2012", "Thiago Moreira", "PORTO", "GESTAO", ["LOGISTICA"], "TN", ["ADM-ROT", "LOG-CUS"], [], "Contador; custos e orçamento"),
+    ("PT-2010", "Rafael Torres", "PORTO", "ECONOMIA-CRIATIVA", [], "VN", ["DGR-ILD", "DGR-TIM", "DGR-IDV"], [], "Ilustrador; animação 2D"),
+    ("PT-2011", "Sabrina Lopes", "PORTO", "GESTAO", [], "V", ["ADM-ROT", "ADM-ATC", "ADM-PLA"], [], "Administradora; rotinas de RH e financeiro"),
+    ("PT-2012", "Thiago Moreira", "PORTO", "GESTAO", ["LOGISTICA"], "VN", ["ADM-ROT", "LOG-CUS"], [], "Contador; custos e orçamento"),
 ]
 
 # logins do portal do instrutor na demonstração (senha comum, só para apresentação)
@@ -223,9 +223,10 @@ def montar(db, ctx, limite_s: float = 120) -> dict:
     instrutores = {}
     for mat, nome, un, ar, outras, turnos_i, comps, certs, formacao in INSTRUTORES:
         u = unid[un]
+        dois = len(turnos_i) == 2  # MV ou VN = 40 h (8 h por dia); um turno = 20 h (4 h por dia)
         i = Instrutor(matricula=mat, nome=nome, email=f"{LOGINS_PORTAL.get(mat, mat.lower())}@demo.senai.br", unidade_id=u.id,
-                      area_id=area[ar].id, carga_horaria_contratual=40, limite_ch_letiva=28, max_horas_dia=8, areas_competencia=formacao,
-                      situacao="ativo", ativo=True)
+                      area_id=area[ar].id, carga_horaria_contratual=40 if dois else 20, limite_ch_letiva=28 if dois else 20,
+                      max_horas_dia=8 if dois else 4, areas_competencia=formacao, situacao="ativo", ativo=True)
         db.add(i)
         db.flush()
         instrutores[mat] = i
@@ -235,7 +236,8 @@ def montar(db, ctx, limite_s: float = 120) -> dict:
             db.add(CompetenciaInstrutor(instrutor_id=i.id, uc_id=ucs[cuc].id, nivel="pleno", ativo=True))
         for cert in certs:
             db.add(HabilitacaoInstrutor(instrutor_id=i.id, nome=cert, ativo=True))
-        for tc in turnos_i:
+        from app.services.regras_aula import JORNADAS
+        for tc in JORNADAS[turnos_i]:
             t = turno[(u.id, tc)]
             for d in range(5):
                 db.add(DisponibilidadeInstrutor(instrutor_id=i.id, dia_semana=d, hora_inicio=t.hora_inicio, hora_fim=t.hora_fim))

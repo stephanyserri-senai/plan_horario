@@ -19,7 +19,7 @@ from app.models import (
     CompetenciaInstrutor,
 )
 from app.services import auditoria
-from app.services.regras_aula import horas_dia_pela_carga, turnos_por_dia
+from app.services.regras_aula import horas_dia_pela_carga, jornada_dos_codigos, normalizar_jornada, turnos_por_dia, validar_jornada
 
 router = APIRouter(prefix="/api", tags=["cadastros"])
 
@@ -53,6 +53,11 @@ def serializar(obj, ent: str, ctx: Contexto | None = None) -> dict:
         sess = object_session(obj)
         d.update(_dados_instrutor(sess, obj))
         d["_acesso_portal"] = acesso_do_instrutor(sess, obj.id) if sess else None
+    if ent in ("turnos", "areas") and getattr(obj, "unidade_id", None):
+        from sqlalchemy.orm import object_session
+        sess = object_session(obj)
+        un = sess.get(Unidade, obj.unidade_id) if sess else None
+        d["_unidade"] = un.nome.removeprefix("Unidade ") if un else ""
     if ent == "turmas" and getattr(obj, "curso_id", None):
         from sqlalchemy.orm import object_session
         sess = object_session(obj)
@@ -179,6 +184,12 @@ def _regras_especificas(db: Session, ent: str, obj, dados: dict, novo: bool):
         m = db.get(MatrizCurricular, dados.get("matriz_id") or obj.matriz_id)
         if m and m.curso_id != (dados.get("curso_id") or obj.curso_id):
             raise ConflitoValidacao("A matriz curricular informada não pertence ao curso da turma.")
+    if ent == "turmas" and (dados.get("turno_id") or "unidade_id" in dados):
+        from app.models import Turno
+        tid, uid = dados.get("turno_id", obj.turno_id), dados.get("unidade_id", obj.unidade_id)
+        t = db.get(Turno, int(tid)) if tid else None
+        if t is not None and uid and t.unidade_id != int(uid):
+            raise ConflitoValidacao("O turno escolhido é de outra unidade: use o turno (manhã, tarde ou noite) da unidade do curso.")
     if ent == "instrutores":
         c = dados.get("carga_horaria_contratual", getattr(obj, "carga_horaria_contratual", None))
         l = dados.get("limite_ch_letiva", getattr(obj, "limite_ch_letiva", None))
@@ -231,10 +242,10 @@ def _derivar(db: Session, ent: str, dados: dict, obj=None) -> dict:
         area = db.get(Area, int(d["area_id"]))
         if area:
             d["unidade_id"] = area.unidade_id  # a unidade do curso é sempre a da área
-    if ent in ("instrutores", "ambientes") and vazio("unidade_id") and obj is None and not vazio("area_id"):
+    if ent in ("instrutores", "ambientes") and not vazio("area_id") and not d.get("todas_areas"):
         area = db.get(Area, int(d["area_id"]))
         if area:
-            d["unidade_id"] = area.unidade_id
+            d["unidade_id"] = area.unidade_id  # a unidade é sempre a da área principal
     if ent == "instrutores" and vazio("max_horas_dia") and not vazio("carga_horaria_contratual"):
         d["max_horas_dia"] = horas_dia_pela_carga(d["carga_horaria_contratual"])
     if ent == "instrutores" and obj is None and vazio("limite_ch_letiva") and not vazio("carga_horaria_contratual"):
@@ -298,7 +309,9 @@ def _dados_instrutor(db: Session | None, inst) -> dict:
     turnos = db.scalars(select(Turno).where(Turno.unidade_id == inst.unidade_id, Turno.ativo.is_(True))).all()
     t_ids = [t.id for t in turnos if any(x.hora_inicio <= t.hora_inicio and x.hora_fim >= t.hora_fim for x in disp)]
     janelas = {(t.hora_inicio, t.hora_fim) for t in turnos}
+    cod = {t.id: t.codigo for t in turnos}
     return {"ucs_competencia": [{"uc_id": c.uc_id, "nivel": c.nivel} for c in comps],
+            "jornada": jornada_dos_codigos(cod[i] for i in t_ids) if t_ids else None,
             "disp_turnos": t_ids, "disp_dias": sorted({x.dia_semana for x in disp}),
             "disp_personalizada": any((x.hora_inicio, x.hora_fim) not in janelas for x in disp)}
 
@@ -318,11 +331,26 @@ def _gravar_instrutor(db: Session, inst, dados: dict):
                 if db.get(UnidadeCurricular, uc_id) is None:
                     raise EntradaInvalida("UC inexistente.")
                 db.add(CompetenciaInstrutor(instrutor_id=inst.id, uc_id=uc_id, nivel=nivel, ativo=True))
+    turnos_un = {t.codigo: t for t in db.scalars(select(Turno).where(Turno.unidade_id == inst.unidade_id, Turno.ativo.is_(True)))}
+    if dados.get("jornada") not in (None, ""):
+        # turnos de trabalho (M, V, N, MV ou VN) → turnos da unidade do instrutor
+        from app.services.regras_aula import JORNADAS
+        j = normalizar_jornada(str(dados["jornada"]))
+        if j is None:
+            raise EntradaInvalida("Turnos de trabalho inválidos: use M, V, N, MV ou VN.")
+        faltando = [c for c in JORNADAS[j] if c not in turnos_un]
+        if faltando:
+            raise EntradaInvalida("A unidade do instrutor não tem os turnos desta jornada cadastrados.")
+        dados = {**dados, "disp_turnos": [turnos_un[c].id for c in JORNADAS[j]]}
     if dados.get("disp_turnos") is not None:
-        limite = turnos_por_dia(inst.max_horas_dia)
-        if len(set(dados["disp_turnos"])) > limite:
-            raise ConflitoValidacao(f"Com {float(inst.max_horas_dia):g} h de aula por dia o instrutor pode ter até {limite} turno(s) por dia. "
-                                    "Aumente as horas por dia (ou a carga contratual) para marcar mais turnos.")
+        ids = [int(x) for x in dict.fromkeys(dados["disp_turnos"])]
+        por_id = {t.id: t for t in turnos_un.values()}
+        if any(i not in por_id for i in ids):
+            raise EntradaInvalida("Turno inválido para a unidade do instrutor.")
+        erro = validar_jornada(jornada_dos_codigos(por_id[i].codigo for i in ids), inst.max_horas_dia)
+        if erro:
+            raise ConflitoValidacao(erro)
+        inst.turno_preferencial_id = ids[0] if ids else None
         dias = [int(x) for x in (dados.get("disp_dias") if dados.get("disp_dias") is not None else [0, 1, 2, 3, 4])]
         db.execute(delete(DisponibilidadeInstrutor).where(DisponibilidadeInstrutor.instrutor_id == inst.id))
         for tid in dados["disp_turnos"]:
@@ -331,6 +359,14 @@ def _gravar_instrutor(db: Session, inst, dados: dict):
                 raise EntradaInvalida("Turno inválido para a unidade do instrutor.")
             for dia in dias:
                 db.add(DisponibilidadeInstrutor(instrutor_id=inst.id, dia_semana=dia, hora_inicio=t.hora_inicio, hora_fim=t.hora_fim))
+    elif inst.id and ("max_horas_dia" in dados or "carga_horaria_contratual" in dados):
+        # mudou a carga sem mexer nos turnos: os turnos atuais precisam continuar valendo (40 h = MV ou VN)
+        db.flush()
+        atual = _dados_instrutor(db, inst)
+        if atual["jornada"] and not atual["disp_personalizada"]:
+            erro = validar_jornada(atual["jornada"], inst.max_horas_dia)
+            if erro:
+                raise ConflitoValidacao(erro + " Ajuste os turnos de trabalho junto com a carga.")
     db.flush()
 
 
@@ -730,4 +766,4 @@ def criar_turnos_padrao(uid: int, ctx: Contexto = Depends(get_contexto), db: Ses
         criados.append(nome)
         auditoria.registrar(db, ctx, "turno.criar_padrao", "turnos", t.id, depois=auditoria.snapshot(t))
     db.commit()
-    return {"criados": criados, "mensagem": "Turnos criados: manhã (07:30–11:30), tarde (13:30–17:30) e noite (18:20–21:50), com 4 aulas cada e intervalo no meio."}
+    return {"criados": criados, "mensagem": "Turnos criados: manhã (07:30–11:30), tarde (13:30–17:30) e noite (18:30–22:00), com 4 aulas cada e intervalo no meio."}

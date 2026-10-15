@@ -56,11 +56,11 @@ def test_cadastros_preenchem_campos_repetidos(db, mundo):
     # instrutor: unidade pela área, UCs e disponibilidade no mesmo formulário
     r = c.post("/api/cadastros/instrutores", json={"matricula": "M1", "nome": "Maria", "area_id": energ.id,
                                                    "ucs_competencia": [{"uc_id": uc["id"], "nivel": "pleno"}],
-                                                   "disp_turnos": [manha.id], "disp_dias": [0, 2, 4]}, headers=h)
+                                                   "carga_horaria_contratual": 20, "disp_turnos": [manha.id], "disp_dias": [0, 2, 4]}, headers=h)
     assert r.status_code == 200, r.text
     i = r.json()
     assert i["unidade_id"] == bm.id and i["ucs_competencia"] == [{"uc_id": uc["id"], "nivel": "pleno"}]
-    assert i["disp_turnos"] == [manha.id] and i["disp_dias"] == [0, 2, 4]
+    assert i["disp_turnos"] == [manha.id] and i["disp_dias"] == [0, 2, 4] and i["jornada"] == "M"
     assert len(db.scalars(select(DisponibilidadeInstrutor).where(DisponibilidadeInstrutor.instrutor_id == i["id"])).all()) == 3
     # desmarcar a UC inativa a competência (sem apagar histórico)
     r = c.put(f"/api/cadastros/instrutores/{i['id']}", json={"ucs_competencia": []}, headers=h)
@@ -70,11 +70,30 @@ def test_cadastros_preenchem_campos_repetidos(db, mundo):
     tarde = db.scalar(select(Turno).where(Turno.unidade_id == bm.id, Turno.codigo == "T"))
     r = c.post("/api/cadastros/instrutores", json={"matricula": "M2", "nome": "Paulo", "area_id": energ.id, "carga_horaria_contratual": 20,
                                                    "disp_turnos": [manha.id, tarde.id]}, headers=h)
-    assert r.status_code == 409 and "até 1 turno" in r.text
+    assert r.status_code == 409 and "um turno" in r.text
     r = c.post("/api/cadastros/instrutores", json={"matricula": "M2", "nome": "Paulo", "area_id": energ.id, "carga_horaria_contratual": 40,
                                                    "disp_turnos": [manha.id, tarde.id]}, headers=h)
     assert r.status_code == 200, r.text
     assert float(r.json()["max_horas_dia"]) == 8 and sorted(r.json()["disp_turnos"]) == sorted([manha.id, tarde.id])
+    assert r.json()["jornada"] == "MV"
+    # turnos de trabalho pelo código: 40 h exige dois turnos seguidos (MV ou VN); manhã e noite não é jornada
+    base3 = {"matricula": "M3", "nome": "Rita", "area_id": energ.id, "carga_horaria_contratual": 40}
+    assert c.post("/api/cadastros/instrutores", json={**base3, "jornada": "M"}, headers=h).status_code == 409
+    assert c.post("/api/cadastros/instrutores", json={**base3, "jornada": "Manhã; Noite"}, headers=h).status_code in (400, 422)
+    r = c.post("/api/cadastros/instrutores", json={**base3, "jornada": "VN"}, headers=h)
+    assert r.status_code == 200 and r.json()["jornada"] == "VN"
+    # mudar a carga para 20 h sem ajustar os turnos fica bloqueado; ajustando junto, passa
+    rita = {k: v for k, v in r.json().items() if k not in ("jornada", "disp_turnos", "disp_dias")}  # como o formulário envia
+    r = c.put(f"/api/cadastros/instrutores/{rita['id']}", json={**rita, "carga_horaria_contratual": 20, "limite_ch_letiva": 20, "max_horas_dia": 4}, headers=h)
+    assert r.status_code == 409 and "Ajuste os turnos" in r.text
+    r = c.put(f"/api/cadastros/instrutores/{rita['id']}", json={**rita, "carga_horaria_contratual": 20, "limite_ch_letiva": 20, "max_horas_dia": 4,
+                                                                "jornada": "N"}, headers=h)
+    assert r.status_code == 200 and r.json()["jornada"] == "N"
+    # turma: o turno precisa ser da unidade do curso
+    porto_noite = db.scalar(select(Turno).join(Unidade).where(Unidade.codigo == "PORTO", Turno.codigo == "N"))
+    r = c.post("/api/cadastros/turmas", json={"curso_id": curso["id"], "_numero": "77", "_tipo_oferta": "HTC", "turno_id": porto_noite.id,
+                                              "data_inicio": "2026-08-03", "data_fim": "2026-12-18"}, headers=h)
+    assert r.status_code == 409 and "outra unidade" in r.text
     # metadados: campos automáticos ficam fora do formulário
     meta = {m["chave"]: m for m in c.get("/api/meta/entidades", headers=h).json()}
     sec = {f["nome"]: f["secao"] for f in meta["turmas"]["campos"]}

@@ -499,3 +499,6 @@ button.chip-status { cursor: pointer; } .chip-status.alerta { background: #fff3d
 .grade-geral td { vertical-align: top; padding: 4px; }
 .aulas-turno { display: flex; flex-direction: column; gap: 4px; }
 .grade-geral .aula { height: 58px; min-height: 58px; overflow: hidden; width: 100%; }
+.jornadas { display: flex; gap: 8px; flex-wrap: wrap; }
+.jornadas label { border: 1px solid var(--borda); border-radius: 999px; padding: 5px 12px; cursor: pointer; display: inline-flex; gap: 6px; align-items: center; }
+.jornadas label.marcada { border-color: var(--primaria); background: var(--info-bg); color: var(--info); font-weight: 600; }

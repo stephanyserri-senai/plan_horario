@@ -181,7 +181,7 @@ O CI (`.github/workflows/ci.yml`) executa a mesma suíte e o build do frontend.
 |---|---|---|
 | Manhã | 07:30–08:25, 08:25–09:20, 09:40–10:35, 10:35–11:30 (4 × 55 min) | 09:20–09:40 |
 | Tarde | 13:30–14:25, 14:25–15:20, 15:40–16:35, 16:35–17:30 (4 × 55 min) | 15:20–15:40 |
-| Noite | 18:20–19:10, 19:10–20:00, 20:10–21:00, 21:00–21:50 (4 × 50 min) | 20:00–20:10 |
+| Noite | 18:30–19:20, 19:20–20:10, 20:20–21:10, 21:10–22:00 (4 × 50 min) | 20:10–20:20 |
 
 * **Turno inteiro:** cada UC ocupa as 4 aulas do turno no dia. A validação central bloqueia aula parcial (`TURNO_INCOMPLETO`) em qualquer forma de alocação (formulário, arrastar, importação, gerador).
 * **Fechamento da carga horária:** quando falta menos que um turno para a UC terminar, a última aula pode ter só as aulas necessárias; o restante do turno pode ser usado por outra UC da turma que também esteja fechando. O gerador junta esses fechamentos automaticamente no mesmo turno.

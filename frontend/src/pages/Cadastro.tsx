@@ -4,7 +4,7 @@ import { api, baixar, dataBR, DIAS, qs } from "../api";
 import { Abas, Badge, Campo, Erro, fmt, Modal, Pagina, Paginacao, Tabela, useCarregar } from "../components/ui";
 import { useApp } from "../contexto";
 import { invalidarOpcoes, rotuloDe, useOpcoes } from "../hooks";
-import { CompetenciasUCs, DisponibilidadeTurnos, PreviaCodigoTurma } from "../components/CamposEspeciais";
+import { CompetenciasUCs, JornadaInstrutor, PreviaCodigoTurma } from "../components/CamposEspeciais";
 import ObservacoesInstrutores from "../components/ObservacoesInstrutores";
 
 export type CampoMeta = { nome: string; tipo: string; obrigatorio: boolean; somente_leitura: boolean; rotulo: string; ref?: string; opcoes?: any[]; pessoal?: boolean;
@@ -72,25 +72,45 @@ function valorCelula(c: CampoMeta, v: any) {
   return fmt(v);
 }
 
-const LARGOS = new Set(["multiref", "competencias", "disponibilidade"]);
+const LARGOS = new Set(["multiref", "competencias", "disponibilidade", "jornada"]);
 
 /** Formulário em seções: o essencial de cara, o resto em "Mais opções"; campos que vêm de outro cadastro não aparecem. */
 export function Formulario({ meta, valores, setValores }: { meta: EntMeta; valores: any; setValores: (v: any) => void }) {
+  const areas = useOpcoes(meta.chave === "instrutores" || meta.chave === "ambientes" ? "areas" : null) as any[];
+  const cursos = useOpcoes(meta.chave === "turmas" ? "cursos" : null) as any[];
   const set = (k: string, v: any) => {
     const n = { ...valores, [k]: v };
     // instrutor: horas por dia acompanham a carga contratual (40 h/sem = 8 h/dia = até 2 turnos), salvo ajuste manual
     if (meta.chave === "instrutores" && k === "carga_horaria_contratual" && !valores.__horas_manual && Number(v) > 0)
       n.max_horas_dia = Math.min(12, Math.max(1, Math.round(Number(v) / 5)));
+    if (meta.chave === "instrutores" && (k === "carga_horaria_contratual" || k === "max_horas_dia") && n.jornada) {
+      const dois = Number(n.max_horas_dia) >= 8;
+      if (dois !== (n.jornada.length === 2)) { n.jornada = ""; n.__disp = true; }  // a jornada antiga não vale mais: escolher de novo
+    }
     if (k === "max_horas_dia") n.__horas_manual = true;
+    // instrutor e sala: a unidade é a da área principal
+    if (k === "area_id" && (meta.chave === "instrutores" || meta.chave === "ambientes")) {
+      const a = areas.find((x: any) => String(x.id) === String(v));
+      if (a?.unidade_id) n.unidade_id = a.unidade_id;
+    }
+    // turma: a unidade (e os turnos possíveis) vêm do curso
+    if (k === "curso_id" && meta.chave === "turmas") {
+      const c = cursos.find((x: any) => String(x.id) === String(v));
+      if (c?.unidade_id && String(c.unidade_id) !== String(valores.unidade_id)) { n.unidade_id = c.unidade_id; n.turno_id = ""; }
+    }
     setValores(n);
   };
   const setVarios = (o: Record<string, any>) => setValores({ ...valores, ...o });
+  const unidadeAuto = meta.chave === "instrutores" || meta.chave === "ambientes";
   const editaveis = meta.campos.filter((c) => !c.somente_leitura && !(c.nome === "id" && meta.pk.length === 1) && c.secao !== "auto"
-    && !(valores.todas_areas && (c.nome === "area_id" || c.nome === "areas_ids")));
+    && !(valores.todas_areas && (c.nome === "area_id" || c.nome === "areas_ids"))
+    && !(unidadeAuto && c.nome === "unidade_id" && !valores.todas_areas));
+  // unidade de contexto (para listar só turnos e áreas da unidade certa)
+  const unidadeCtx = valores.unidade_id || (meta.chave === "turmas" ? cursos.find((x: any) => String(x.id) === String(valores.curso_id))?.unidade_id : undefined);
   const render = (c: CampoMeta) => {
     if (c.tipo === "competencias") return <CompetenciasUCs key={c.nome} valores={valores} set={(v) => set("ucs_competencia", v)} />;
-    if (c.tipo === "disponibilidade") return <DisponibilidadeTurnos key={c.nome} valores={valores} setVarios={setVarios} />;
-    return <CampoEntrada key={c.nome} c={c} v={valores[c.nome]} set={(v) => set(c.nome, v)} unidadeId={valores.unidade_id}
+    if (c.tipo === "jornada") return <JornadaInstrutor key={c.nome} valores={valores} setVarios={setVarios} />;
+    return <CampoEntrada key={c.nome} c={c} v={valores[c.nome]} set={(v) => set(c.nome, v)} unidadeId={unidadeCtx}
       excluir={c.nome === "areas_ids" ? valores.area_id : undefined} />;
   };
   const principais = editaveis.filter((c) => (c.secao || "principal") === "principal");
@@ -112,15 +132,19 @@ export function Formulario({ meta, valores, setValores }: { meta: EntMeta; valor
 /** Valores iniciais de um registro novo (ex.: turma já com as datas do semestre selecionado). */
 function novoPadrao(ent: string, cenario: any): any {
   if (ent === "turmas") return { dias_possiveis: [0, 1, 2, 3, 4], data_inicio: cenario?.periodo_inicio || "", data_fim: cenario?.periodo_fim || "" };
-  if (ent === "instrutores") return { carga_horaria_contratual: 40, max_horas_dia: 8, disp_dias: [0, 1, 2, 3, 4], disp_turnos: [], ucs_competencia: [] };
+  if (ent === "instrutores") return { carga_horaria_contratual: 40, max_horas_dia: 8, disp_dias: [0, 1, 2, 3, 4], ucs_competencia: [] };
   return {};
 }
 
 function CampoEntrada({ c, v, set, unidadeId, excluir }: { c: CampoMeta; v: any; set: (v: any) => void; unidadeId?: any; excluir?: any }) {
   const todas = useOpcoes(c.tipo === "ref" || c.tipo === "multiref" ? c.ref : null);
   // a área precisa ser da mesma unidade do cadastro
-  const ops = (c.ref === "areas" && unidadeId ? todas.filter((o: any) => String(o.unidade_id) === String(unidadeId)) : todas)
-    .filter((o: any) => excluir == null || String(o.id) !== String(excluir));
+  const unidadesOps = useOpcoes(c.nome === "area_id" ? "unidades" : null);
+  const porUnidade = (c.ref === "areas" && c.nome !== "area_id") || c.ref === "turnos" || c.ref === "periodos";
+  const ops = (porUnidade && unidadeId ? todas.filter((o: any) => String(o.unidade_id) === String(unidadeId)) : todas)
+    .filter((o: any) => excluir == null || String(o.id) !== String(excluir))
+    // área principal: todas as áreas, com a unidade (a unidade do cadastro vem dela)
+    .map((o: any) => c.nome === "area_id" && o.unidade_id ? { ...o, rotulo: `${o.rotulo} – ${(unidadesOps.find((u) => u.id === o.unidade_id)?.rotulo || "").replace("Unidade ", "")}` } : o);
   const rotulo = c.rotulo;
   let input;
   switch (c.tipo) {
@@ -200,9 +224,12 @@ export function ListaEntidade({ ent }: { ent: string }) {
     setErro(null);
     try {
       const novo = edicao.__novo;
+      if (ent === "instrutores" && (edicao.__novo || edicao.__disp) && !edicao.jornada && !edicao.disp_personalizada) {
+        setErro(new Error("Escolha os turnos de trabalho do instrutor (M, V ou N; com 40 h, MV ou VN).")); return;
+      }
       const corpo = { ...edicao };
       delete corpo.__novo;
-      if (!corpo.__disp) { delete corpo.disp_turnos; delete corpo.disp_dias; }  // só regrava a disponibilidade se foi alterada
+      if (!corpo.__disp) { delete corpo.disp_turnos; delete corpo.disp_dias; delete corpo.jornada; }  // só regrava a disponibilidade se foi alterada
       delete corpo.__disp;
       delete corpo.__horas_manual;
       if (novo) await api.post(`/api/cadastros/${ent}`, corpo);
@@ -391,7 +418,7 @@ function TurnosPadrao({ aoCriar }: { aoCriar: () => void }) {
   return (
     <div className="card turnos-padrao">
       <b>Unidade nova?</b> Crie de uma vez os turnos padrão: manhã 07:30–11:30 e tarde 13:30–17:30 (4 aulas de 55 min, intervalos 09:20–09:40 e 15:20–15:40)
-      e noite 18:20–21:50 (4 aulas de 50 min, intervalo 20:00–20:10).
+      e noite 18:30–22:00 (4 aulas de 50 min, intervalo 20:10–20:20).
       <div className="filtros">
         <select aria-label="Unidade" value={u} onChange={(e) => setU(e.target.value)}><option value="">Escolha a unidade…</option>
           {unidades.map((x) => <option key={x.id} value={x.id}>{x.rotulo}</option>)}</select>

@@ -322,17 +322,16 @@ def linhas_cadastro(db: Session, tipo: str, unidades=None) -> list[list]:
                 continue
             disp = db.scalars(select(DisponibilidadeInstrutor).where(DisponibilidadeInstrutor.instrutor_id == i.id)).all()
             dias = sorted({d.dia_semana for d in disp})
-            nomes_t = []
-            for t in sorted(turnos, key=lambda t: t.hora_inicio):
-                if t.unidade_id == i.unidade_id and any(d.hora_inicio <= t.hora_inicio and d.hora_fim >= t.hora_fim for d in disp) and t.nome not in nomes_t:
-                    nomes_t.append(t.nome)
+            from app.services.regras_aula import jornada_dos_codigos
+            cods = [t.codigo for t in turnos if t.unidade_id == i.unidade_id and any(d.hora_inicio <= t.hora_inicio and d.hora_fim >= t.hora_fim for d in disp)]
+            jornada = jornada_dos_codigos(cods) or ""
             comp = db.scalars(select(CompetenciaInstrutor).where(CompetenciaInstrutor.instrutor_id == i.id, CompetenciaInstrutor.ativo.is_(True))).all()
             ucs = {u.id: u.codigo for u in db.scalars(select(UnidadeCurricular).where(UnidadeCurricular.id.in_({c.uc_id for c in comp})))} if comp else {}
             pleno = sorted({ucs[c.uc_id] for c in comp if c.uc_id in ucs and c.nivel != "supervisionado"})
             sup = sorted({ucs[c.uc_id] for c in comp if c.uc_id in ucs and c.nivel == "supervisionado"})
             cert = [h.nome for h in db.scalars(select(HabilitacaoInstrutor).where(HabilitacaoInstrutor.instrutor_id == i.id, HabilitacaoInstrutor.ativo.is_(True)))]
             res.append([i.matricula, i.nome, i.email, unid.get(i.unidade_id), _areas_de(db, i.area_id, InstrutorArea, "instrutor_id", i.id, i.todas_areas, areas),
-                        float(i.carga_horaria_contratual), float(i.limite_ch_letiva), float(i.max_horas_dia), "; ".join(nomes_t),
+                        float(i.carga_horaria_contratual), float(i.limite_ch_letiva), float(i.max_horas_dia), jornada,
                         "; ".join(abrev[d] for d in dias), "; ".join(pleno), "; ".join(sup), "; ".join(cert), i.areas_competencia])
     elif tipo == "turmas":
         cursos = {c.id: c.codigo for c in db.scalars(select(Curso))}

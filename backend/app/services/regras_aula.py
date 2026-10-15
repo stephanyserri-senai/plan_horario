@@ -62,7 +62,7 @@ TURNOS_PADRAO = [
     # código, nome, aulas (início, duração em minutos) — intervalos ficam entre a 2ª e a 3ª aula
     ("M", "Manhã", [(7 * 60 + 30, 55), (8 * 60 + 25, 55), (9 * 60 + 40, 55), (10 * 60 + 35, 55)]),
     ("T", "Tarde", [(13 * 60 + 30, 55), (14 * 60 + 25, 55), (15 * 60 + 40, 55), (16 * 60 + 35, 55)]),
-    ("N", "Noite", [(18 * 60 + 20, 50), (19 * 60 + 10, 50), (20 * 60 + 10, 50), (21 * 60, 50)]),
+    ("N", "Noite", [(18 * 60 + 30, 50), (19 * 60 + 20, 50), (20 * 60 + 20, 50), (21 * 60 + 10, 50)]),  # 18:30–22:00, intervalo 20:10–20:20
 ]
 
 
@@ -77,3 +77,51 @@ def turnos_por_dia(max_horas_dia) -> int:
 def horas_dia_pela_carga(carga_semanal) -> float:
     """Jornada diária pela carga contratual em 5 dias (40 h/sem = 8 h/dia), limitada a 12 h."""
     return float(min(12, max(1, round(float(carga_semanal) / 5))))
+
+
+# Turnos de trabalho do instrutor. V = vespertino (turno "T", tarde). Quem trabalha 8 h por dia (40 h/semana)
+# faz dois turnos seguidos (MV ou VN); com menos horas, um turno só (M, V ou N).
+JORNADAS = {"M": ["M"], "V": ["T"], "N": ["N"], "MV": ["M", "T"], "VN": ["T", "N"]}
+ROTULO_JORNADA = {"M": "M – Manhã", "V": "V – Tarde (vespertino)", "N": "N – Noite", "MV": "MV – Manhã e tarde", "VN": "VN – Tarde e noite"}
+
+
+def turnos_exigidos(max_horas_dia) -> int:
+    """1 ou 2 turnos por dia: 8 h ou mais = 2 (MV ou VN); menos = 1 (M, V ou N)."""
+    return 2 if float(max_horas_dia or 0) >= 2 * HORAS_POR_TURNO else 1
+
+
+def jornadas_permitidas(max_horas_dia) -> list[str]:
+    return ["MV", "VN"] if turnos_exigidos(max_horas_dia) == 2 else ["M", "V", "N"]
+
+
+def jornada_dos_codigos(codigos) -> str | None:
+    """Códigos de turno ({"M", "T"}) → jornada ("MV"); None se a combinação não for uma jornada válida."""
+    cods = set(codigos)
+    alvo = sorted(cods, key="MTN".index) if cods <= set("MTN") else None
+    return next((j for j, cs in JORNADAS.items() if alvo is not None and cs == alvo), None)
+
+
+def normalizar_jornada(valor: str) -> str | None:
+    """Aceita "MV", "vn", "M", "Manhã; Tarde", "Tarde e noite"… e devolve a jornada ou None."""
+    v = (valor or "").strip().upper()
+    if v in JORNADAS:
+        return v
+    import unicodedata
+    v = "".join(c for c in unicodedata.normalize("NFD", v) if unicodedata.category(c) != "Mn")
+    cods = set()
+    for parte, cod in (("MANHA", "M"), ("MATUTINO", "M"), ("TARDE", "T"), ("VESPERTINO", "T"), ("NOITE", "N"), ("NOTURNO", "N")):
+        if parte in v:
+            cods.add(cod)
+    return jornada_dos_codigos(cods) if cods else None
+
+
+def validar_jornada(jornada: str | None, max_horas_dia) -> str | None:
+    """Mensagem de erro (ou None) para a jornada informada com as horas de aula por dia do instrutor."""
+    permitidas = jornadas_permitidas(max_horas_dia)
+    if jornada in permitidas:
+        return None
+    h = float(max_horas_dia or 0)
+    if turnos_exigidos(h) == 2:
+        return f"Com {h:g} h de aula por dia o instrutor trabalha dois turnos: escolha MV (manhã e tarde) ou VN (tarde e noite)."
+    return f"Com {h:g} h de aula por dia o instrutor trabalha um turno: escolha M (manhã), V (tarde) ou N (noite)."
+

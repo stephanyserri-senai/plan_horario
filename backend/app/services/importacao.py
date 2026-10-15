@@ -209,7 +209,7 @@ SPECS: dict[str, dict] = {
         "carga_horaria_contratual": ("float", False, ["carga_horaria_contratual_h_semana", "jornada"]),
         "limite_ch_letiva": ("float", False, ["limite_de_aulas_por_semana_h", "limite_letivo"]),
         "max_horas_dia": ("float", False, ["maximo_de_horas_por_dia"]),
-        "turnos": ("str", False, ["turnos_disponiveis"]), "dias": ("dias", False, ["dias_disponiveis"]),
+        "turnos": ("str", False, ["turnos_de_trabalho", "turnos_disponiveis"]), "dias": ("dias", False, ["dias_disponiveis"]),
         "ucs_pleno": ("str", False, ["ucs_que_ministra_codigos", "ucs_que_ministra"]),
         "ucs_supervisionado": ("str", False, ["ucs_que_ministra_sob_supervisao_codigos", "ucs_sob_supervisao"]),
         "certificacoes": ("str", False, ["certificacoes_ex_nr_10"]), "areas_competencia": ("str", False, ["formacao_e_especialidades", "especialidades"])}},
@@ -446,23 +446,26 @@ def _preparar_levantamento(db, r, v, E, A):
         E.append("limite de aulas por semana maior que a carga contratual")
     _area(r, v, d, E, A, multiplas=True)
     disp = []
-    from app.services.regras_aula import horas_dia_pela_carga, turnos_por_dia
+    from app.services.regras_aula import JORNADAS, horas_dia_pela_carga, normalizar_jornada, validar_jornada
     if d.get("max_horas_dia") is None and d.get("carga_horaria_contratual"):
         d["max_horas_dia"] = horas_dia_pela_carga(d["carga_horaria_contratual"])
-    if v["turnos"] and len(_lista(v["turnos"])) > turnos_por_dia(d.get("max_horas_dia") or 8):
-        A.append(f"{len(_lista(v['turnos']))} turnos marcados, mas {d.get('max_horas_dia') or 8:g} h por dia permitem no máximo "
-                 f"{turnos_por_dia(d.get('max_horas_dia') or 8)} turno(s) no mesmo dia: o sistema respeita esse limite ao montar a grade")
     if v["turnos"]:
-        dias = v["dias"] if v["dias"] is not None else [0, 1, 2, 3, 4]
-        for t in _lista(v["turnos"]):
-            tid = r.turno(uid, t) if uid else None
-            turno = db.get(Turno, tid) if tid else None
-            if not turno:
-                E.append(f"turno '{t}' não existe na unidade (use Manhã, Tarde ou Noite)")
-                continue
-            disp += [[dd, turno.hora_inicio.strftime("%H:%M"), turno.hora_fim.strftime("%H:%M")] for dd in dias]
+        # turnos de trabalho: M, V ou N (um turno) ou MV / VN (40 h = dois turnos); aceita também "Manhã; Tarde"
+        j = normalizar_jornada(str(v["turnos"]))
+        erro = "turnos de trabalho inválidos: use M, V, N, MV ou VN" if j is None else validar_jornada(j, d.get("max_horas_dia") or 8)
+        if erro:
+            E.append(erro[0].lower() + erro[1:] if erro[0].isupper() else erro)
+        else:
+            dias = v["dias"] if v["dias"] is not None else [0, 1, 2, 3, 4]
+            for cod in JORNADAS[j]:
+                tid = r.turno(uid, {"M": "Manhã", "T": "Tarde", "N": "Noite"}[cod]) if uid else None
+                turno = db.get(Turno, tid) if tid else None
+                if not turno:
+                    E.append("a unidade não tem os turnos desta jornada cadastrados")
+                    continue
+                disp += [[dd, turno.hora_inicio.strftime("%H:%M"), turno.hora_fim.strftime("%H:%M")] for dd in dias]
     else:
-        A.append("turnos disponíveis não informados: cadastre a disponibilidade depois")
+        A.append("turnos de trabalho não informados: cadastre depois (M, V, N, MV ou VN)")
     comps = []
     for col, nivel in (("ucs_pleno", "pleno"), ("ucs_supervisionado", "supervisionado")):
         for cod in _lista(v[col]):

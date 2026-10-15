@@ -52,8 +52,9 @@ def test_area_obrigatoria_e_da_mesma_unidade(db, cli, mundo):
     base = {"matricula": "X1", "nome": "Instrutor X", "unidade_id": beira.id, "carga_horaria_contratual": 40, "limite_ch_letiva": 20,
             "max_horas_dia": 8, "intervalo_minimo_h": 11, "situacao": "ativo", "ativo": True}
     assert cli.post("/api/cadastros/instrutores", json=base).status_code == 422  # sem área
-    r = cli.post("/api/cadastros/instrutores", json={**base, "area_id": logist.id})  # área de outra unidade
-    assert r.status_code == 409 and "pertence" in r.json()["erro"]
+    # a unidade do instrutor é sempre a da área principal (mesmo que outra tenha sido enviada)
+    r = cli.post("/api/cadastros/instrutores", json={**base, "matricula": "X0", "area_id": logist.id})
+    assert r.status_code == 200 and r.json()["unidade_id"] == logist.unidade_id
     assert cli.post("/api/cadastros/instrutores", json={**base, "area_id": autom.id}).status_code == 200
     # curso sem unidade assume a unidade da área; turma herda a área do curso
     c = cli.post("/api/cadastros/cursos", json={"codigo": "CX", "nome": "Curso X", "area_id": autom.id, "situacao": "ativo", "ativo": True}).json()

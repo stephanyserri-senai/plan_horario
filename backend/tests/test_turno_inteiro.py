@@ -90,7 +90,8 @@ def test_turnos_padrao_e_configuracao_visivel(db, mt):
     assert [(p.hora_inicio.strftime("%H:%M"), p.hora_fim.strftime("%H:%M")) for p in manha] == [
         ("07:30", "08:25"), ("08:25", "09:20"), ("09:40", "10:35"), ("10:35", "11:30")]
     noite = db.scalars(select(PeriodoHorario).where(PeriodoHorario.turno_id == turnos["Noite"].id).order_by(PeriodoHorario.ordem)).all()
-    assert noite[1].hora_fim.strftime("%H:%M") == "20:00" and noite[2].hora_inicio.strftime("%H:%M") == "20:10" and noite[-1].hora_fim.strftime("%H:%M") == "21:50"
+    assert noite[0].hora_inicio.strftime("%H:%M") == "18:30" and noite[1].hora_fim.strftime("%H:%M") == "20:10"
+    assert noite[2].hora_inicio.strftime("%H:%M") == "20:20" and noite[-1].hora_fim.strftime("%H:%M") == "22:00"
     # não sobrescreve turnos existentes
     assert c.post(f"/api/unidades/{nova.id}/turnos-padrao", headers=h).status_code == 422
     cfg = {x["chave"]: x for x in c.get("/api/configuracoes", headers=h).json()}

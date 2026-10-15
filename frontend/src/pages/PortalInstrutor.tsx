@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { addDias, api, baixar, dataBR, DIAS_CURTOS, iso, segundaDe } from "../api";
-import { CompetenciasUCs, DisponibilidadeTurnos } from "../components/CamposEspeciais";
+import { CompetenciasUCs, JornadaInstrutor } from "../components/CamposEspeciais";
 import Perfil from "../components/Perfil";
 import { Abas, Badge, Erro, useCarregar } from "../components/ui";
 import { useApp } from "../contexto";
@@ -173,13 +173,12 @@ function MeusDados({ eu, salvo }: { eu: any; salvo: () => void }) {
   const [erro, setErro] = useState<any>(null);
   const [salvando, setSalvando] = useState(false);
   useEffect(() => setV({ ...eu }), [eu]);
-  const turnos = useMemo(() => eu.turnos.map((t: any) => ({ id: t.id, rotulo: `${t.nome} (${t.inicio}–${t.fim})` })), [eu]);
   const outras = eu.areas_unidade.filter((a: any) => a.id !== eu.area_principal?.id);
   const salvar = async () => {
     setErro(null); setSalvando(true);
     try {
       const corpo: any = { areas_ids: v.areas_ids, ucs_competencia: v.ucs_competencia, certificacoes: v.certificacoes, formacao: v.formacao };
-      if (v.__disp) { corpo.disp_turnos = v.disp_turnos; corpo.disp_dias = v.disp_dias; }
+      if (v.__disp) { corpo.jornada = v.jornada; corpo.disp_dias = v.disp_dias; }
       await api.put("/api/portal/eu", corpo);
       aviso("Dados salvos no seu cadastro. A coordenação já vê as alterações."); salvo();
     } catch (e) { setErro(e); } finally { setSalvando(false); }
@@ -210,7 +209,7 @@ function MeusDados({ eu, salvo }: { eu: any; salvo: () => void }) {
 
       <CompetenciasUCs valores={{ ...v, area_id: eu.area_principal?.id }} set={(c) => setV({ ...v, ucs_competencia: c })}
         fonte={(areas) => `/api/portal/ucs?areas=${areas.join(",")}`} />
-      <DisponibilidadeTurnos valores={v} setVarios={(o) => setV({ ...v, ...o })} turnosFixos={turnos} />
+      <JornadaInstrutor valores={v} setVarios={(o) => setV({ ...v, ...o })} />
 
       <section className="card">
         <h2>Certificações</h2>

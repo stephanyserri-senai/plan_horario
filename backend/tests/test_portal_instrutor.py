@@ -39,11 +39,14 @@ def test_portal_do_instrutor_ponta_a_ponta(db, mundo):
         assert c.get(url, headers=h).status_code == 403, url
 
     # meus dados: atualiza direto no cadastro
+    i_db = db.get(Instrutor, inst.id)
+    i_db.max_horas_dia, i_db.limite_ch_letiva, i_db.carga_horaria_contratual = 4, 20, 20  # um turno por dia
+    db.commit()
     eu = c.get("/api/portal/eu", headers=h).json()
     assert eu["nome"] == inst.nome and eu["turnos"]
     ucs = c.get("/api/portal/ucs", headers=h).json()
     r = c.put("/api/portal/eu", json={"certificacoes": ["NR-10", "NR-12"], "formacao": "Eng. elétrica; 10 anos de manutenção",
-                                       "disp_turnos": [eu["turnos"][0]["id"]], "disp_dias": [0, 1, 2, 3, 4],
+                                       "jornada": "M", "disp_dias": [0, 1, 2, 3, 4],
                                        "ucs_competencia": [{"uc_id": u["id"], "nivel": "pleno"} for g in ucs for u in g["ucs"]][:2]}, headers=h)
     assert r.status_code == 200, r.text
     db.expire_all()

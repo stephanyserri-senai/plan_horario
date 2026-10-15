@@ -101,7 +101,7 @@ def atualizar_meus_dados(dados: dict = Body(...), ctx: Contexto = Depends(get_co
         fora = [x for x in dados["ucs_competencia"] if int(x.get("uc_id") or 0) not in permitidas]
         if fora:
             raise ConflitoValidacao("Há UCs fora das suas áreas. Marque a área correspondente ou fale com a coordenação.")
-    _gravar_instrutor(db, inst, {k: dados.get(k) for k in ("ucs_competencia", "disp_turnos", "disp_dias")})
+    _gravar_instrutor(db, inst, {k: dados.get(k) for k in ("ucs_competencia", "jornada", "disp_turnos", "disp_dias")})
     if dados.get("certificacoes") is not None:
         quer = {str(c).strip(): None for c in dados["certificacoes"] if str(c).strip()}
         atuais = {h.nome.lower(): h for h in db.scalars(select(HabilitacaoInstrutor).where(HabilitacaoInstrutor.instrutor_id == inst.id))}
