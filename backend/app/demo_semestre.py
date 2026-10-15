@@ -157,6 +157,9 @@ INSTRUTORES = [
     ("PT-2012", "Thiago Moreira", "PORTO", "GESTAO", ["LOGISTICA"], "VN", ["ADM-ROT", "LOG-CUS"], [], "Contador; custos e orçamento"),
 ]
 
+# horistas e mensalistas em todos os turnos (a modalidade não depende do turno nem da carga)
+HORISTAS = {"BM-1003", "BM-1006", "BM-1012", "BM-1015", "PT-2003", "PT-2005", "PT-2006", "PT-2010"}
+
 # logins do portal do instrutor na demonstração (senha comum, só para apresentação)
 LOGINS_PORTAL = {"BM-1002": "juliana.prates", "BM-1001": "marcos.vieira", "PT-2006": "igor.batista", "PT-2004": "eduardo.salles"}
 SENHA_PORTAL = "portal@2026"
@@ -227,7 +230,7 @@ def montar(db, ctx, limite_s: float = 120) -> dict:
         i = Instrutor(matricula=mat, nome=nome, email=f"{LOGINS_PORTAL.get(mat, mat.lower())}@demo.senai.br", unidade_id=u.id,
                       area_id=area[ar].id, carga_horaria_contratual=40 if dois else 20, limite_ch_letiva=28 if dois else 20,
                       max_horas_dia=8 if dois else 4, areas_competencia=formacao, situacao="ativo", ativo=True,
-                      modalidade="horista" if turnos_i == "N" else "mensalista")
+                      modalidade="horista" if mat in HORISTAS else "mensalista")
         db.add(i)
         db.flush()
         instrutores[mat] = i

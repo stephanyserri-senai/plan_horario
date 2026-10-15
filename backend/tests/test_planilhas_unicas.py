@@ -99,3 +99,16 @@ def test_modelo_tem_instrucoes_e_listas(db, mundo):
     valores = [c.value for c in listas["A"] if c.value]
     assert "BEIRA-MAR" in valores and "PORTO" in valores
     assert wb["Preencher"].data_validations.dataValidation  # listas de seleção
+
+
+def test_modelo_levantamento_lista_de_modalidade(db, mundo):
+    """A coluna Modalidade do levantamento oferece Mensalista/Horista (e não a modalidade de oferta do curso)."""
+    garantir_estrutura_fixa(db)
+    db.commit()
+    wb = load_workbook(io.BytesIO(gerar_modelo(db, "levantamento_instrutores")))
+    ws = wb["Preencher"]
+    col = next(c.column_letter for c in ws[3] if c.value and str(c.value).startswith("Modalidade"))
+    dv = next(d for d in ws.data_validations.dataValidation if any(str(r).startswith(f"{col}") for r in d.sqref.ranges))
+    ref = dv.formula1.replace("$", "").split("!")[1]
+    valores = [c.value for linha in wb["Listas"][ref] for c in linha if c.value]
+    assert valores == ["Mensalista", "Horista"]
