@@ -112,7 +112,10 @@ def validacoes(cid: int, ctx: Contexto = Depends(requer("alocacoes.ler")), db: S
     v = db.scalars(select(Validacao).where(Validacao.cenario_id == cid).order_by(Validacao.id.desc())).first()
     if not v:
         return None
-    oc = db.scalars(select(OcorrenciaValidacao).where(OcorrenciaValidacao.validacao_id == v.id)).all()
+    q = select(OcorrenciaValidacao).where(OcorrenciaValidacao.validacao_id == v.id)
+    if ctx.unidades is not None:  # escopo do usuário / unidade escolhida na tela: ocorrências das turmas dessas unidades
+        q = q.where(or_(OcorrenciaValidacao.turma_id.is_(None), OcorrenciaValidacao.turma_id.in_(select(Turma.id).where(Turma.unidade_id.in_(ctx.unidades)))))
+    oc = db.scalars(q).all()
     return {"validacao": auditoria.snapshot(v), "ocorrencias": [auditoria.snapshot(o) for o in oc]}
 
 
@@ -770,8 +773,9 @@ def painel(cenario_id: int, ctx: Contexto = Depends(requer("alocacoes.ler")), db
     total_h = sum(i["total_h"] for i in ucs)
     sem_h = sum(i["restante_h"] for i in ucs)
     com_h = total_h - sem_h
-    aulas = db.scalar(select(func.count()).select_from(Alocacao).where(Alocacao.cenario_id == cenario_id, Alocacao.status != "cancelada")) or 0
-    excecoes = db.scalar(select(func.count()).select_from(Alocacao).where(Alocacao.cenario_id == cenario_id, Alocacao.excecao_id.isnot(None))) or 0
+    da_unidade = [] if ctx.unidades is None else [Alocacao.turma_id.in_(select(Turma.id).where(Turma.unidade_id.in_(ctx.unidades)))]
+    aulas = db.scalar(select(func.count()).select_from(Alocacao).where(Alocacao.cenario_id == cenario_id, Alocacao.status != "cancelada", *da_unidade)) or 0
+    excecoes = db.scalar(select(func.count()).select_from(Alocacao).where(Alocacao.cenario_id == cenario_id, Alocacao.excecao_id.isnot(None), *da_unidade)) or 0
     ex = db.scalar(select(ExecucaoOtimizacao).where(ExecucaoOtimizacao.cenario_id == cenario_id).order_by(ExecucaoOtimizacao.id.desc()).limit(1))
     val = db.scalar(select(Validacao).where(Validacao.cenario_id == cenario_id).order_by(Validacao.id.desc()).limit(1))
     gerando = bool(ex and ex.status in ("pendente", "executando"))

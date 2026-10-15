@@ -3,6 +3,7 @@ import { NavLink, Navigate, Route, Routes, useNavigate } from "react-router-dom"
 import { api } from "./api";
 import { Campo, Erro, EstadoCenario, Modal } from "./components/ui";
 import { useApp } from "./contexto";
+import { useOpcoes } from "./hooks";
 import { supabase } from "./auth";
 import Perfil from "./components/Perfil";
 import PortalInstrutor from "./pages/PortalInstrutor";
@@ -77,6 +78,22 @@ function SeletorSemestre() {
   );
 }
 
+/** Filtro de unidade do topo: vale para todas as páginas de consulta (cadastros, grade, cronograma, indicadores, relatórios…). */
+function SeletorUnidade() {
+  const { unidade, setUnidade } = useApp();
+  const unidades = useOpcoes("unidades");
+  if (unidades.length < 2) return null;
+  return (
+    <div className="seletor-unidade-topo">
+      <label htmlFor="unid">Unidade</label>
+      <select id="unid" value={unidade} onChange={(e) => setUnidade(e.target.value)} className={unidade ? "filtrado" : ""}>
+        <option value="">Todas as unidades</option>
+        {unidades.map((u) => <option key={u.id} value={u.id}>{String(u.rotulo).replace(/^Unidade\s+/i, "")}</option>)}
+      </select>
+    </div>
+  );
+}
+
 function TrocarSenha({ fechar }: { fechar: () => void }) {
   const { aviso, auth } = useApp();
   const sb = auth?.modo === "supabase";
@@ -132,7 +149,7 @@ function BuscaGlobal() {
 }
 
 export default function App() {
-  const { usuario, pode, definirSenha } = useApp();
+  const { usuario, pode, definirSenha, unidade } = useApp();
   const [menuAberto, setMenuAberto] = useState(false);
   const [trocarSenha, setTrocarSenha] = useState(false);
   if (definirSenha) return <DefinirSenha />;
@@ -163,11 +180,12 @@ export default function App() {
         <header className="topo">
           <button className="btn-icone menu-mobile" aria-label="Abrir menu" onClick={() => setMenuAberto(!menuAberto)}>☰</button>
           <SeletorSemestre />
+          <SeletorUnidade />
           <BuscaGlobal />
           <Perfil trocarSenha={() => setTrocarSenha(true)} />
         </header>
         {trocarSenha && <TrocarSenha fechar={() => setTrocarSenha(false)} />}
-        <main>
+        <main key={unidade /* trocar a unidade recarrega a página com o novo filtro */}>
           <Routes>
             <Route path="/" element={<Inicio />} />
             <Route path="/indicadores" element={<Dashboard />} />

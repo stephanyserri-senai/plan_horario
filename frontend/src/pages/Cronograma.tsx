@@ -43,8 +43,8 @@ const NIVEL: Record<string, number> = { area: 0, curso: 1, turma: 2, uc: 3 };
 const ROTULO_TIPO: Record<string, string> = { area: "Área", curso: "Curso", turma: "Turma", uc: "UC" };
 
 export default function Cronograma() {
-  const { cenario } = useApp();
-  const [unidade, setUnidade] = useState("");
+  // unidade = filtro do topo (trocar aqui troca o filtro de todas as páginas)
+  const { cenario, unidade, setUnidade } = useApp();
   const [area, setArea] = useState("");
   const [curso, setCurso] = useState("");
   const [zoom, setZoom] = useState<"semanas" | "meses">("semanas");

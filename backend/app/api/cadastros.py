@@ -423,6 +423,37 @@ def meta(ctx: Contexto = Depends(get_contexto)):
             for k, c in ENTIDADES.items()]
 
 
+def _condicoes_unidade(ent: str, M, ctx: Contexto) -> list:
+    """Filtro de unidade dos cadastros: coluna de unidade (escopo do usuário) e, quando a unidade foi escolhida na
+    tela, também os cadastros ligados a ela por relação (UCs pelo curso, competências pelo instrutor etc.)."""
+    from app.models import Ambiente, Calendario, Instrutor
+    cfg = _cfg(ent)
+    col_un = cfg.get("unidade_col")
+    filtro = ctx.extra.get("filtro_unidade")
+    un = ctx.unidades
+    if ent == "unidades":
+        un = ctx.extra.get("unidades_escopo", ctx.unidades)  # a lista de unidades mostra todas as do escopo (para trocar o filtro)
+    if un is None:
+        return []
+    if col_un:
+        return [or_(getattr(M, col_un).in_(un), getattr(M, col_un).is_(None))]
+    if filtro is None:
+        return []
+    cursos = select(Curso.id).where(Curso.unidade_id.in_(un))
+    rel = {
+        "matrizes": lambda: M.curso_id.in_(cursos),
+        "ucs": lambda: M.matriz_id.in_(select(MatrizCurricular.id).where(MatrizCurricular.curso_id.in_(cursos))),
+        "turma_ucs": lambda: M.turma_id.in_(select(Turma.id).where(Turma.unidade_id.in_(un))),
+        "competencias": lambda: M.instrutor_id.in_(select(Instrutor.id).where(Instrutor.unidade_id.in_(un))),
+        "habilitacoes": lambda: M.instrutor_id.in_(select(Instrutor.id).where(Instrutor.unidade_id.in_(un))),
+        "disponibilidade_instrutores": lambda: M.instrutor_id.in_(select(Instrutor.id).where(Instrutor.unidade_id.in_(un))),
+        "disponibilidade_ambientes": lambda: M.ambiente_id.in_(select(Ambiente.id).where(Ambiente.unidade_id.in_(un))),
+        "recursos_ambientes": lambda: M.ambiente_id.in_(select(Ambiente.id).where(Ambiente.unidade_id.in_(un))),
+        "calendario_excecoes": lambda: M.calendario_id.in_(select(Calendario.id).where(Calendario.unidade_id.in_(un))),
+    }
+    return [rel[ent]()] if ent in rel else []
+
+
 @router.get("/cadastros/{ent}")
 def listar(ent: str, request: Request, q: str | None = None, pagina: int = 1, por_pagina: int = Query(25, le=500), ativo: bool | None = None,
            ordenar: str | None = None, db: Session = Depends(get_db), ctx: Contexto = Depends(get_contexto)):
@@ -434,9 +465,8 @@ def listar(ent: str, request: Request, q: str | None = None, pagina: int = 1, po
         stmt = stmt.where(M.simulacao_id.is_(None))
     if ativo is not None and hasattr(M, "ativo"):
         stmt = stmt.where(M.ativo.is_(ativo))
-    col_un = cfg.get("unidade_col")
-    if col_un and ctx.unidades is not None:
-        stmt = stmt.where(or_(getattr(M, col_un).in_(ctx.unidades), getattr(M, col_un).is_(None)))
+    for cond in _condicoes_unidade(ent, M, ctx):
+        stmt = stmt.where(cond)
     if ent == "turmas":
         if ctx.cursos is not None:
             stmt = stmt.where(M.curso_id.in_(ctx.cursos))
@@ -484,6 +514,9 @@ def opcoes(ent: str, q: str | None = None, limite: int = 500, db: Session = Depe
         stmt = stmt.where(M.simulacao_id.is_(None))
     if q and cfg["busca"]:
         stmt = stmt.where(or_(*[cast(getattr(M, c), String).ilike(f"%{q}%") for c in cfg["busca"]]))
+    if "filtro_unidade" in ctx.extra:  # listas suspensas seguem a unidade escolhida na tela
+        for cond in _condicoes_unidade(ent, M, ctx):
+            stmt = stmt.where(cond)
     res = []
     for o in db.scalars(stmt.limit(limite)):
         s = serializar(o, ent, ctx)

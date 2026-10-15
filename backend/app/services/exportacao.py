@@ -113,6 +113,8 @@ COLUNAS: dict[str, list[tuple[str, str, int, bool]]] = {
                  ("descricao", "Descrição", 60, True), ("alternativas", "O que fazer", 50, True), ("instrutores_habilitados", "Instrutores habilitados", 30, False)],
     "semana": [("horario", "Horário", 16, True)] + [(d, d, 30, True) for d in DIAS[:6]],
     "periodo": [("semana", "Semana", 14, True), ("horario", "Horário", 13, True)] + [(d, d, 30, True) for d in DIAS[:6]],
+    "geral_semana": [("horario", "Horário", 16, True), ("turma", "Turma", 14, True)] + [(d, d, 30, True) for d in DIAS[:6]],
+    "geral_periodo": [("semana", "Semana", 14, True), ("horario", "Horário", 16, True), ("turma", "Turma", 14, True)] + [(d, d, 30, True) for d in DIAS[:6]],
     "importacao": [("linha", "Linha", 8, True), ("acao", "Resultado", 22, True), ("erros", "Erros", 60, True), ("avisos", "Avisos", 50, True)],
 }
 NOMES_ABA = {"dados": "Dados", "ambientes": "Salas e laboratórios", "por_turno": "Por turno", "por_dia": "Por dia da semana",
@@ -180,7 +182,7 @@ INSTITUICAO = "SENAI-ES · Planejamento Acadêmico"
 
 
 def para_xlsx(abas: dict[str, list[dict]], titulo: str | None = None, meta: list[str] | None = None, tipos: dict[str, str] | None = None,
-              titulos: dict[str, str] | None = None) -> bytes:
+              titulos: dict[str, str] | None = None, cores_abas: dict[str, str] | None = None) -> bytes:
     """Planilha com cabeçalho institucional, colunas com nome em português, faixas alternadas, filtro e impressão em paisagem."""
     from openpyxl.styles import Border, Side
     from openpyxl.worksheet.properties import PageSetupProperties
@@ -190,6 +192,9 @@ def para_xlsx(abas: dict[str, list[dict]], titulo: str | None = None, meta: list
     for nome, linhas in abas.items():
         ws = wb.create_sheet(NOMES_ABA.get(nome, nome)[:31])
         tipo = (tipos or {}).get(nome, nome)  # aba com nome livre (ex.: uma por turma) usa as colunas de um tipo conhecido
+        cor_aba = (cores_abas or {}).get(nome)
+        if cor_aba:
+            ws.sheet_properties.tabColor = cor_aba
         cols = colunas(tipo, linhas)
         n = max(1, len(cols))
         ws.cell(1, 1, INSTITUICAO).font = Font(name="Arial", size=9, color="595959")
@@ -212,7 +217,12 @@ def para_xlsx(abas: dict[str, list[dict]], titulo: str | None = None, meta: list
             ws.column_dimensions[get_column_letter(j)].width = w
         ws.row_dimensions[r0].height = 32
         zebra = PatternFill("solid", fgColor=AZUL_CLARO)
+        paleta = cores_turmas(l["_cor"] for l in linhas if l.get("_cor")) if any(l.get("_cor") for l in linhas) else {}
+        separador = Side(style="medium", color="1F4E79")
+        grupo_ant = object()
         for i, l in enumerate(linhas, r0 + 1):
+            novo_grupo = "_grupo" in l and l["_grupo"] != grupo_ant
+            grupo_ant = l.get("_grupo", grupo_ant)
             for j, (k, _t, w, _pdf) in enumerate(cols, 1):
                 v = _valor(k, l.get(k))
                 cel = ws.cell(i, j, v)
@@ -223,7 +233,18 @@ def para_xlsx(abas: dict[str, list[dict]], titulo: str | None = None, meta: list
                                           horizontal="right" if num else "left")
                 if isinstance(v, float):
                     cel.number_format = "0.0"
-                if (i - r0) % 2 == 0:
+                if paleta:  # quadro geral: cor da turma na linha inteira e linha grossa ao mudar de horário/semana
+                    if k not in ("semana", "horario"):
+                        cel.fill = PatternFill("solid", fgColor=paleta[l["_cor"]])
+                    if k == "turma":
+                        cel.font = Font(name="Arial", size=10, bold=True)
+                    if novo_grupo:
+                        cel.border = Border(left=borda.left, right=borda.right, bottom=borda.bottom, top=separador)
+                    if k in ("semana", "horario") and v:
+                        cel.font = Font(name="Arial", size=10, bold=True, color=AZUL)
+                elif cor_aba and v not in ("", None) and k not in ("semana", "horario"):
+                    cel.fill = PatternFill("solid", fgColor=cor_aba)  # aba da turma: mesma cor do quadro geral
+                elif (i - r0) % 2 == 0 and not cor_aba:
                     cel.fill = zebra
         for i, l in enumerate(linhas, r0 + 1):  # altura pelas quebras (manuais e automáticas): o Excel não ajusta sozinho
             n_linhas = 1
@@ -264,6 +285,42 @@ def matriz_semanal(linhas: list[dict], semana: date, sem_turma: bool = False) ->
     dias = [k for k in range(6) if k < 5 or any(dk == k for (_h, dk) in cel)]  # sábado só se houver aula
     sep = "\n\n" if sem_turma else "\n"
     return [{"horario": h, **{DIAS[k]: sep.join(cel.get((h, k), [])) for k in dias}} for h in sorted(horarios)]
+
+
+PALETA_TURMAS = ["DCE9F7", "E2F0D9", "FFF2CC", "FCE4D6", "E4DFEC", "D9F2EF", "F8E1E7", "FFE699", "DDEBF7", "EDEDED",
+                 "C6E0B4", "F4CCCC", "D0E0E3", "FCE5CD", "D9D2E9", "FFF9C4"]
+
+
+def cores_turmas(turmas) -> dict[str, str]:
+    """Uma cor clara fixa por turma (a mesma no quadro geral e na aba da turma)."""
+    return {t: PALETA_TURMAS[i % len(PALETA_TURMAS)] for i, t in enumerate(sorted(set(turmas)))}
+
+
+def matriz_geral(linhas: list[dict], d0: date, d1: date, com_semana: bool) -> list[dict]:
+    """Quadro de todas as turmas: uma linha por turma em cada horário (e semana), colorida pela turma.
+    `_grupo` marca onde começa um novo horário/semana (linha separadora) e `_cor` a turma."""
+    linhas = [l for l in linhas if d0 <= l["_data"] <= d1]
+    usa_sab = any(l["_data"].weekday() == 5 for l in linhas)
+    dias = DIAS[:6] if usa_sab else DIAS[:5]
+    grupos = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))  # (semana, horário) → turma → dia → aulas
+    for l in linhas:
+        seg = l["_data"] - timedelta(days=l["_data"].weekday())
+        grupos[(seg if com_semana else None, f"{l['inicio']}–{l['fim']}")][l["turma"]][l["_data"].weekday()].append(l)
+    res = []
+    for (seg, h) in sorted(grupos, key=lambda k: (k[0] or date.min, k[1])):
+        primeira = True
+        for turma in sorted(grupos[(seg, h)]):
+            por_dia = grupos[(seg, h)][turma]
+            linha = {}
+            if com_semana:
+                linha["semana"] = f"{max(seg, d0):%d/%m} a {min(seg + timedelta(days=len(dias) - 1), d1):%d/%m}" if primeira else ""
+            linha.update({"horario": h if primeira else "", "turma": turma})
+            for k, dia in enumerate(dias):
+                linha[dia] = "\n".join(f"{a['uc']}\n{a['instrutor']} · {a['ambiente']}" for a in por_dia.get(k, []))
+            linha["_cor"], linha["_grupo"] = turma, (seg, h)
+            res.append(linha)
+            primeira = False
+    return res
 
 
 def matriz_periodo(linhas: list[dict], d0: date, d1: date, sem_turma: bool = False) -> list[dict]:
@@ -317,12 +374,22 @@ def para_pdf(titulo: str, linhas: list[dict] | None = None, subtitulo: str | Non
                 txt = (f"{v:.1f}" if isinstance(v, float) else str(v)).replace("&", "&amp;").replace("<", "&lt;").replace("\n", "<br/>")
                 linha.append(Paragraph(txt, cel_num if num else cel))
             dados.append(linha)
+        extra = []
+        if any(l.get("_cor") for l in ls):  # quadro geral: cor por turma e separador de horário/semana
+            paleta = cores_turmas(l["_cor"] for l in ls if l.get("_cor"))
+            n_fixas = sum(1 for k, *_ in cols if k in ("semana", "horario"))
+            ant = object()
+            for i, l in enumerate(ls, 1):
+                extra.append(("BACKGROUND", (n_fixas, i), (-1, i), colors.HexColor("#" + paleta[l["_cor"]])))
+                if l.get("_grupo") != ant:
+                    extra.append(("LINEABOVE", (0, i), (-1, i), 1.2, colors.HexColor("#1F4E79")))
+                ant = l.get("_grupo")
         t = Table(dados, repeatRows=1, colWidths=larguras)
         t.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1F4E79")), ("VALIGN", (0, 0), (-1, -1), "TOP"),
                                ("VALIGN", (0, 0), (-1, 0), "MIDDLE"), ("LINEBELOW", (0, 0), (-1, -1), 0.25, colors.HexColor("#D9D9D9")),
                                ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#BFBFBF")),
                                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F2F6FA")]),
-                               ("TOPPADDING", (0, 0), (-1, -1), 3), ("BOTTOMPADDING", (0, 0), (-1, -1), 3)]))
+                               ("TOPPADDING", (0, 0), (-1, -1), 3), ("BOTTOMPADDING", (0, 0), (-1, -1), 3)] + extra))
         elems.append(t)
         if len(ls) >= max_linhas:
             elems.append(Paragraph(f"Mostrando as primeiras {max_linhas} linhas; a planilha (Excel) traz todas.", nota))

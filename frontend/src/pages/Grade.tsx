@@ -23,15 +23,20 @@ function corDe(id: number) {
 }
 
 export default function Grade() {
-  const { cenario, pode, aviso } = useApp();
+  const { cenario, pode, aviso, unidade: unidadeTopo, setUnidade: setUnidadeTopo } = useApp();
   const [sp, setSp] = useSearchParams();
   const modoInicial = MODOS.find((m) => sp.get(m.id))?.id || "turma";
   const [modo, setModo] = useState(modoInicial);
   const [alvo, setAlvo] = useState<string>(sp.get(modoInicial) || "");
   const [q, setQ] = useState("");
   const [semana, setSemana] = useState<Date>(() => segundaDe(cenario?.periodo_inicio ? new Date(cenario.periodo_inicio + "T12:00") : new Date()));
-  const [unidade, setUnidadeEstado] = useState<string>(() => { try { return localStorage.getItem("grade_unidade") || ""; } catch { return ""; } });
-  const setUnidade = (u: string) => { setUnidadeEstado(u); try { localStorage.setItem("grade_unidade", u); } catch { /* sem armazenamento */ } };
+  // a grade sempre mostra uma unidade: a do filtro do topo (se houver) ou a última usada aqui
+  const [unidade, setUnidadeEstado] = useState<string>(() => { try { return unidadeTopo || localStorage.getItem("grade_unidade") || ""; } catch { return unidadeTopo; } });
+  const setUnidade = (u: string) => {
+    setUnidadeEstado(u);
+    try { localStorage.setItem("grade_unidade", u); } catch { /* sem armazenamento */ }
+    if (unidadeTopo && u !== unidadeTopo) setUnidadeTopo(u);  // com filtro no topo, trocar aqui troca o filtro também
+  };
   const [mostrarLivres, setMostrarLivres] = useState(false);
   const [form, setForm] = useState<any | null>(null);
   const [aulaSel, setAulaSel] = useState<Aula | null>(null);
@@ -49,7 +54,7 @@ export default function Grade() {
     if (!unidades.length) return;
     const doCenario = (cenario as any)?.unidade_id ? String((cenario as any).unidade_id) : "";
     const valida = (u: string) => unidades.some((x) => String(x.id) === u);
-    const escolhida = doCenario || (valida(unidade) ? unidade : String(unidades[0].id));
+    const escolhida = (valida(unidadeTopo) ? unidadeTopo : "") || doCenario || (valida(unidade) ? unidade : String(unidades[0].id));
     if (escolhida !== unidade) setUnidade(escolhida);
   }, [unidades, cenario?.id]);
   // escolheu (ou abriu pelo link) uma turma/instrutor/sala de outra unidade: muda a unidade junto
@@ -74,7 +79,7 @@ export default function Grade() {
     if (!cenario) return {};
     const r: Record<string, number> = {};
     await Promise.all(unidades.map(async (u) => {
-      r[u.id] = (await api.get(`/api/grade${qs({ cenario_id: cenario.id, inicio: iso(semana), fim: iso(fimSemana), unidade_id: u.id })}`)).length;
+      r[u.id] = (await api.get(`/api/grade${qs({ cenario_id: cenario.id, inicio: iso(semana), fim: iso(fimSemana), unidade_id: u.id })}`, { semUnidade: true })).length;
     }));
     return r;
   }, [cenario?.id, iso(semana), unidades.length, versaoSub]);

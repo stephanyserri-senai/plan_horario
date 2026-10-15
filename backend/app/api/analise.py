@@ -66,7 +66,7 @@ def ind_inst(cenario_id: int, inicio: date | None = None, fim: date | None = Non
 def analisar_gargalos(cenario_id: int, inicio: date | None = None, fim: date | None = None, unidade_id: int | None = None,
                       ctx: Contexto = Depends(requer("indicadores.ler")), db: Session = Depends(get_db)):
     d0, d1 = _periodo(db, cenario_id, inicio, fim)
-    return gargalos.analisar(db, cenario_id, d0, d1, unidade_id)
+    return gargalos.analisar(db, cenario_id, d0, d1, unidade_id or ctx.extra.get("filtro_unidade"))
 
 
 # ============================================================================ recomendações
@@ -268,6 +268,10 @@ def _meta(db, ctx, cenario_id=None, d0=None, d1=None, filtro=None) -> list[str]:
         m.append(f"Semestre: {exportacao.nome_cenario(db, cenario_id)}")
     if d0 and d1:
         m.append(f"Período: {d0:%d/%m/%Y} a {d1:%d/%m/%Y}")
+    if ctx.extra.get("filtro_unidade"):
+        from app.models import Unidade
+        un = db.get(Unidade, ctx.extra["filtro_unidade"])
+        m.append(f"Unidade: {un.nome if un else ctx.extra['filtro_unidade']}")
     if filtro:
         m.append(f"Filtro: {filtro}")
     m.append(f"Gerado em {datetime.now():%d/%m/%Y %H:%M} por {getattr(ctx.usuario, 'nome', None) or 'usuário'}")
@@ -322,25 +326,27 @@ def exportar_grade(cenario_id: int, formato: str = "xlsx", filtro: str | None = 
     arq = {"semana": "grade_semana", "mes": f"grade_{inicio:%Y_%m}", "semestre": "grade_semestre"}[periodo]
     fim_vis = inicio + timedelta(days=5) if periodo == "semana" else fim
     meta = _meta(db, ctx, cenario_id, inicio, fim_vis, rot)
+    # quadro geral: uma linha por turma em cada horário, colorida pela turma (no Excel e no PDF)
     if periodo == "semana":
-        geral, tipo = exportacao.matriz_semanal(linhas, inicio), "semana"
+        geral, tipo_geral, tipo = exportacao.matriz_geral(linhas, inicio, inicio + timedelta(days=6), False), "geral_semana", "semana"
         por_turma = lambda ls: exportacao.matriz_semanal(ls, inicio, sem_turma=True)
     else:
-        geral, tipo = exportacao.matriz_periodo(linhas, inicio, fim), "periodo"
+        geral, tipo_geral, tipo = exportacao.matriz_geral(linhas, inicio, fim, True), "geral_periodo", "periodo"
         por_turma = lambda ls: exportacao.matriz_periodo(ls, inicio, fim, sem_turma=True)
     if formato == "pdf":
-        return Response(exportacao.para_pdf(titulo, geral, meta=meta, aba=tipo), media_type="application/pdf",
+        return Response(exportacao.para_pdf(titulo, geral, meta=meta, aba=tipo_geral), media_type="application/pdf",
                         headers={"Content-Disposition": f'attachment; filename="{arq}.pdf"'})
     if formato != "xlsx":
         raise EntradaInvalida("Formato inválido: use xlsx ou pdf.")
     # planilha: visão geral + uma aba por turma + a lista das aulas do período
     nome_geral = "Todas as turmas"
-    abas, tipos, titulos = {nome_geral: geral}, {nome_geral: tipo}, {}
+    abas, tipos, titulos = {nome_geral: geral}, {nome_geral: tipo_geral}, {}
+    cores = exportacao.cores_turmas(l["turma"] for l in linhas)
     for turma in sorted({l["turma"] for l in linhas}):
         abas[turma] = por_turma([l for l in linhas if l["turma"] == turma])
         tipos[turma], titulos[turma] = tipo, f"Grade horária – {nome_per} – turma {turma}"
     abas["Lista de aulas"], tipos["Lista de aulas"] = linhas, "grade"
-    return Response(exportacao.para_xlsx(abas, titulo, meta, tipos, titulos), media_type=XLSX_MIME,
+    return Response(exportacao.para_xlsx(abas, titulo, meta, tipos, titulos, cores), media_type=XLSX_MIME,
                     headers={"Content-Disposition": f'attachment; filename="{arq}.xlsx"'})
 
 
@@ -368,7 +374,7 @@ def exportar_indicadores(tipo: str, cenario_id: int, formato: str = "xlsx", inic
         linhas = exportacao.achatar(r["itens"])
         abas = {"turmas_ucs": linhas}
     elif tipo == "gargalos":
-        r = gargalos.analisar(db, cenario_id, d0, d1)
+        r = gargalos.analisar(db, cenario_id, d0, d1, ctx.extra.get("filtro_unidade"))
         linhas = exportacao.achatar([{k: v for k, v in g.items() if k not in ("itens", "calculo")} for g in r["gargalos"]])
         abas = {"gargalos": linhas}
     else:

@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 
-from fastapi import Depends, Header, HTTPException
+from fastapi import Depends, Header, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -91,7 +91,20 @@ def _usuario_supabase(db: Session, token: str) -> Usuario:
     return usuario
 
 
-def get_contexto(authorization: str | None = Header(default=None), db: Session = Depends(get_db)) -> Contexto:
+def aplicar_filtro_unidade(ctx: Contexto, unidade: str | None) -> Contexto:
+    """Filtro de unidade escolhido na tela (cabeçalho X-Unidade): só para CONSULTAS, reduz o escopo do usuário àquela
+    unidade — nunca amplia. O escopo real fica em ctx.extra["unidades_escopo"] (para listas como a de unidades)."""
+    if not unidade or not str(unidade).isdigit():
+        return ctx
+    u = int(unidade)
+    ctx.extra["unidades_escopo"] = ctx.unidades
+    ctx.extra["filtro_unidade"] = u
+    ctx.unidades = {u} if ctx.unidades is None else (ctx.unidades & {u})
+    return ctx
+
+
+def get_contexto(request: Request, authorization: str | None = Header(default=None), x_unidade: str | None = Header(default=None),
+                 db: Session = Depends(get_db)) -> Contexto:
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(status_code=401, detail="Autenticação necessária.")
     token = authorization.split(" ", 1)[1].strip()
@@ -105,7 +118,10 @@ def get_contexto(authorization: str | None = Header(default=None), db: Session =
         usuario = db.get(Usuario, int(payload["sub"]))
     if not usuario or not usuario.ativo:
         raise HTTPException(status_code=401, detail="Usuário inativo.")
-    return carregar_contexto(db, usuario)
+    ctx = carregar_contexto(db, usuario)
+    if request.method == "GET":  # gravações nunca são afetadas pelo filtro da tela
+        aplicar_filtro_unidade(ctx, x_unidade)
+    return ctx
 
 
 def requer(acao: str):

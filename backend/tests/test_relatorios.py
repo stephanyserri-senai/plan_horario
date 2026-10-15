@@ -35,6 +35,8 @@ def test_relatorios_excel_pdf_e_pacote(db, mundo):
     # grade da semana: visão geral + uma aba por turma + lista
     wb = load_workbook(io.BytesIO(c.get(f"/api/exportar/grade?cenario_id={cid}&semana={SEG}&formato=xlsx", headers=h).content))
     assert wb.sheetnames[0] == "Todas as turmas" and wb.sheetnames[-1] == "Lista de aulas"
+    geral = [v for row in wb["Todas as turmas"].iter_rows(values_only=True) for v in row if v]
+    assert "Turma" in geral and m.t1.codigo in geral  # quadro geral: uma linha por turma
     assert {m.t1.codigo, m.t2.codigo} <= set(wb.sheetnames)
     # mês e semestre: quadro semana a semana (coluna Semana + Horário + dias), também por turma
     for extra in (f"periodo=mes&mes={SEG:%Y-%m}", "periodo=semestre"):

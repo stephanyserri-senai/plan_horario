@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { principalDoSemestre, semestreAtual, semestres } from "./semestre";
-import { api, token } from "./api";
+import { api, getUnidadeFiltro, setUnidadeFiltro, token } from "./api";
+import { invalidarOpcoes } from "./hooks";
 import { carregarConfigAuth, supabase, tipoLinkInicial, type ConfigAuth } from "./auth";
 
 export type Usuario = { id: number; nome: string; email: string; perfil: string; acoes: string[]; escopo: any; instrutor_id?: number | null };
@@ -20,6 +21,9 @@ type Ctx = {
   cenarios: Cenario[];
   cenario: Cenario | null;
   setCenarioId: (id: number) => void;
+  /** Unidade escolhida no topo ("" = todas): filtra as consultas de todas as páginas. */
+  unidade: string;
+  setUnidade: (u: string) => void;
   recarregarCenarios: () => Promise<void>;
   aviso: (texto: string, tipo?: "ok" | "erro" | "info") => void;
 };
@@ -125,10 +129,12 @@ export function Provedor({ children }: { children: ReactNode }) {
   const cenario = cenarios.find((c) => c.id === cenarioId) || principalDoSemestre(cenarios, semestreAtual()) ||
     principalDoSemestre(cenarios, semestres(cenarios)[0] || "") || cenarios.find((c) => c.tipo !== "simulacao") || null;
   const setCenarioId = (id: number) => { setCid(id); try { localStorage.setItem("plan_cenario", String(id)); } catch { /* ignore */ } };
+  const [unidade, setUnidadeEstado] = useState(getUnidadeFiltro());
+  const setUnidade = (u: string) => { setUnidadeFiltro(u); invalidarOpcoes(); setUnidadeEstado(u); };
 
   if (!carregado) return <div className="carregando" role="status">Carregando…</div>;
   return (
-    <C.Provider value={{ usuario, auth, erroAcesso, definirSenha, concluirDefinicaoSenha, recuperarSenha, entrar, sair, pode, cenarios, cenario, setCenarioId, recarregarCenarios, aviso }}>
+    <C.Provider value={{ usuario, auth, erroAcesso, definirSenha, concluirDefinicaoSenha, recuperarSenha, entrar, sair, pode, cenarios, cenario, setCenarioId, unidade, setUnidade, recarregarCenarios, aviso }}>
       {children}
       <div className="avisos" aria-live="polite">
         {avisos.map((a) => <div key={a.id} className={`aviso aviso-${a.tipo}`}>{a.texto}</div>)}

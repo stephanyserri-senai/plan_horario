@@ -16,10 +16,19 @@ export class ErroApi extends Error {
 
 export const token = tokenLocal;
 
-async function req<T = any>(metodo: string, caminho: string, corpo?: any, form?: FormData): Promise<T> {
+// Filtro de unidade escolhido no topo da tela: vai em todas as CONSULTAS (o servidor reduz o escopo a essa unidade).
+let unidadeFiltro = (() => { try { return localStorage.getItem("plan_unidade") || ""; } catch { return ""; } })();
+export function getUnidadeFiltro() { return unidadeFiltro; }
+export function setUnidadeFiltro(u: string) {
+  unidadeFiltro = u;
+  try { if (u) localStorage.setItem("plan_unidade", u); else localStorage.removeItem("plan_unidade"); } catch { /* sem armazenamento */ }
+}
+
+async function req<T = any>(metodo: string, caminho: string, corpo?: any, form?: FormData, semUnidade = false): Promise<T> {
   const headers: Record<string, string> = {};
   const t = await obterToken();
   if (t) headers["Authorization"] = `Bearer ${t}`;
+  if (metodo === "GET" && unidadeFiltro && !semUnidade) headers["X-Unidade"] = unidadeFiltro;
   if (corpo !== undefined && !form) headers["Content-Type"] = "application/json";
   const r = await fetch(caminho, { method: metodo, headers, body: form ?? (corpo !== undefined ? JSON.stringify(corpo) : undefined) });
   if (r.status === 401) {
@@ -36,7 +45,7 @@ async function req<T = any>(metodo: string, caminho: string, corpo?: any, form?:
 }
 
 export const api = {
-  get: <T = any>(c: string) => req<T>("GET", c),
+  get: <T = any>(c: string, opc?: { semUnidade?: boolean }) => req<T>("GET", c, undefined, undefined, !!opc?.semUnidade),
   post: <T = any>(c: string, b?: any) => req<T>("POST", c, b ?? {}),
   put: <T = any>(c: string, b?: any) => req<T>("PUT", c, b ?? {}),
   del: <T = any>(c: string) => req<T>("DELETE", c),

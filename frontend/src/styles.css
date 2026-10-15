@@ -40,7 +40,7 @@ code { font-size: .85em; }
 .principal { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .topo { display: flex; gap: 12px; align-items: center; padding: 10px 20px; background: var(--superficie); border-bottom: 1px solid var(--borda); flex-wrap: wrap; position: sticky; top: 0; z-index: 5; }
 .seletor-cenario { display: flex; gap: 8px; align-items: center; }
-.seletor-cenario select { max-width: 320px; }
+.seletor-cenario select { max-width: 250px; }
 .usuario { margin-left: auto; display: flex; gap: 10px; align-items: center; }
 .menu-mobile { display: none; }
 main { padding: 20px; }
@@ -106,7 +106,7 @@ main { padding: 20px; }
 .login { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 16px; }
 .login form { background: var(--superficie); padding: 28px; border-radius: 12px; width: 380px; max-width: 100%; border: 1px solid var(--borda); display: flex; flex-direction: column; gap: 6px; }
 .carregando { padding: 40px; text-align: center; }
-.busca-global { position: relative; flex: 1; min-width: 200px; max-width: 420px; }
+.busca-global { position: relative; flex: 1; min-width: 140px; max-width: 420px; }
 .busca-global input { width: 100%; }
 .busca-res { position: absolute; top: 100%; left: 0; right: 0; background: var(--superficie); border: 1px solid var(--borda); border-radius: 8px; list-style: none; margin: 4px 0; padding: 4px; z-index: 30; box-shadow: 0 6px 20px rgba(0,0,0,.15); }
 .busca-res button { width: 100%; text-align: left; background: none; border: none; padding: 6px 8px; cursor: pointer; border-radius: 4px; }
@@ -549,3 +549,7 @@ button.chip-status { cursor: pointer; } .chip-status.alerta { background: #fff3d
 .passos li > span { flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%; background: var(--primaria); color: var(--primaria-txt); display: flex; align-items: center; justify-content: center; font-weight: 700; }
 .passos small { display: block; color: var(--mudo); margin-top: 2px; }
 @media (max-width: 760px) { .rel-topo { grid-template-columns: 1fr; } }
+.seletor-unidade-topo { display: flex; gap: 8px; align-items: center; }
+.seletor-unidade-topo select { max-width: 200px; }
+.seletor-unidade-topo select.filtrado { border-color: var(--primaria); background: var(--info-bg); font-weight: 600; }
+@media (max-width: 900px) { .seletor-unidade-topo label { display: none; } }
