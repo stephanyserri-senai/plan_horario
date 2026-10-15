@@ -585,6 +585,18 @@ def test_sql_do_semestre_de_demonstracao():
             assert cli.get("/api/portal/notificacoes", headers=hi).json()
         finally:
             reset_engine(URL)
+        # limpar tudo depois da apresentação (o login da Juliana deixou registro na auditoria)
+        for cmd in _comandos_sql((sql_dir / "limpar_dados_teste.sql").read_text(encoding="utf-8")):
+            with psycopg.connect(dsn, autocommit=True) as conn:
+                conn.execute(cmd.encode())
+        eng = create_engine(url)
+        with eng.connect() as c:
+            cont = lambda t: c.scalar(text(f"SELECT count(*) FROM {t}"))  # noqa: E731
+            assert all(cont(t) == 0 for t in ("turmas", "instrutores", "alocacoes", "notificacoes", "observacoes_instrutor", "cenarios_planejamento"))
+            assert c.scalar(text("SELECT count(*) FROM usuarios WHERE perfil = 'instrutor'")) == 0
+            assert c.scalar(text("SELECT count(*) FROM usuarios WHERE email = 'admin'")) == 1
+            assert cont("historico_auditoria") > 0 and (cont("unidades"), cont("areas")) == (2, 11)
+        eng.dispose()
     finally:
         with adm.connect() as c:
             c.execute(text(f"DROP DATABASE IF EXISTS {nome} WITH (FORCE)"))

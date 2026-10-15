@@ -1,7 +1,9 @@
 -- LIMPEZA DOS DADOS DE TESTE — para começar as validações com dados reais.
 -- MANTÉM: unidades Beira Mar e Porto, áreas tecnológicas, turnos oficiais (manhã/tarde/noite), configurações
---         (pesos, regras de aula, limiares), perfis de acesso, usuários e o histórico de auditoria.
--- APAGA:  observações e notificações dos instrutores (o usuário do instrutor continua, mas desvinculado), cursos, matrizes, UCs, turmas, instrutores, salas/laboratórios, tipos de sala, recursos, calendários,
+--         (pesos, regras de aula, limiares), perfis de acesso, usuários da equipe (administrador, planejador,
+--         coordenador, gestor, consulta) e o histórico de auditoria.
+-- APAGA:  logins do portal do instrutor (perfil instrutor), observações e notificações dos instrutores,
+--         cursos, matrizes, UCs, turmas, instrutores, salas/laboratórios, tipos de sala, recursos, calendários,
 --         feriados, bloqueios, semestres (cenários), aulas, gerações, simulações, importações e exceções;
 --         e qualquer unidade que não seja BEIRA-MAR ou PORTO (com seus turnos).
 -- IRREVERSÍVEL: faça um backup antes se houver algo que queira guardar. Cole o arquivo inteiro no SQL Editor e clique em Run.
@@ -59,6 +61,10 @@ BEGIN
   -- instrutores: DELETE (a tabela de usuários, que é mantida, aponta para ela)
   DELETE FROM instrutores;
   PERFORM setval(pg_get_serial_sequence('instrutores', 'id'), 1, false);
+  -- usuários do portal do instrutor (perfil instrutor): sem os instrutores, não servem mais. O histórico de
+  -- auditoria é mantido (com o nome de quem fez), só deixa de apontar para o usuário apagado.
+  UPDATE historico_auditoria SET usuario_id = NULL WHERE usuario_id IN (SELECT id FROM usuarios WHERE perfil = 'instrutor');
+  DELETE FROM usuarios WHERE perfil = 'instrutor';
   -- escopos de acesso que apontavam para cursos/turmas apagados ou unidades extras
   DELETE FROM permissoes WHERE escopo_tipo IN ('curso', 'turma')
      OR (escopo_tipo = 'unidade' AND escopo_id NOT IN (SELECT id FROM unidades WHERE codigo IN ('BEIRA-MAR', 'PORTO')));
