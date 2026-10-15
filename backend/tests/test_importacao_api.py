@@ -94,7 +94,7 @@ def login(c, email, senha):
 
 def test_18_alteracao_sem_autorizacao(db, mundo, cliente):
     m = mundo
-    db.add(Usuario(nome="Consulta", email="consulta@teste", senha_hash=hash_senha("senha-forte-2"), perfil="consulta"))
+    db.add(Usuario(nome="Consulta", email="consulta@teste", senha_hash=hash_senha("senha-forte-2"), perfil="observador"))
     outra = Unidade(codigo="U2", nome="Outra")
     db.add(outra)
     db.flush()

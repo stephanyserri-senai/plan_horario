@@ -368,7 +368,7 @@ class HistoricoAuditoria(Base):
 class Usuario(Base):
     __tablename__ = "usuarios"
     __table_args__ = (
-        CheckConstraint("perfil in ('administrador','planejador','coordenador','gestor','consulta','instrutor')", name="usuarios_perfil_check"),
+        CheckConstraint("perfil in ('administrador','planejador','instrutor','observador')", name="usuarios_perfil_check"),
     )
     id: Mapped[int] = mapped_column(primary_key=True)
     nome: Mapped[str] = mapped_column(String(200))

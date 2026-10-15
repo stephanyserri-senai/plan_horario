@@ -4,6 +4,15 @@ import { Abas, Campo, Card, Erro, Modal, Pagina, Tabela, useCarregar } from "../
 import { useApp } from "../contexto";
 import { useOpcoes } from "../hooks";
 
+/** Os quatro perfis da plataforma. */
+const PERFIS: Record<string, string> = { administrador: "Administrador", planejador: "Planejador", instrutor: "Instrutor", observador: "Observador" };
+const AJUDA_PERFIL: Record<string, string> = {
+  administrador: "Gestão do projeto: tudo, inclusive usuários, configurações, aprovação e publicação.",
+  planejador: "Usa o planejamento: cadastros, grade, geração de horários, simulações, importação e relatórios.",
+  instrutor: "Portal do instrutor: os próprios dados, turmas, observações e notificações.",
+  observador: "Só acompanha: consulta cadastros, grade, cronograma, indicadores e baixa relatórios, sem alterar nada.",
+};
+
 export default function Usuarios() {
   const [aba, setAba] = useState("usuarios");
   return (
@@ -35,8 +44,8 @@ function ListaUsuarios() {
   };
   return (
     <>
-      <button className="btn btn-primario" onClick={() => setEd({ nome: "", email: "", perfil: "consulta", escopos: [], acesso_global: false })}>+ Novo usuário</button>
-      <Tabela colunas={[{ chave: "nome", rotulo: "Nome" }, { chave: "email", rotulo: "E-mail" }, { chave: "perfil", rotulo: "Perfil", render: (u: any) => u.perfil === "instrutor" ? <>instrutor {u.instrutor_id ? "" : <small className="tom-erro">(sem vínculo)</small>}</> : u.perfil }, { chave: "acesso_global", rotulo: "Acesso global" },
+      <button className="btn btn-primario" onClick={() => setEd({ nome: "", email: "", perfil: "observador", escopos: [], acesso_global: false })}>+ Novo usuário</button>
+      <Tabela colunas={[{ chave: "nome", rotulo: "Nome" }, { chave: "email", rotulo: "E-mail" }, { chave: "perfil", rotulo: "Perfil", render: (u: any) => u.perfil === "instrutor" ? <>Instrutor {u.instrutor_id ? "" : <small className="tom-erro">(sem vínculo)</small>}</> : PERFIS[u.perfil] || u.perfil }, { chave: "acesso_global", rotulo: "Acesso global" },
         { chave: "escopos", rotulo: "Escopo", render: (u: any) => u.escopos.map((e: any) => `${e.tipo} #${e.id}`).join(", ") || (u.acesso_global ? "todas" : "nenhum") },
         { chave: "ativo", rotulo: "Ativo" },
         ...(supabase ? [{ chave: "vinculado_supabase", rotulo: "Acesso Supabase", render: (u: any) => u.vinculado_supabase ? "vinculado" : <span onClick={(e) => e.stopPropagation()}>aguardando 1º acesso <button className="btn-link" onClick={async () => {
@@ -49,7 +58,8 @@ function ListaUsuarios() {
             <Campo rotulo="E-mail" obrigatorio><input type="email" disabled={!!ed.id} value={ed.email} onChange={(e) => setEd({ ...ed, email: e.target.value })} /></Campo>
             {supabase ? <p className="sub">A senha é definida pelo próprio usuário no Supabase Auth (convite por e-mail).</p> :
               <Campo rotulo={ed.id ? "Nova senha (opcional)" : "Senha"} obrigatorio={!ed.id} ajuda="Mínimo 8 caracteres; armazenada com bcrypt."><input type="password" autoComplete="new-password" value={ed.senha || ""} onChange={(e) => setEd({ ...ed, senha: e.target.value })} /></Campo>}
-            <Campo rotulo="Perfil"><select value={ed.perfil} onChange={(e) => setEd({ ...ed, perfil: e.target.value })}>{["administrador", "planejador", "coordenador", "gestor", "consulta", "instrutor"].map((p) => <option key={p}>{p}</option>)}</select></Campo>
+            <Campo rotulo="Perfil" ajuda={AJUDA_PERFIL[ed.perfil]}><select value={ed.perfil} onChange={(e) => setEd({ ...ed, perfil: e.target.value })}>
+              {Object.entries(PERFIS).map(([p, r]) => <option key={p} value={p}>{r}</option>)}</select></Campo>
             {ed.perfil === "instrutor" && <Campo rotulo="Cadastro do instrutor" obrigatorio ajuda="O instrutor só vê e atualiza os próprios dados e turmas no portal.">
               <select value={ed.instrutor_id ?? ""} onChange={(e) => setEd({ ...ed, instrutor_id: e.target.value ? Number(e.target.value) : null })}>
                 <option value="">— (ou mesmo e-mail do cadastro)</option>{instrutores.map((o) => <option key={o.id} value={o.id}>{o.rotulo}</option>)}</select></Campo>}
@@ -81,7 +91,7 @@ function Perfis() {
     try { await api.put(`/api/perfis/${perfil}`, { acoes: novas }); p.recarregar(); } catch (e: any) { aviso(e.message, "erro"); }
   };
   return (
-    <div className="tabela-wrap"><table className="tabela"><thead><tr><th>Ação</th>{perfis.map((x: string) => <th key={x}>{x}</th>)}</tr></thead>
+    <div className="tabela-wrap"><table className="tabela"><thead><tr><th>Ação</th>{perfis.map((x: string) => <th key={x}>{PERFIS[x] || x}</th>)}</tr></thead>
       <tbody>{Object.entries(acoes).map(([a, d]: any) => <tr key={a}><th>{d}<br /><small><code>{a}</code></small></th>{perfis.map((x: string) => (
         <td key={x}><input type="checkbox" aria-label={`${x}: ${d}`} disabled={!pode("usuarios.gerenciar")} checked={matriz[x].includes(a)} onChange={(e) => alternar(x, a, e.target.checked)} /></td>))}</tr>)}</tbody></table></div>
   );

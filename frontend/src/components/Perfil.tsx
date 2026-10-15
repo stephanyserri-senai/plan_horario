@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useApp } from "../contexto";
 import { useOpcoes } from "../hooks";
 
-const PERFIL: Record<string, string> = { instrutor: "Instrutor(a)", administrador: "Administrador(a)", planejador: "Planejador(a)", coordenador: "Coordenador(a)", gestor: "Gestor(a)", consulta: "Somente consulta" };
+const PERFIL: Record<string, string> = { instrutor: "Instrutor(a)", administrador: "Administrador(a)", planejador: "Planejador(a)", observador: "Observador(a)" };
 const CORES = ["#1e5bd8", "#2f8f6b", "#b5562a", "#7a3fd1", "#c23b6b", "#1f7a99", "#8a6d00"];
 type Tema = "auto" | "light" | "dark";
 

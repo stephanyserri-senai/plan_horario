@@ -26,7 +26,10 @@ ACOES = {
     "portal.instrutor": "Portal do instrutor: atualizar os próprios dados e ver as próprias turmas",
 }
 
-PERFIS = ["administrador", "planejador", "coordenador", "gestor", "consulta", "instrutor"]
+# Perfis: administrador (gestão do projeto), planejador (planejamento), instrutor (portal) e observador (só acompanha).
+PERFIS = ["administrador", "planejador", "instrutor", "observador"]
+ROTULOS_PERFIL = {"administrador": "Administrador (gestão do projeto)", "planejador": "Planejador",
+                  "instrutor": "Instrutor", "observador": "Observador (somente acompanhar)"}
 
 PADRAO = {
     "administrador": [a for a in ACOES if a != "portal.instrutor"],
@@ -35,14 +38,8 @@ PADRAO = {
         "cenarios.editar", "otimizacao.executar", "simulacao.executar", "indicadores.ler",
         "importacao.executar", "exportacao.executar", "dados_pessoais.ler", "observacoes.gerenciar",
     ],
-    "coordenador": [
-        "cadastros.ler", "alocacoes.ler", "alocacoes.editar", "cenarios.criar", "cenarios.editar",
-        "cenarios.aprovar", "cenarios.publicar", "cenarios.restaurar", "simulacao.executar",
-        "indicadores.ler", "exportacao.executar", "auditoria.ler", "dados_pessoais.ler", "excecoes.autorizar",
-        "observacoes.gerenciar",
-    ],
-    "gestor": ["cadastros.ler", "alocacoes.ler", "indicadores.ler", "simulacao.executar", "exportacao.executar", "auditoria.ler"],
-    "consulta": ["cadastros.ler", "alocacoes.ler", "indicadores.ler"],
     # O instrutor só acessa o portal: os próprios dados, as próprias turmas e as próprias observações.
     "instrutor": ["portal.instrutor"],
+    # O observador acompanha (cadastros, grade, cronograma, indicadores e relatórios) sem alterar nada.
+    "observador": ["cadastros.ler", "alocacoes.ler", "indicadores.ler", "exportacao.executar"],
 }

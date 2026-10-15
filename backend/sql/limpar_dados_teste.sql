@@ -1,7 +1,7 @@
 -- LIMPEZA DOS DADOS DE TESTE — para começar as validações com dados reais.
 -- MANTÉM: unidades Beira Mar e Porto, áreas tecnológicas, turnos oficiais (manhã/tarde/noite), configurações
 --         (pesos, regras de aula, limiares), perfis de acesso, usuários da equipe (administrador, planejador,
---         coordenador, gestor, consulta) e o histórico de auditoria.
+--         observador) e o histórico de auditoria.
 -- APAGA:  logins do portal do instrutor (perfil instrutor), observações e notificações dos instrutores,
 --         cursos, matrizes, UCs, turmas, instrutores, salas/laboratórios, tipos de sala, recursos, calendários,
 --         feriados, bloqueios, semestres (cenários), aulas, gerações, simulações, importações e exceções;

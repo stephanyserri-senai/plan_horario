@@ -10,7 +10,7 @@ from app.core.config import get_settings
 from app.core.db import get_db
 from app.core.deps import Contexto, carregar_contexto, get_contexto, requer
 from app.core.errors import AcessoNegado, ConflitoValidacao, EntradaInvalida, NaoEncontrado
-from app.core.permissoes import ACOES, PERFIS
+from app.core.permissoes import ACOES, PERFIS, ROTULOS_PERFIL
 from app.core.security import criar_token, hash_senha, verificar_senha
 from app.models import PermissaoEscopo, PermissaoPerfil, Usuario
 from app.services import auditoria
@@ -161,7 +161,7 @@ def atualizar(uid: int, dados: dict = Body(...), ctx: Contexto = Depends(requer(
 @router.get("/perfis")
 def perfis(ctx: Contexto = Depends(get_contexto), db: Session = Depends(get_db)):
     matriz = {p: sorted(db.scalars(select(PermissaoPerfil.acao).where(PermissaoPerfil.perfil == p))) for p in PERFIS}
-    return {"perfis": PERFIS, "acoes": ACOES, "matriz": matriz}
+    return {"perfis": PERFIS, "rotulos": ROTULOS_PERFIL, "acoes": ACOES, "matriz": matriz}
 
 
 @router.put("/perfis/{perfil}")
