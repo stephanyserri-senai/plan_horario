@@ -534,3 +534,4 @@ button.chip-status { cursor: pointer; } .chip-status.alerta { background: #fff3d
 .tag-presenca.na-escola { background: color-mix(in srgb, #7b5ea7 18%, var(--superficie)); color: var(--texto); }
 .tag-presenca.vazio { background: var(--fundo); color: var(--mudo); border: 1px solid var(--borda); }
 .txt-alerta { color: var(--alerta); font-weight: 700; }
+.grade td.soltar { outline: 2px dashed var(--primaria); outline-offset: -3px; background: color-mix(in srgb, var(--primaria) 8%, var(--superficie)); }

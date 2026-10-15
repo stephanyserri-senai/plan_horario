@@ -38,6 +38,7 @@ export default function Grade() {
   const [copiar, setCopiar] = useState(false);
   const [substituir, setSubstituir] = useState<{ aula: Aula | null } | null>(null);
   const [versaoSub, setVersaoSub] = useState(0);
+  const [soltar, setSoltar] = useState("");
   const unidades = useOpcoes("unidades");
   const todasOpcoes = useOpcoes(ENT[modo]) as any[];
   // as listas de turma, instrutor, sala, turno e curso mostram só o que é da unidade escolhida
@@ -127,8 +128,10 @@ export default function Grade() {
       if (!t) m.set(p.turno_id, { turno_id: p.turno_id, turno: p.turno, inicio: p.inicio, fim: p.fim, primeiro: p, dias: new Set(p.dias_semana) });
       else { t.fim = p.fim > t.fim ? p.fim : t.fim; p.dias_semana.forEach((d) => t.dias.add(d)); }
     }
-    return [...m.values()];
-  }, [linhas]);
+    const todos = [...m.values()];
+    // filtro "Por turno": mostra só a linha do turno escolhido
+    return modo === "turno" && alvo ? todos.filter((t) => String(t.turno_id) === String(alvo)) : todos;
+  }, [linhas, modo, alvo]);
   const porTurnoDia = useMemo(() => {
     const m: Record<string, Aula[]> = {};
     (aulas.dados || []).forEach((a) => {
@@ -139,15 +142,24 @@ export default function Grade() {
     Object.values(m).forEach((l) => l.sort((x, y) => x.turma.localeCompare(y.turma) || x.inicio.localeCompare(y.inicio)));
     return m;
   }, [aulas.dados, linhas]);
+  // cartão da aula: <div role="button"> porque alguns navegadores (Firefox) não deixam arrastar <button>
   const cartao = (a: Aula) => (
-    <button key={a.id} className="aula" style={{ ["--cor" as any]: corDe(a.turma_uc_id) }} draggable={!!editavel && !a.fixa}
-      onDragStart={(e) => e.dataTransfer.setData("text/aula", String(a.id))} onClick={() => setAulaSel(a)}
+    <div key={a.id} role="button" tabIndex={0} className="aula" style={{ ["--cor" as any]: corDe(a.turma_uc_id) }} draggable={!!editavel && !a.fixa}
+      onDragStart={(e) => { e.dataTransfer.setData("text/aula", String(a.id)); e.dataTransfer.effectAllowed = "move"; }}
+      onDragEnd={() => setSoltar("")} onClick={() => setAulaSel(a)}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setAulaSel(a); } }}
       title={`${a.turma} · ${a.uc} ${a.uc_nome} · ${a.instrutor || "sem instrutor"}${a.instrutor_titular ? ` (substituindo ${a.instrutor_titular})` : ""} · ${a.ambiente || "sem ambiente"}`}>
       <b>{a.turma}{a.grupo ? ` G${a.grupo}` : ""}</b> {a.uc}<br />
       <small>{a.inicio}–{a.fim} · {a.instrutor_titular && <span title={`substituindo ${a.instrutor_titular}`}>🔁 </span>}{a.instrutor || <i>sem instrutor</i>} · {a.ambiente || <i>sem sala</i>}</small>
       {a.fixa && <span className="tag-fixa" aria-label="aula fixa"> 📌</span>}
-    </button>
+    </div>
   );
+  // célula que recebe a aula arrastada (destaque enquanto passa por cima)
+  const alvoSoltar = (chave: string, data: string, p: Periodo) => editavel ? {
+    onDragOver: (e: React.DragEvent) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; if (soltar !== chave) setSoltar(chave); },
+    onDragLeave: (e: React.DragEvent) => { if (!(e.currentTarget as Node).contains(e.relatedTarget as Node)) setSoltar(""); },
+    onDrop: (e: React.DragEvent) => { e.preventDefault(); setSoltar(""); const id = Number(e.dataTransfer.getData("text/aula")); if (id) mover(id, data, p); },
+  } : {};
   const continuacao = (data: string, p: Periodo) => (aulas.dados || []).some((a) => a.data === data && a.inicio < p.inicio && a.fim > p.inicio);
   const livre = (data: string, p: Periodo) => (livres.dados || []).some((l) => l.data === data && l.periodo_id === p.id);
 
@@ -216,9 +228,8 @@ export default function Grade() {
                     const data = iso(addDias(semana, d));
                     const lista = t.dias.has(d) ? porTurnoDia[`${data}|${t.turno_id}`] || [] : [];
                     return (
-                      <td key={d} className={!t.dias.has(d) ? "indisp" : ""}
-                          onDragOver={(e) => editavel && e.preventDefault()}
-                          onDrop={(e) => { e.preventDefault(); const id = Number(e.dataTransfer.getData("text/aula")); if (id) mover(id, data, t.primeiro); }}
+                      <td key={d} className={`${!t.dias.has(d) ? "indisp" : ""} ${soltar === `${data}|t${t.turno_id}` ? "soltar" : ""}`}
+                          {...alvoSoltar(`${data}|t${t.turno_id}`, data, t.primeiro)}
                           onDoubleClick={() => editavel && setForm({ data, periodo_inicio_id: t.primeiro.id, turma_id: modo === "turma" ? alvo : "" })}>
                         <div className="aulas-turno">{lista.map(cartao)}</div>
                         {lista.length === 0 && t.dias.has(d) && <span className="sr">sem aulas</span>}
@@ -243,19 +254,11 @@ export default function Grade() {
                     const lista = p.dias_semana.includes(d) ? porCelula[`${data}|${p.id}`] || [] : [];
                     const ehLivre = mostrarLivres && livre(data, p);
                     return (
-                      <td key={d} rowSpan={n} style={n > 1 ? { ["--n" as any]: n } : undefined} className={`${n > 1 ? "bloco" : ""} ${ehLivre ? "livre" : ""} ${!p.dias_semana.includes(d) ? "indisp" : ""}`}
-                          onDragOver={(e) => editavel && e.preventDefault()}
-                          onDrop={(e) => { e.preventDefault(); const id = Number(e.dataTransfer.getData("text/aula")); if (id) mover(id, data, p); }}
+                      <td key={d} rowSpan={n} style={n > 1 ? { ["--n" as any]: n } : undefined}
+                          className={`${n > 1 ? "bloco" : ""} ${ehLivre ? "livre" : ""} ${!p.dias_semana.includes(d) ? "indisp" : ""} ${soltar === `${data}|${p.id}` ? "soltar" : ""}`}
+                          {...alvoSoltar(`${data}|${p.id}`, data, p)}
                           onDoubleClick={() => editavel && setForm({ data, periodo_inicio_id: p.id, turma_id: modo === "turma" ? alvo : "", instrutor_id: modo === "instrutor" ? alvo : "", ambiente_id: modo === "ambiente" ? alvo : "" })}>
-                        {lista.map((a) => (
-                          <button key={a.id} className="aula" style={{ ["--cor" as any]: corDe(a.turma_uc_id) }} draggable={!!editavel && !a.fixa}
-                            onDragStart={(e) => e.dataTransfer.setData("text/aula", String(a.id))} onClick={() => setAulaSel(a)}
-                            title={`${a.turma} · ${a.uc} ${a.uc_nome} · ${a.instrutor || "sem instrutor"}${a.instrutor_titular ? ` (substituindo ${a.instrutor_titular})` : ""} · ${a.ambiente || "sem ambiente"}`}>
-                            <b>{a.turma}{a.grupo ? ` G${a.grupo}` : ""}</b> {a.uc}<br />
-                            <small>{a.inicio}–{a.fim} · {a.instrutor_titular && <span title={`substituindo ${a.instrutor_titular}`}>🔁 </span>}{a.instrutor || <i>sem instrutor</i>} · {a.ambiente || <i>sem sala</i>}</small>
-                            {a.fixa && <span className="tag-fixa" aria-label="aula fixa"> 📌</span>}
-                          </button>
-                        ))}
+                        {lista.map(cartao)}
                         {lista.length === 0 && continuacao(data, p) && <span className="cont" aria-hidden="true">┆</span>}
                         {ehLivre && lista.length === 0 && <span className="sr">livre</span>}
                       </td>
@@ -273,7 +276,12 @@ export default function Grade() {
       </div>
       {modo === "instrutor" && alvo && <AgendaInstrutor cenarioId={cenario.id} instrutorId={alvo} semana={iso(semana)} fimSemestre={cenario.periodo_fim}
         editavel={!!pode("alocacoes.editar")} versao={aulas.dados} />}
-      <p className="sub">Dica: clique duas vezes em uma célula para alocar; arraste uma aula para movê-la (a validação é refeita no servidor). Legenda: 📌 fixa · área verde = livre para todos os recursos filtrados.</p>
+      {editavel
+        ? <p className="sub">Dica: clique duas vezes em uma célula para alocar; arraste uma aula para outro dia ou turno para movê-la (a validação é refeita no servidor;
+            se houver conflito, o formulário abre com o motivo). Aulas fixas (📌) não se movem. Área verde = livre para todos os recursos filtrados.</p>
+        : <p className="sub">Esta versão está <b>{cenario.estado === "publicado" ? "publicada" : cenario.estado.replace(/_/g, " ")}</b>: a grade não pode ser editada
+            direto aqui (nem arrastar aulas). Para mudar, use <b>Substituir instrutor</b> ou crie uma <b>proposta de alteração</b> em Semestres e aprovação.
+            Legenda: 📌 fixa.</p>}
       {form && <FormAula inicial={form} cenarioId={cenario.id} unidadeId={unidade} periodos={linhas} fechar={(ok) => { setForm(null); if (ok) aulas.recarregar(); }} />}
       {aulaSel && <DetalheAula aula={aulaSel} editavel={!!editavel} substituir={podeSubstituir ? () => { const a = aulaSel; setAulaSel(null); setSubstituir({ aula: a }); } : undefined}
         fechar={(ok) => { setAulaSel(null); if (ok) { aulas.recarregar(); setVersaoSub((v) => v + 1); } }}
