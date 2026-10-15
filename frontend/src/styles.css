@@ -529,3 +529,7 @@ button.chip-status { cursor: pointer; } .chip-status.alerta { background: #fff3d
 .agenda-tabela .ag-PJ { background: color-mix(in srgb, #c2662d 14%, var(--superficie)); }
 .agenda-tabela .ag-indisponivel, .agenda-tabela .ag-nao_letivo { background: var(--fundo); color: var(--mudo); }
 .portal-reserva { background: color-mix(in srgb, #7b5ea7 14%, var(--superficie)); border-radius: 6px; padding: 4px 6px; font-size: .8rem; margin-top: 4px; }
+.sub-regras { margin: 4px 0 10px; padding-left: 18px; font-size: .88rem; color: var(--mudo); }
+.tag-presenca { display: inline-block; width: fit-content; align-self: flex-start; justify-self: start; font-size: .74rem; font-weight: 600; padding: 1px 8px; border-radius: 999px; margin-left: 4px; white-space: nowrap; }
+.tag-presenca.na-escola { background: color-mix(in srgb, #7b5ea7 18%, var(--superficie)); color: var(--texto); }
+.tag-presenca.vazio { background: var(--fundo); color: var(--mudo); border: 1px solid var(--borda); }

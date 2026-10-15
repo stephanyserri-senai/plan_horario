@@ -446,6 +446,11 @@ def validar_aula(b: BaseDados, a: AulaProposta, ignorar: set[int] | None = None)
         for bl in b.bloqueios(tipo, id_, a.inicio, a.fim):
             if tipo == "instrutor" and bl.tipo in ("planejamento", "projeto"):
                 sigla = "PL" if bl.tipo == "planejamento" else "PJ"
+                if a.origem == "substituicao":
+                    # em PL/PJ o instrutor está na escola: pode assumir uma substituição (o turno vira aula)
+                    add(ALERTA, "SUBSTITUTO_EM_PL_PJ", f"Está em {sigla} em {bl.inicio:%d/%m} ({bl.inicio:%H:%M}–{bl.fim:%H:%M}): "
+                        f"está na escola e pode assumir; o {sigla} desse turno vira aula.", tipo, id_)
+                    continue
                 texto = (f"O instrutor tem {sigla} ({bl.motivo or bl.tipo}) em {bl.inicio:%d/%m} das {bl.inicio:%H:%M} às {bl.fim:%H:%M}. "
                          "Libere o turno na agenda do instrutor (grade por instrutor) ou escolha outro horário.")
             else:

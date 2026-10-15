@@ -9,7 +9,7 @@ const GRUPOS: [string, string, string][] = [
   ["recomendado", "Livres, da área e com a UC", "ok"],
   ["excecao", "Livres, mas de outra área ou sem a UC cadastrada (fica registrado como exceção)", "alerta"],
   ["parcial", "Livres só em parte dos dias", "info"],
-  ["indisponivel", "Sem horário (já têm aula, fora da disponibilidade…)", "bloqueio"],
+  ["indisponivel", "Não podem (já têm aula, fora da jornada, turno vazio sem antecedência…)", "bloqueio"],
 ];
 
 type Aula = { id: number; data: string; inicio: string; fim: string; turma: string; uc: string; instrutor_id: number | null; instrutor: string | null; turma_uc_id: number };
@@ -44,8 +44,8 @@ export default function Substituicao({ cenarioId, publicado, aula, fechar }: { c
   };
   const lista: any[] = cand.dados?.instrutores || [];
   const escolhido = lista.find((i) => i.id === sub) || (sub ? { nome: instrutores.find((i) => Number(i.id) === sub)?.rotulo } : null);
-  const SITUACAO: Record<string, string> = { recomendado: "✓ livre, da área", excecao: "⚠ livre, outra área/sem a UC", parcial: "◐ livre só em parte", indisponivel: "✗ sem horário" };
-  const situacao = (id: number) => { const c = lista.find((i) => i.id === id); return c ? ` — ${SITUACAO[c.grupo]}` : ""; };
+  const SITUACAO: Record<string, string> = { recomendado: "✓ livre, da área", excecao: "⚠ livre, outra área/sem a UC", parcial: "◐ livre só em parte", indisponivel: "✗ não pode" };
+  const situacao = (id: number) => { const c = lista.find((i) => i.id === id); return c ? ` — ${c.na_escola ? "📍 " : ""}${SITUACAO[c.grupo]}` : ""; };
   const titularId = escopo === "aula" ? aula?.instrutor_id : Number(ausente) || null;
   const campoSubstituto = (
     <Campo rotulo="Instrutor substituto" obrigatorio ajuda={pronto ? "A situação de cada um na(s) aula(s) aparece ao lado do nome; as sugestões estão logo abaixo." : undefined}>
@@ -59,6 +59,10 @@ export default function Substituicao({ cenarioId, publicado, aula, fechar }: { c
       <p className="sub">Para imprevistos (falta, afastamento, ninguém da área disponível). O substituto pode ser de outra área ou não ter a UC cadastrada:
         isso fica registrado com o motivo. Escolha o substituto direto no campo ou pelas sugestões; se ele já tiver aula no mesmo horário,
         o botão Conferir mostra quais aulas não podem ser trocadas. A aula fica fixa e pode ser desfeita depois.</p>
+      <ul className="sub-regras">
+        <li><b>📍 Em PL ou PJ</b> no horário: está na escola e pode assumir <b>até no mesmo dia</b>. O PL/PJ daquele turno vira a aula.</li>
+        <li><b>🏠 Turno vazio</b>: pode ser acionado, desde que a substituição seja planejada com <b>pelo menos 1 dia de antecedência</b>.</li>
+      </ul>
       {publicado && <p className="aviso-inline">⚠ Este horário já está <b>publicado</b>: a troca vale imediatamente e os instrutores recebem um aviso no portal.</p>}
       <div className="sub-escopo">
         {aula && <label><input type="radio" checked={escopo === "aula"} onChange={() => { setEscopo("aula"); setPrevia(null); }} />
@@ -87,7 +91,7 @@ export default function Substituicao({ cenarioId, publicado, aula, fechar }: { c
             {xs.map((i) => (
               <label key={i.id} className={`sub-cand ${sub === i.id ? "marcada" : ""} ${g === "indisponivel" ? "desabilitado" : ""}`}>
                 <input type="radio" name="substituto" checked={sub === i.id} onChange={() => { setSub(i.id); setPrevia(null); }} />
-                <span><b>{i.nome}</b> <small className="mudo">{i.area || "sem área"}{i.ministra_uc ? " · ministra a UC" : ""}{i.outra_unidade ? " · outra unidade" : ""}
+                <span><b>{i.nome}</b> {presenca(i)} <small className="mudo">{i.area || "sem área"}{i.ministra_uc ? " · ministra a UC" : ""}{i.outra_unidade ? " · outra unidade" : ""}
                   {g === "parcial" ? ` · livre em ${i.dias_livres} de ${i.dias_avaliados} dias` : ""}</small>
                   {i.motivos.length > 0 && <small className="sub-motivos">{i.motivos.join(" · ")}</small>}</span>
               </label>))}
@@ -102,7 +106,7 @@ export default function Substituicao({ cenarioId, publicado, aula, fechar }: { c
 
       {previa && <div className={`previa-sub ${previa.falhas.length ? "tom-alerta" : "tom-ok"}`}>
         <b>{previa.possiveis} aula(s) podem ser trocadas para {escolhido?.nome}.</b>
-        {previa.aulas.some((a: any) => a.avisos.length) && <> Será registrada exceção justificada (outra área ou sem a UC).</>}
+        {[...new Set<string>(previa.aulas.flatMap((a: any) => a.avisos))].slice(0, 4).map((x) => <div key={x}><small>{x}</small></div>)}
         {previa.falhas.length > 0 && <ul>{previa.falhas.map((f: any) => <li key={f.alocacao_id}>{dataBR(f.data)} {f.horario}: {f.motivos.join("; ")}</li>)}</ul>}
       </div>}
       <Erro erro={erro} />
@@ -113,6 +117,14 @@ export default function Substituicao({ cenarioId, publicado, aula, fechar }: { c
       </div>
     </Modal>
   );
+}
+
+function presenca(i: { presenca?: string[]; na_escola?: boolean }) {
+  if (!i.presenca?.length) return null;
+  if (i.na_escola) return <span className="tag-presenca na-escola" title="Em planejamento/projeto no horário: está na escola">📍 em {i.presenca.join("/")} – na escola</span>;
+  const reservas = i.presenca.filter((p) => p !== "vazio");
+  return <span className="tag-presenca vazio" title="Turno vazio: acionar com pelo menos 1 dia de antecedência">
+    {reservas.length ? `📍 ${reservas.join("/")} em parte dos dias · 🏠 vazio nos demais` : "🏠 turno vazio"} – acionar com antecedência</span>;
 }
 
 /** Substituições em vigor no semestre, com opção de desfazer. */

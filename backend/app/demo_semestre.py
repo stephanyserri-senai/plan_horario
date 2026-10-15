@@ -281,6 +281,7 @@ def montar(db, ctx, limite_s: float = 120) -> dict:
     alvo = db.scalars(select(Alocacao).where(Alocacao.cenario_id == cen.id, Alocacao.instrutor_id == juliana.id,
                                              Alocacao.data >= date(ANO, 10, 20)).order_by(Alocacao.inicio)).first()
     sub_info = None
+    substituicao.hoje = lambda: HOJE_DEMO  # antecedência contada a partir do "hoje" da demonstração
     if alvo:
         cand = substituicao.candidatos(db, cen.id, [alvo])
         livres = [c for c in cand["instrutores"] if c["grupo"] in ("recomendado", "excecao")]
@@ -309,6 +310,7 @@ def montar(db, ctx, limite_s: float = 120) -> dict:
     db.execute(Notificacao.__table__.delete().where(Notificacao.instrutor_id.in_(sem_login), Notificacao.titulo.like("Agenda atualizada%")))
     db.commit()
 
+    substituicao.hoje = date.today
     # observações enviadas pelos instrutores no portal (uma nova, uma já respondida)
     def obs(mat, turma_cod, uc_cod, tipo, texto, resposta=None):
         tuc = db.scalars(select(TurmaUC).join(Turma).join(UnidadeCurricular, UnidadeCurricular.id == TurmaUC.uc_id)

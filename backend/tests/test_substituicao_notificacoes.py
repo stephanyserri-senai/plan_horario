@@ -13,8 +13,11 @@ def _login(c, email, senha):
     return {"Authorization": f"Bearer {r.json()['token']}"}
 
 
-def test_substituicao_e_notificacoes(db, mundo):
+def test_substituicao_e_notificacoes(db, mundo, monkeypatch):
     m = mundo
+    from datetime import date
+    from app.services import substituicao
+    monkeypatch.setattr(substituicao, "hoje", lambda: date(2026, 1, 5))  # substituições planejadas com antecedência
     assert executar(db, m).status == "concluida"
     aula = db.scalars(select(Alocacao).where(Alocacao.instrutor_id.isnot(None)).order_by(Alocacao.inicio)).first()
     titular = aula.instrutor_id
