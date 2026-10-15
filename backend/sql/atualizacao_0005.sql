@@ -1,4 +1,4 @@
--- Atualização 0004 -> 0005: portal do instrutor (perfil instrutor, vínculo usuário × instrutor e observações sobre turmas/UCs).
+-- Atualização 0004 -> 0005: portal do instrutor (perfil instrutor, vínculo usuário × instrutor, observações e notificações) e substituição de instrutor nas aulas.
 -- Não destrutiva. Cole o arquivo inteiro no SQL Editor do Supabase e clique em Run.
 BEGIN;
 
@@ -38,14 +38,34 @@ CREATE INDEX ix_observacoes_instrutor_instrutor_id ON observacoes_instrutor (ins
 
 CREATE INDEX ix_observacoes_instrutor_turma_uc_id ON observacoes_instrutor (turma_uc_id);
 
+CREATE TABLE notificacoes (
+    id SERIAL NOT NULL, 
+    instrutor_id INTEGER NOT NULL, 
+    tipo VARCHAR(30) NOT NULL, 
+    titulo VARCHAR(200) NOT NULL, 
+    texto TEXT, 
+    aba VARCHAR(20), 
+    lida BOOLEAN DEFAULT false NOT NULL, 
+    criado_em TIMESTAMP WITHOUT TIME ZONE DEFAULT now() NOT NULL, 
+    PRIMARY KEY (id), 
+    FOREIGN KEY(instrutor_id) REFERENCES instrutores (id) ON DELETE CASCADE
+);
+
+CREATE INDEX ix_notificacoes_instrutor_id ON notificacoes (instrutor_id);
+
+ALTER TABLE alocacoes ADD COLUMN instrutor_titular_id INTEGER;
+
+ALTER TABLE alocacoes ADD FOREIGN KEY(instrutor_titular_id) REFERENCES instrutores (id) ON DELETE SET NULL;
+
 ALTER TABLE public.observacoes_instrutor ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.notificacoes ENABLE ROW LEVEL SECURITY;
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
-    EXECUTE 'REVOKE ALL ON public.observacoes_instrutor FROM anon';
+    EXECUTE 'REVOKE ALL ON public.observacoes_instrutor, public.notificacoes FROM anon';
   END IF;
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
-    EXECUTE 'REVOKE ALL ON public.observacoes_instrutor FROM authenticated';
+    EXECUTE 'REVOKE ALL ON public.observacoes_instrutor, public.notificacoes FROM authenticated';
   END IF;
 END $$;
 

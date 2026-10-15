@@ -162,11 +162,24 @@ def transicionar(db: Session, ctx, cenario_id: int, novo: str, motivo: str | Non
         db.add(RegistroDecisao(tipo="reprovacao", cenario_id=cen.id, usuario_id=ctx.id, motivo=motivo, dados={}))
     cen.estado = novo
     cen.lock_version += 1
+    if novo == "publicado":
+        _avisar_publicacao(db, ctx, cen)
     db.flush()
     versao = criar_versao(db, ctx, cen.id, motivo or f"{antes} → {novo}")
     cen.indicadores = versao.indicadores
     auditoria.registrar(db, ctx, f"cenario.{novo}", "cenarios_planejamento", cen.id, antes={"estado": antes}, depois={"estado": novo, "versao": versao.numero}, motivo=motivo)
     return {"cenario_id": cen.id, "estado": novo, "versao": versao.numero, **resultado}
+
+
+def _avisar_publicacao(db: Session, ctx, cen: CenarioPlanejamento):
+    """Cada instrutor com aulas no semestre publicado recebe um aviso no portal."""
+    from sqlalchemy import func as _f
+    from app.services.notificacoes import notificar
+    for iid, n, t in db.execute(select(Alocacao.instrutor_id, _f.count(), _f.count(_f.distinct(Alocacao.turma_id)))
+                                .where(Alocacao.cenario_id == cen.id, Alocacao.instrutor_id.isnot(None), Alocacao.status != "cancelada")
+                                .group_by(Alocacao.instrutor_id)):
+        notificar(db, iid, "publicacao", f"Horário publicado: {cen.nome}", f"Você tem {n} aula(s) em {t} turma(s). Confira em “Minhas turmas e horários”.",
+                  "turmas", ctx)
 
 
 def proposta_alteracao(db: Session, ctx, publicado_id: int, nome: str, descricao: str | None = None) -> CenarioPlanejamento:

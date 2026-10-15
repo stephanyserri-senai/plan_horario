@@ -194,11 +194,14 @@ def grade(cenario_id: int, inicio: date | None = None, fim: date | None = None, 
           ambiente_id: int | None = None, turno_id: int | None = None, curso_id: int | None = None, unidade_id: int | None = None,
           uc_id: int | None = None, q: str | None = None, ctx: Contexto = Depends(requer("alocacoes.ler")), db: Session = Depends(get_db)):
     linhas = _filtrar_aulas(db, ctx, cenario_id, inicio, fim, turma_id, instrutor_id, ambiente_id, turno_id, curso_id, unidade_id, uc_id, q)
+    ids_tit = {a.instrutor_titular_id for a, *_ in linhas if a.instrutor_titular_id}
+    titulares = {x.id: x.nome for x in db.scalars(select(Instrutor).where(Instrutor.id.in_(ids_tit)))} if ids_tit else {}
     return [{"id": a.id, "versao": a.versao, "data": a.data.isoformat(), "inicio": a.inicio.strftime("%H:%M"), "fim": a.fim.strftime("%H:%M"),
              "minutos_aula": a.minutos_aula, "turma_id": t.id, "turma": t.codigo, "turno_id": t.turno_id, "unidade_id": t.unidade_id, "turma_uc_id": a.turma_uc_id,
              "uc_id": u.id, "uc": u.codigo, "uc_nome": u.nome, "grupo": a.grupo, "instrutor_id": a.instrutor_id, "instrutor": i.nome if i else None,
              "ambiente_id": a.ambiente_id, "ambiente": amb.codigo if amb else None, "status": a.status, "fixa": a.fixa, "origem": a.origem,
-             "observacao": a.observacao, "atividade_id": a.atividade_id}
+             "observacao": a.observacao, "atividade_id": a.atividade_id, "instrutor_titular_id": a.instrutor_titular_id,
+             "instrutor_titular": titulares.get(a.instrutor_titular_id)}
             for a, t, u, i, amb in linhas]
 
 
@@ -346,6 +349,71 @@ def remover_alocacao(aid: int, versao: int | None = None, motivo: str | None = N
     aloc.remover_aula(db, ctx, aid, versao, motivo)
     db.commit()
     return {"ok": True}
+
+
+# ============================================================================ substituição de instrutor
+def _aulas_substituicao(db, ctx, d: dict):
+    from app.services import substituicao
+    aulas = substituicao.aulas_alvo(db, int(d["cenario_id"]), d.get("alocacao_id") and int(d["alocacao_id"]),
+                                    d.get("instrutor_id") and int(d["instrutor_id"]),
+                                    date.fromisoformat(d["inicio"]) if d.get("inicio") else None, date.fromisoformat(d["fim"]) if d.get("fim") else None,
+                                    d.get("turma_uc_id") and int(d["turma_uc_id"]))
+    for tuc_id in {a.turma_uc_id for a in aulas}:
+        _exigir_turma(db, ctx, tuc_id)
+    return aulas
+
+
+@router.get("/substituicoes/candidatos")
+def candidatos_substituicao(cenario_id: int, alocacao_id: int | None = None, instrutor_id: int | None = None, inicio: date | None = None,
+                            fim: date | None = None, turma_uc_id: int | None = None, ctx: Contexto = Depends(requer("alocacoes.editar")),
+                            db: Session = Depends(get_db)):
+    """Quem pode assumir as aulas: livres e da área → livres com justificativa (outra área / sem a UC) → livres em parte → indisponíveis."""
+    from app.services import substituicao
+    aulas = _aulas_substituicao(db, ctx, {"cenario_id": cenario_id, "alocacao_id": alocacao_id, "instrutor_id": instrutor_id,
+                                          "inicio": inicio and inicio.isoformat(), "fim": fim and fim.isoformat(), "turma_uc_id": turma_uc_id})
+    return substituicao.candidatos(db, cenario_id, aulas)
+
+
+@router.post("/substituicoes")
+def registrar_substituicao(d: dict = Body(...), ctx: Contexto = Depends(requer("alocacoes.editar")), db: Session = Depends(get_db)):
+    """Troca o instrutor de uma aula ou de todas as aulas de um instrutor num período (falta, imprevisto).
+    Com `somente_validar`, só mostra o que seria trocado e o que não dá."""
+    from app.services import substituicao
+    aulas = _aulas_substituicao(db, ctx, d)
+    r = substituicao.substituir(db, ctx, int(d["cenario_id"]), aulas, int(d["substituto_id"]), d.get("motivo", ""), bool(d.get("somente_validar")))
+    db.commit()
+    return r
+
+
+@router.post("/substituicoes/desfazer")
+def desfazer_substituicao(d: dict = Body(...), ctx: Contexto = Depends(requer("alocacoes.editar")), db: Session = Depends(get_db)):
+    from app.services import substituicao
+    ids = [int(x) for x in d.get("alocacao_ids", [])]
+    for a in db.scalars(select(Alocacao).where(Alocacao.id.in_(ids))):
+        _exigir_turma(db, ctx, a.turma_uc_id)
+    r = substituicao.desfazer(db, ctx, ids, d.get("motivo"))
+    db.commit()
+    return r
+
+
+@router.get("/substituicoes")
+def listar_substituicoes(cenario_id: int, ctx: Contexto = Depends(requer("alocacoes.ler")), db: Session = Depends(get_db)):
+    """Substituições em vigor no semestre, agrupadas por titular → substituto e turma × UC."""
+    aulas = db.scalars(select(Alocacao).where(Alocacao.cenario_id == cenario_id, Alocacao.instrutor_titular_id.isnot(None),
+                                              Alocacao.status != "cancelada").order_by(Alocacao.inicio)).all()
+    nomes = {i.id: i.nome for i in db.scalars(select(Instrutor))}
+    grupos = {}
+    for a in aulas:
+        t, u = db.get(Turma, a.turma_id), db.get(UnidadeCurricular, a.uc_id)
+        if not ctx.acessa_turma(t):
+            continue
+        k = (a.instrutor_titular_id, a.instrutor_id, a.turma_uc_id)
+        g = grupos.setdefault(k, {"titular": nomes.get(a.instrutor_titular_id), "substituto": nomes.get(a.instrutor_id), "turma": t.codigo,
+                                  "uc": f"{u.codigo} – {u.nome}", "motivo": (a.observacao or "").removeprefix("Substituição: "), "datas": [], "alocacao_ids": []})
+        if a.data.isoformat() not in g["datas"]:
+            g["datas"].append(a.data.isoformat())
+        g["alocacao_ids"].append(a.id)
+    return list(grupos.values())
 
 
 @router.post("/alocacoes/alternativas")

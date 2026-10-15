@@ -4,11 +4,12 @@ import { addDias, api, baixar, dataBR, DIAS_CURTOS, iso, qs, segundaDe } from ".
 import { Alternativas, Badge, Campo, Erro, Modal, OcorrenciasLista, Pagina, Selecao, Tabela, useCarregar } from "../components/ui";
 import { AvisoSomenteLeitura } from "../components/AvisoSomenteLeitura";
 import { useApp } from "../contexto";
+import Substituicao, { ESTADOS_SUBSTITUICAO, SubstituicoesEmVigor } from "../components/Substituicao";
 import { useOpcoes } from "../hooks";
 import { Diferenca } from "./Cadastro";
 
 type Aula = { unidade_id?: number; id: number; versao: number; data: string; inicio: string; fim: string; turma_id: number; turma: string; turma_uc_id: number; uc: string;
-  uc_nome: string; grupo: number | null; instrutor_id: number | null; instrutor: string | null; ambiente_id: number | null; ambiente: string | null;
+  uc_nome: string; grupo: number | null; instrutor_id: number | null; instrutor: string | null; instrutor_titular?: string | null; instrutor_titular_id?: number | null; ambiente_id: number | null; ambiente: string | null;
   fixa: boolean; origem: string; observacao: string | null; status: string; minutos_aula: number };
 type Periodo = { id: number; turno_id: number; turno: string; ordem: number; inicio: string; fim: string; dias_semana: number[]; excepcional: boolean };
 
@@ -33,6 +34,8 @@ export default function Grade() {
   const [form, setForm] = useState<any | null>(null);
   const [aulaSel, setAulaSel] = useState<Aula | null>(null);
   const [copiar, setCopiar] = useState(false);
+  const [substituir, setSubstituir] = useState<{ aula: Aula | null } | null>(null);
+  const [versaoSub, setVersaoSub] = useState(0);
   const unidades = useOpcoes("unidades");
   const opsAlvo = useOpcoes(ENT[modo]);
   const [unidadeManual, setUnidadeManual] = useState(false);
@@ -58,6 +61,8 @@ export default function Grade() {
     ? api.get(`/api/grade/livres${qs({ cenario_id: cenario.id, semana: iso(semana), [`${modo}_id`]: alvo, unidade_id: unidade })}`) : Promise.resolve([]),
     [cenario?.id, mostrarLivres, modo, alvo, iso(semana), unidade]);
   const editavel = pode("alocacoes.editar") && cenario && ["em_elaboracao", "em_validacao"].includes(cenario.estado);
+  // substituição de instrutor por imprevisto: vale também com o horário aprovado ou publicado
+  const podeSubstituir = pode("alocacoes.editar") && cenario && ESTADOS_SUBSTITUICAO.includes(cenario.estado);
 
   const dias = useMemo(() => {
     const ds = new Set<number>();
@@ -116,10 +121,12 @@ export default function Grade() {
       acoes={<>
         {editavel && <button className="btn btn-primario" onClick={() => setForm({ data: iso(semana), turma_id: modo === "turma" ? alvo : "" })}>+ Nova aula</button>}
         {editavel && modo === "turma" && alvo && <button className="btn" onClick={() => setCopiar(true)}>Copiar semana</button>}
+        {podeSubstituir && <button className="btn" onClick={() => setSubstituir({ aula: null })}>🔁 Substituir instrutor</button>}
         {pode("exportacao.executar") && <button className="btn" onClick={() => baixar(`/api/exportar/grade${qs({ cenario_id: cenario.id, formato: "pdf", semana: iso(semana),
           filtro: alvo && ["turma", "instrutor", "ambiente", "turno"].includes(modo) ? modo : "", filtro_id: alvo })}`, "grade_semana.pdf")}>PDF da semana</button>}
       </>}>
       {!editavel && <AvisoSomenteLeitura />}
+      <SubstituicoesEmVigor cenarioId={cenario.id} podeEditar={!!podeSubstituir} versao={versaoSub} mudou={() => aulas.recarregar()} />
       <div className="filtros">
         <select aria-label="Visualização" value={modo} onChange={(e) => { setModo(e.target.value); setAlvo(""); setSp({}); }}>
           {MODOS.map((m) => <option key={m.id} value={m.id}>{m.rotulo}</option>)}
@@ -165,9 +172,9 @@ export default function Grade() {
                       {lista.map((a) => (
                         <button key={a.id} className="aula" style={{ ["--cor" as any]: corDe(a.turma_uc_id) }} draggable={!!editavel && !a.fixa}
                           onDragStart={(e) => e.dataTransfer.setData("text/aula", String(a.id))} onClick={() => setAulaSel(a)}
-                          title={`${a.turma} · ${a.uc} ${a.uc_nome} · ${a.instrutor || "sem instrutor"} · ${a.ambiente || "sem ambiente"}`}>
+                          title={`${a.turma} · ${a.uc} ${a.uc_nome} · ${a.instrutor || "sem instrutor"}${a.instrutor_titular ? ` (substituindo ${a.instrutor_titular})` : ""} · ${a.ambiente || "sem ambiente"}`}>
                           <b>{a.turma}{a.grupo ? ` G${a.grupo}` : ""}</b> {a.uc}<br />
-                          <small>{a.inicio}–{a.fim} · {a.instrutor || <i>sem instrutor</i>} · {a.ambiente || <i>sem sala</i>}</small>
+                          <small>{a.inicio}–{a.fim} · {a.instrutor_titular && <span title={`substituindo ${a.instrutor_titular}`}>🔁 </span>}{a.instrutor || <i>sem instrutor</i>} · {a.ambiente || <i>sem sala</i>}</small>
                           {a.fixa && <span className="tag-fixa" aria-label="aula fixa"> 📌</span>}
                         </button>
                       ))}
@@ -187,9 +194,12 @@ export default function Grade() {
       </div>
       <p className="sub">Dica: clique duas vezes em uma célula para alocar; arraste uma aula para movê-la (a validação é refeita no servidor). Legenda: 📌 fixa · área verde = livre para todos os recursos filtrados.</p>
       {form && <FormAula inicial={form} cenarioId={cenario.id} unidadeId={unidade} periodos={linhas} fechar={(ok) => { setForm(null); if (ok) aulas.recarregar(); }} />}
-      {aulaSel && <DetalheAula aula={aulaSel} editavel={!!editavel} fechar={(ok) => { setAulaSel(null); if (ok) aulas.recarregar(); }}
+      {aulaSel && <DetalheAula aula={aulaSel} editavel={!!editavel} substituir={podeSubstituir ? () => { const a = aulaSel; setAulaSel(null); setSubstituir({ aula: a }); } : undefined}
+        fechar={(ok) => { setAulaSel(null); if (ok) { aulas.recarregar(); setVersaoSub((v) => v + 1); } }}
         editar={() => { const a = aulaSel; setAulaSel(null); setForm({ alocacao_id: a.id, versao: a.versao, turma_id: a.turma_id, turma_uc_id: a.turma_uc_id, grupo: a.grupo,
           instrutor_id: a.instrutor_id, ambiente_id: a.ambiente_id, data: a.data, hora_inicio: a.inicio, hora_fim: a.fim, fixa: a.fixa, observacao: a.observacao }); }} />}
+      {substituir && <Substituicao cenarioId={cenario.id} publicado={cenario.estado === "publicado"} aula={substituir.aula}
+        fechar={(ok) => { setSubstituir(null); if (ok) { aulas.recarregar(); setVersaoSub((v) => v + 1); } }} />}
       <Modal titulo="Copiar aulas da turma para outra semana" aberto={copiar} fechar={() => setCopiar(false)}>
         <CopiarSemana cenarioId={cenario.id} turmaId={alvo} origem={iso(semana)} fechar={(ok) => { setCopiar(false); if (ok) aulas.recarregar(); }} />
       </Modal>
@@ -217,7 +227,7 @@ function CopiarSemana({ cenarioId, turmaId, origem, fechar }: { cenarioId: numbe
   </>;
 }
 
-function DetalheAula({ aula, editavel, fechar, editar }: { aula: Aula; editavel: boolean; fechar: (ok: boolean) => void; editar: () => void }) {
+function DetalheAula({ aula, editavel, fechar, editar, substituir }: { aula: Aula; editavel: boolean; fechar: (ok: boolean) => void; editar: () => void; substituir?: () => void }) {
   const hist = useCarregar(() => api.get(`/api/alocacoes/${aula.id}/historico`), [aula.id]);
   const { aviso } = useApp();
   return (
@@ -225,11 +235,20 @@ function DetalheAula({ aula, editavel, fechar, editar }: { aula: Aula; editavel:
       <dl className="dl">
         <dt>Data</dt><dd>{dataBR(aula.data)} {aula.inicio}–{aula.fim} ({(aula.minutos_aula / 60).toFixed(2)} h-aula)</dd>
         <dt>Grupo</dt><dd>{aula.grupo ? `Grupo ${aula.grupo}` : "Turma inteira"}</dd>
-        <dt>Instrutor</dt><dd>{aula.instrutor || "pendente"}</dd>
+        <dt>Instrutor</dt><dd>{aula.instrutor || "pendente"}{aula.instrutor_titular && <> <Badge tipo="alerta">🔁 substituindo {aula.instrutor_titular}</Badge></>}</dd>
         <dt>Ambiente</dt><dd>{aula.ambiente || "pendente"}</dd>
         <dt>Origem</dt><dd>{aula.origem}{aula.fixa ? " · fixa (preservada pelo gerador)" : ""}</dd>
         <dt>Observação</dt><dd>{aula.observacao || "—"}</dd>
       </dl>
+      {substituir && <div className="acoes">
+        <button className="btn" onClick={substituir}>🔁 Substituir instrutor</button>
+        {aula.instrutor_titular_id && <button className="btn" onClick={async () => {
+          if (!confirm(`Devolver a aula para ${aula.instrutor_titular}?`)) return;
+          try { const r = await api.post("/api/substituicoes/desfazer", { alocacao_ids: [aula.id] });
+            if (r.desfeitas) { aviso("Aula devolvida ao titular."); fechar(true); } else aviso(r.falhas[0]?.motivos.join("; ") || "Não foi possível desfazer.", "erro"); }
+          catch (e: any) { aviso(e.message, "erro"); }
+        }}>Desfazer substituição</button>}
+      </div>}
       {editavel && <div className="acoes">
         <button className="btn btn-primario" onClick={editar}>Editar</button>
         <button className="btn" onClick={async () => {

@@ -171,6 +171,8 @@ class Alocacao(Base):
     grupo: Mapped[int | None] = mapped_column(Integer)
     grupos: Mapped[list[int]] = mapped_column(ARRAY(Integer))
     instrutor_id: Mapped[int | None] = mapped_column(ForeignKey("instrutores.id"), index=True)
+    # substituição: instrutor titular original (o substituto fica em instrutor_id)
+    instrutor_titular_id: Mapped[int | None] = mapped_column(ForeignKey("instrutores.id", ondelete="SET NULL"))
     ambiente_id: Mapped[int | None] = mapped_column(ForeignKey("ambientes.id"), index=True)
     data: Mapped[date] = mapped_column(Date)
     inicio: Mapped[datetime] = mapped_column(DateTime)
@@ -396,6 +398,19 @@ class ObservacaoInstrutor(Base):
     resposta: Mapped[str | None] = mapped_column(Text)
     respondido_por_id: Mapped[int | None] = mapped_column(ForeignKey("usuarios.id", ondelete="SET NULL"))
     respondido_em: Mapped[datetime | None] = mapped_column(DateTime)
+    criado_em: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class Notificacao(Base):
+    """Aviso para o instrutor no portal (mudança no cadastro dele, substituição, horário publicado, resposta...)."""
+    __tablename__ = "notificacoes"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    instrutor_id: Mapped[int] = mapped_column(ForeignKey("instrutores.id", ondelete="CASCADE"), index=True)
+    tipo: Mapped[str] = mapped_column(String(30))
+    titulo: Mapped[str] = mapped_column(String(200))
+    texto: Mapped[str | None] = mapped_column(Text)
+    aba: Mapped[str | None] = mapped_column(String(20))  # aba do portal relacionada: turmas, dados, obs
+    lida: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     criado_em: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 

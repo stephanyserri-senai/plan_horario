@@ -1,7 +1,7 @@
 -- LIMPEZA DOS DADOS DE TESTE — para começar as validações com dados reais.
 -- MANTÉM: unidades Beira Mar e Porto, áreas tecnológicas, turnos oficiais (manhã/tarde/noite), configurações
 --         (pesos, regras de aula, limiares), perfis de acesso, usuários e o histórico de auditoria.
--- APAGA:  observações dos instrutores (o usuário do instrutor continua, mas desvinculado), cursos, matrizes, UCs, turmas, instrutores, salas/laboratórios, tipos de sala, recursos, calendários,
+-- APAGA:  observações e notificações dos instrutores (o usuário do instrutor continua, mas desvinculado), cursos, matrizes, UCs, turmas, instrutores, salas/laboratórios, tipos de sala, recursos, calendários,
 --         feriados, bloqueios, semestres (cenários), aulas, gerações, simulações, importações e exceções;
 --         e qualquer unidade que não seja BEIRA-MAR ou PORTO (com seus turnos).
 -- IRREVERSÍVEL: faça um backup antes se houver algo que queira guardar. Cole o arquivo inteiro no SQL Editor e clique em Run.
@@ -54,6 +54,7 @@ BEGIN
     validacoes,
     versoes_planejamento'
     || CASE WHEN to_regclass('public.observacoes_instrutor') IS NOT NULL THEN ', observacoes_instrutor' ELSE '' END
+    || CASE WHEN to_regclass('public.notificacoes') IS NOT NULL THEN ', notificacoes' ELSE '' END
     || ' RESTART IDENTITY';
   -- instrutores: DELETE (a tabela de usuários, que é mantida, aponta para ela)
   DELETE FROM instrutores;

@@ -477,6 +477,24 @@ def _aplicar_extras(db: Session, ent: str, obj, dados: dict):
         db.refresh(obj)
 
 
+def _norm(v):
+    """Compara listas sem depender da ordem (inclusive listas de dicionários)."""
+    if isinstance(v, list):
+        return sorted(repr(sorted(x.items()) if isinstance(x, dict) else x) for x in v)
+    return v
+
+
+def _avisar_instrutor(db: Session, ctx, ent: str, obj, campos: list[str] | None = None, acao: str = "alterou"):
+    """Notifica o instrutor quando a coordenação mexe no cadastro dele (ou em algo ligado a ele)."""
+    from app.services.notificacoes import CADASTROS_DO_INSTRUTOR, avisar_alteracao_cadastro, notificar
+    if ent == "instrutores" and campos:
+        avisar_alteracao_cadastro(db, ctx, obj.id, campos, acao)
+    elif ent in CADASTROS_DO_INSTRUTOR and getattr(obj, "instrutor_id", None):
+        rotulo, aba = CADASTROS_DO_INSTRUTOR[ent]
+        quem = getattr(getattr(ctx, "usuario", None), "nome", None) or "A coordenação"
+        notificar(db, obj.instrutor_id, "cadastro", "Seu cadastro foi atualizado", f"{quem} {acao}: {rotulo}.", aba, ctx)
+
+
 def gravar_outras_areas(db: Session, ent: str, obj, areas_ids):
     """Áreas adicionais (além da principal), sempre da mesma unidade."""
     from app.models import AmbienteArea, Area, InstrutorArea
@@ -505,6 +523,8 @@ def criar(ent: str, dados: dict = Body(...), db: Session = Depends(get_db), ctx:
         db.add(obj)
         db.flush()
         _aplicar_extras(db, ent, obj, dados)
+        if ent != "instrutores":
+            _avisar_instrutor(db, ctx, ent, obj, acao="incluiu")
         if ent == "turmas" and dados.get("criar_ofertas", True):
             for uc in db.scalars(select(UnidadeCurricular).where(UnidadeCurricular.matriz_id == obj.matriz_id, UnidadeCurricular.ativo.is_(True))):
                 db.add(TurmaUC(turma_id=obj.id, uc_id=uc.id, situacao="prevista"))
@@ -533,12 +553,22 @@ def atualizar(ent: str, id_: str, dados: dict = Body(...), db: Session = Depends
     vals = converter(ent, dados, parcial=True)
     _regras_especificas(db, ent, obj, vals, novo=False)
     antes = auditoria.snapshot(obj)
+    extras_antes = {**_dados_instrutor(db, obj), "areas_ids": serializar(obj, ent).get("areas_ids")} if ent == "instrutores" else {}
     for k, v in vals.items():
         setattr(obj, k, v)
     _verificar_escopo(ctx, ent, obj)
     try:
         db.flush()
         _aplicar_extras(db, ent, obj, dados)
+        if ent == "instrutores":
+            depois_ = auditoria.snapshot(obj)
+            extras_depois = {**_dados_instrutor(db, obj), "areas_ids": serializar(obj, ent).get("areas_ids")}
+            mudou = [k for k in vals if str(antes.get(k)) != str(depois_.get(k))]
+            mudou += [k for k in ("areas_ids", "ucs_competencia", "disp_turnos", "disp_dias")
+                      if dados.get(k) is not None and _norm(extras_antes.get(k)) != _norm(extras_depois.get(k))]
+            _avisar_instrutor(db, ctx, ent, obj, mudou)
+        else:
+            _avisar_instrutor(db, ctx, ent, obj)
         auditoria.registrar(db, ctx, "cadastro.alterar", cfg["model"].__tablename__, getattr(obj, "id", id_), antes=antes,
                             depois=auditoria.snapshot(obj), motivo=dados.get("_motivo"))
         db.commit()
@@ -568,6 +598,7 @@ def _ativo(ent, id_, valor, motivo, db, ctx):
         raise NaoEncontrado("Registro não encontrado ou não inativável.")
     _verificar_escopo(ctx, ent, obj)
     obj.ativo = valor
+    _avisar_instrutor(db, ctx, ent, obj, ["ativo"] if ent == "instrutores" else None, "reativou" if valor else "inativou")
     auditoria.registrar(db, ctx, "cadastro.reativar" if valor else "cadastro.inativar", cfg["model"].__tablename__, getattr(obj, "id", id_),
                         depois={"ativo": valor}, motivo=motivo)
     db.commit()
@@ -594,6 +625,8 @@ def excluir(ent: str, id_: str, db: Session = Depends(get_db), ctx: Contexto = D
     try:
         db.delete(obj)
         db.flush()
+        from types import SimpleNamespace
+        _avisar_instrutor(db, ctx, ent, SimpleNamespace(**antes), acao="removeu")
         auditoria.registrar(db, ctx, "cadastro.excluir", M.__tablename__, id_, antes=antes)
         db.commit()
     except IntegrityError as e:

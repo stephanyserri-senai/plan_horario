@@ -15,11 +15,16 @@ export default function PortalInstrutor({ trocarSenha }: { trocarSenha: () => vo
   const eu = useCarregar<any>(() => api.get("/api/portal/eu"), []);
   const obs = useCarregar<any[]>(() => api.get("/api/portal/observacoes"), []);
   const respostas = (obs.dados || []).filter((o) => o.resposta).length;
+  const notifs = useCarregar<any[]>(() => api.get("/api/portal/notificacoes"), []);
+  const novas = (notifs.dados || []).filter((n) => !n.lida).length;
+  const irPara = (a: string) => { setAba(a); window.scrollTo({ top: 0 }); };
   return (
     <div className="portal">
       <header className="portal-topo">
         <img src="/icone.png" alt="" width={36} height={36} />
         <div className="portal-marca"><b>Portal do instrutor</b><small>Planejamento Acadêmico</small></div>
+        <button className={`sino ${novas ? "com-novas" : ""}`} aria-label={`Notificações: ${novas} nova(s)`} onClick={() => irPara("notif")}>
+          🔔{novas > 0 && <span className="sino-n">{novas}</span>}</button>
         <Perfil trocarSenha={trocarSenha} />
       </header>
       <main className="portal-main">
@@ -34,13 +39,16 @@ export default function PortalInstrutor({ trocarSenha }: { trocarSenha: () => vo
                 ? <span className="chip-status ok">✔ Dados atualizados em {new Date(eu.dados.atualizado_pelo_instrutor_em).toLocaleDateString("pt-BR")}</span>
                 : <button className="chip-status alerta" onClick={() => setAba("dados")}>! Confira e complete seus dados</button>}
               <span className="chip-status">{eu.dados.ucs_competencia.length} UC(s) que ministra</span>
+              {novas > 0 && <button className="chip-status alerta" onClick={() => irPara("notif")}>🔔 {novas} novidade{novas > 1 ? "s" : ""}</button>}
             </div>}
           </section>
           <Abas abas={[{ id: "turmas", rotulo: "📅 Minhas turmas e horários" }, { id: "dados", rotulo: "🧑‍🏫 Meus dados e expertise" },
-            { id: "obs", rotulo: `💬 Minhas observações${respostas ? ` (${respostas} resposta${respostas > 1 ? "s" : ""})` : ""}` }]} ativa={aba} mudar={setAba} />
+            { id: "obs", rotulo: `💬 Minhas observações${respostas ? ` (${respostas} resposta${respostas > 1 ? "s" : ""})` : ""}` },
+            { id: "notif", rotulo: `🔔 Notificações${novas ? ` (${novas})` : ""}` }]} ativa={aba} mudar={setAba} />
           {aba === "turmas" && <MinhasTurmas aoEnviar={obs.recarregar} />}
           {aba === "dados" && eu.dados && <MeusDados eu={eu.dados} salvo={eu.recarregar} />}
           {aba === "obs" && <MinhasObservacoes lista={obs.dados} />}
+          {aba === "notif" && <Notificacoes lista={notifs.dados} mudou={notifs.recarregar} ir={(a) => { irPara(a); if (a === "dados") eu.recarregar(); if (a === "obs") obs.recarregar(); }} />}
         </>}
       </main>
     </div>
@@ -106,7 +114,8 @@ function SemanaInstrutor({ aulas, inicio }: { aulas: any[]; inicio: string }) {
         <thead><tr><th>Turno</th>{dias.slice(0, usaSab ? 6 : 5).map((d, i) => <th key={i} className={iso(d) === hoje ? "hoje" : ""}>{DIAS_CURTOS[i]} {dataBR(iso(d)).slice(0, 5)}</th>)}</tr></thead>
         <tbody>{turnos.map((t) => <tr key={t}><th>{t}</th>{dias.slice(0, usaSab ? 6 : 5).map((d, i) => (
           <td key={i}>{blocos(t, d).map((b) => <div key={b.turma + b.uc} className="bloco-aula" style={{ background: corDe(b.turma + b.uc) }}>
-            <b>{b.turma}</b><span>{b.uc} · {b.uc_nome}</span><small>{b.ini}–{b.fimB}{b.sala ? ` · ${b.sala}` : ""}</small></div>)}</td>))}</tr>)}</tbody>
+            <b>{b.turma}{b.substituindo ? " 🔁" : ""}</b><span>{b.uc} · {b.uc_nome}</span><small>{b.ini}–{b.fimB}{b.sala ? ` · ${b.sala}` : ""}</small>
+            {b.substituindo && <small>substituindo {b.substituindo}</small>}</div>)}</td>))}</tr>)}</tbody>
       </table></div>
     </section>
   );
@@ -140,6 +149,7 @@ function CartaoTurma({ t, aoEnviar }: { t: any; aoEnviar: () => void }) {
         {t.observacoes > 0 && <Badge tipo="info">{t.observacoes} observação(ões)</Badge>}
       </div>
       <div className="portal-uc">{t.uc_codigo} — {t.uc_nome}</div>
+      {t.substituindo.length > 0 && <p className="aviso-inline">🔁 Substituindo {t.substituindo.join(", ")} em {t.dias_substituicao.map((d: string) => dataBR(d).slice(0, 5)).join(", ")}</p>}
       <div className="chips">{t.horarios.map((h: string) => <span key={h} className="chip">{h}</span>)}</div>
       <p className="sub">{dataBR(t.primeira)} a {dataBR(t.ultima)} · {t.dias_de_aula} dia(s) de aula{t.salas.length ? ` · ${t.salas.join(", ")}` : ""}</p>
       <div className="barra-ch" title={`${t.horas_suas} h com você de ${t.ch_uc} h da UC`}><span style={{ width: `${pct}%` }} /></div>
@@ -219,6 +229,32 @@ function MeusDados({ eu, salvo }: { eu: any; salvo: () => void }) {
       <Erro erro={erro} />
       <div className="portal-salvar"><button className="btn btn-primario btn-grande" disabled={salvando} onClick={salvar}>{salvando ? "Salvando…" : "Salvar meus dados"}</button></div>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------- notificações
+const ICONE_NOTIF: Record<string, string> = { substituicao: "🔁", publicacao: "📅", cadastro: "🧑‍🏫", observacao: "💬" };
+
+function Notificacoes({ lista, mudou, ir }: { lista: any[] | null; mudou: () => void; ir: (aba: string) => void }) {
+  if (!lista) return <p role="status">Carregando…</p>;
+  const novas = lista.filter((n) => !n.lida);
+  const marcar = async (ids?: number[]) => { await api.post("/api/portal/notificacoes/lidas", ids ? { ids } : {}); mudou(); };
+  if (!lista.length) return <div className="card portal-aviso"><p>Nenhuma notificação ainda. Aqui aparecem avisos de mudanças no seu cadastro, substituições,
+    horários publicados e respostas da coordenação.</p></div>;
+  return (
+    <section className="card">
+      <div className="portal-semana-cab"><b>{novas.length ? `${novas.length} nova(s)` : "Tudo lido"}</b>
+        {novas.length > 0 && <button className="btn-link" onClick={() => marcar()}>Marcar todas como lidas</button>}</div>
+      <ul className="lista-notif">{lista.map((n) => (
+        <li key={n.id} className={n.lida ? "" : "nova"}>
+          <span className="notif-ico" aria-hidden="true">{ICONE_NOTIF[n.tipo] || "🔔"}</span>
+          <div><b>{n.titulo}</b>{n.texto && <p>{n.texto}</p>}<small className="mudo">{new Date(n.criado_em).toLocaleString("pt-BR")}</small></div>
+          <div className="notif-acoes">
+            {n.aba && <button className="btn-link" onClick={async () => { if (!n.lida) await marcar([n.id]); ir(n.aba); }}>Ver</button>}
+            {!n.lida && <button className="btn-link" onClick={() => marcar([n.id])}>Marcar como lida</button>}
+          </div>
+        </li>))}</ul>
+    </section>
   );
 }
 

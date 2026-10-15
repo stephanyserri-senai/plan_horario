@@ -849,6 +849,9 @@ def _gravar_levantamento(db, instrutor, ext: dict):
     """Disponibilidade (substitui a anterior), competências e certificações do levantamento."""
     from app.models import HabilitacaoInstrutor
     db.flush()
+    from app.services.notificacoes import notificar
+    notificar(db, instrutor.id, "cadastro", "Seu cadastro foi atualizado",
+              "A coordenação importou o levantamento de instrutores: áreas, disponibilidade, UCs e certificações podem ter mudado.", "dados")
     if ext.get("_disp"):
         db.execute(DisponibilidadeInstrutor.__table__.delete().where(DisponibilidadeInstrutor.instrutor_id == instrutor.id))
         for dia, ini, fim in ext["_disp"]:

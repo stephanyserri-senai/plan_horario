@@ -23,7 +23,7 @@ from app.core.deps import Contexto, get_contexto, requer
 from app.core.errors import AcessoNegado, ConflitoValidacao, EntradaInvalida, NaoEncontrado
 from app.core.security import hash_senha
 from app.models import (Alocacao, Ambiente, Area, CenarioPlanejamento, CompetenciaInstrutor, HabilitacaoInstrutor, Instrutor, InstrutorArea,
-                        ObservacaoInstrutor, Turma, TurmaUC, Turno, Unidade, UnidadeCurricular, Usuario)
+                        Notificacao, ObservacaoInstrutor, Turma, TurmaUC, Turno, Unidade, UnidadeCurricular, Usuario)
 from app.services import auditoria
 
 router = APIRouter(prefix="/api", tags=["portal do instrutor"])
@@ -65,6 +65,8 @@ def _eu(db: Session, inst: Instrutor) -> dict:
         "turnos": [{"id": t.id, "nome": t.nome, "inicio": t.hora_inicio.strftime("%H:%M"), "fim": t.hora_fim.strftime("%H:%M")} for t in turnos],
         "certificacoes": list(certs), "formacao": inst.areas_competencia,
         "atualizado_pelo_instrutor_em": inst.atualizado_pelo_instrutor_em.isoformat() if inst.atualizado_pelo_instrutor_em else None,
+        "notificacoes_novas": db.scalar(select(func.count()).select_from(Notificacao).where(Notificacao.instrutor_id == inst.id,
+                                                                                          Notificacao.lida.is_(False))) or 0,
         **_dados_instrutor(db, inst),
     }
 
@@ -152,6 +154,8 @@ def minhas_turmas(ctx: Contexto = Depends(get_contexto), db: Session = Depends(g
         ucs = {u.id: u for u in db.scalars(select(UnidadeCurricular).where(UnidadeCurricular.id.in_({a.uc_id for a in aulas})))}
         salas = {s.id: s for s in db.scalars(select(Ambiente).where(Ambiente.id.in_({a.ambiente_id for a in aulas if a.ambiente_id})))}
         turnos = {t.id: t.nome for t in db.scalars(select(Turno))}
+        ids_tit = {a.instrutor_titular_id for a in aulas if a.instrutor_titular_id}
+        titulares = {x.id: x.nome for x in db.scalars(select(Instrutor).where(Instrutor.id.in_(ids_tit)))} if ids_tit else {}
         grupos = defaultdict(list)
         for a in aulas:
             grupos[a.turma_uc_id].append(a)
@@ -169,6 +173,8 @@ def minhas_turmas(ctx: Contexto = Depends(get_contexto), db: Session = Depends(g
                 "horarios": [f"{DIAS[d]} {i}–{f}" for d, i, f in padroes],
                 "salas": sorted({salas[a.ambiente_id].nome for a in lista if a.ambiente_id in salas}),
                 "observacoes": obs_por_tuc.get(tuc_id, 0),
+                "substituindo": sorted({titulares[a.instrutor_titular_id] for a in lista if a.instrutor_titular_id in titulares}),
+                "dias_substituicao": sorted({a.data.isoformat() for a in lista if a.instrutor_titular_id}),
             })
         itens.sort(key=lambda x: (x["primeira"], x["turma_codigo"]))
         res.append({
@@ -177,7 +183,8 @@ def minhas_turmas(ctx: Contexto = Depends(get_contexto), db: Session = Depends(g
             "turmas_ucs": itens,
             "aulas": [{"data": a.data.isoformat(), "inicio": a.inicio.strftime("%H:%M"), "fim": a.fim.strftime("%H:%M"),
                        "turma": turmas[a.turma_id].codigo, "uc": ucs[a.uc_id].codigo, "uc_nome": ucs[a.uc_id].nome,
-                       "sala": salas[a.ambiente_id].nome if a.ambiente_id in salas else None, "turno": turnos.get(turmas[a.turma_id].turno_id)}
+                       "sala": salas[a.ambiente_id].nome if a.ambiente_id in salas else None, "turno": turnos.get(turmas[a.turma_id].turno_id),
+                       "substituindo": titulares.get(a.instrutor_titular_id)}
                       for a in sorted(aulas, key=lambda a: a.inicio)],
         })
     return res
@@ -193,6 +200,29 @@ def minha_agenda_xlsx(cenario_id: int, ctx: Contexto = Depends(get_contexto), db
     arq = exportacao_planilhas.agenda_instrutores(db, cenario_id, d0, d1, instrutor_id=inst.id)
     return Response(arq, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     headers={"Content-Disposition": 'attachment; filename="minha_agenda.xlsx"'})
+
+
+# ============================================================================ notificações
+@router.get("/portal/notificacoes")
+def minhas_notificacoes(ctx: Contexto = Depends(get_contexto), db: Session = Depends(get_db)):
+    inst = _meu_instrutor(ctx, db)
+    return [{"id": n.id, "tipo": n.tipo, "titulo": n.titulo, "texto": n.texto, "aba": n.aba, "lida": n.lida, "criado_em": n.criado_em.isoformat()}
+            for n in db.scalars(select(Notificacao).where(Notificacao.instrutor_id == inst.id)
+                                .order_by(Notificacao.criado_em.desc(), Notificacao.id.desc()).limit(200))]
+
+
+@router.post("/portal/notificacoes/lidas")
+def marcar_lidas(dados: dict = Body(default={}), ctx: Contexto = Depends(get_contexto), db: Session = Depends(get_db)):
+    """Marca como lidas as notificações informadas (ou todas, sem `ids`)."""
+    inst = _meu_instrutor(ctx, db)
+    q = select(Notificacao).where(Notificacao.instrutor_id == inst.id, Notificacao.lida.is_(False))
+    if dados.get("ids"):
+        q = q.where(Notificacao.id.in_([int(x) for x in dados["ids"]]))
+    n = 0
+    for x in db.scalars(q):
+        x.lida, n = True, n + 1
+    db.commit()
+    return {"marcadas": n}
 
 
 # ============================================================================ observações
@@ -285,6 +315,13 @@ def responder_observacao(oid: int, dados: dict = Body(...), ctx: Contexto = Depe
         if o.status == "nova":
             o.status = "lida"
     auditoria.registrar(db, ctx, "observacao.responder", "observacoes_instrutor", o.id, antes=antes, depois={"status": o.status, "resposta": o.resposta})
+    if (o.status, o.resposta) != (antes["status"], antes["resposta"]):
+        from app.services.notificacoes import notificar
+        tuc = db.get(TurmaUC, o.turma_uc_id) if o.turma_uc_id else None
+        sobre = f" sobre {db.get(Turma, tuc.turma_id).codigo}" if tuc else ""
+        titulo = ("Sua observação foi resolvida" if o.status == "resolvida" else "Sua observação foi respondida" if o.resposta != antes["resposta"]
+                  else "Sua observação foi lida")
+        notificar(db, o.instrutor_id, "observacao", titulo + sobre, o.resposta, "obs", ctx)
     db.commit()
     return _obs(db, o, True)
 

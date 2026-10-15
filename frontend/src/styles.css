@@ -463,3 +463,29 @@ button.chip-status { cursor: pointer; } .chip-status.alerta { background: #fff3d
 .portal-info { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 0; } .portal-info dt { color: var(--mudo); } .portal-info dd { margin: 0; }
 .portal-salvar { display: flex; justify-content: flex-end; }
 @media (max-width: 700px) { .portal-main { padding: 12px 16px 32px; } .portal-sem .btn { margin-left: 0; } .portal-cards, .portal-obs { grid-template-columns: 1fr; } }
+
+/* Substituição de instrutor */
+.sub-escopo { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; }
+.sub-grupo { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; }
+.sub-grupo > .badge { align-self: flex-start; margin-bottom: 2px; }
+.sub-cand { display: flex; gap: 8px; align-items: flex-start; padding: 5px 8px; border-radius: 8px; cursor: pointer; }
+.sub-cand:hover { background: var(--fundo); } .sub-cand.marcada { background: var(--info-bg); } .sub-cand.desabilitado { opacity: .55; cursor: not-allowed; }
+.sub-cand span { display: flex; flex-direction: column; }
+.sub-motivos { color: var(--mudo); font-size: .78rem; }
+.previa-sub { padding: 10px 12px; border-radius: 8px; margin-top: 8px; } .previa-sub.tom-ok { background: var(--ok-bg); } .previa-sub.tom-alerta { background: var(--alerta-bg); }
+.previa-sub ul { margin: 4px 0 0; padding-left: 18px; }
+.sub-vigor { background: var(--alerta-bg); border-radius: 10px; padding: 8px 12px; margin-bottom: 10px; }
+.sub-vigor summary { cursor: pointer; font-weight: 600; } .sub-vigor ul { margin: 6px 0 0; padding-left: 18px; } .sub-vigor li { margin: 3px 0; }
+
+/* Notificações do instrutor */
+.sino { position: relative; margin-left: auto; background: none; border: 1px solid var(--borda); border-radius: 999px; width: 38px; height: 38px; cursor: pointer; font-size: 1.05rem; }
+.sino.com-novas { border-color: var(--erro); }
+.sino-n { position: absolute; top: -4px; right: -4px; background: var(--erro); color: #fff; border-radius: 999px; font-size: .7rem; min-width: 18px; height: 18px;
+  display: inline-flex; align-items: center; justify-content: center; padding: 0 4px; font-weight: 700; }
+.portal-topo .perfil { margin-left: 0; }
+.lista-notif { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.lista-notif li { display: flex; gap: 10px; padding: 10px 8px; border-bottom: 1px solid var(--borda); align-items: flex-start; }
+.lista-notif li.nova { background: var(--info-bg); border-radius: 8px; }
+.lista-notif li > div:nth-child(2) { flex: 1; min-width: 0; } .lista-notif p { margin: 2px 0; }
+.notif-ico { font-size: 1.2rem; width: 28px; text-align: center; }
+.notif-acoes { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
