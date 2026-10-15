@@ -30,11 +30,11 @@ function Cartao({ it, cenarioId }: { it: Item; cenarioId?: number }) {
   const [baixando, setBaixando] = useState(false);
   const ops = useOpcoes(it.filtro?.[1]);
   const bloqueado = it.precisaSemestre && !cenarioId;
-  const ir = async () => {
+  const ir = async (f: string) => {
     setBaixando(true);
-    const p: Record<string, any> = it.precisaSemestre ? { cenario_id: cenarioId, formato: "xlsx" } : {};
+    const p: Record<string, any> = it.precisaSemestre ? { cenario_id: cenarioId, formato: f } : {};
     if (it.filtro && fid) p[it.filtro[0]] = fid;
-    try { await baixar(`${it.url}${qs(p)}`, it.nome); } finally { setBaixando(false); }
+    try { await baixar(`${it.url}${qs(p)}`, it.nome.replace(/\.xlsx$/, `.${f}`)); } finally { setBaixando(false); }
   };
   return (
     <div className="exp-cartao">
@@ -45,7 +45,8 @@ function Cartao({ it, cenarioId }: { it: Item; cenarioId?: number }) {
         <div className="exp-acoes">
           {it.filtro && <select aria-label={`Filtrar ${it.titulo}`} value={fid} onChange={(e) => setFid(e.target.value)}>
             <option value="">{it.filtro[2]}</option>{ops.map((o) => <option key={o.id} value={o.id}>{o.rotulo}</option>)}</select>}
-          <button className="btn btn-primario" disabled={bloqueado || baixando} onClick={ir}>{baixando ? "Gerando…" : "⬇ Baixar Excel"}</button>
+          <button className="btn btn-primario" disabled={bloqueado || baixando} onClick={() => ir("xlsx")}>{baixando ? "Gerando…" : "⬇ Excel"}</button>
+          {it.precisaSemestre && <button className="btn" disabled={bloqueado || baixando} onClick={() => ir("pdf")}>⬇ PDF</button>}
         </div>
       </div>
     </div>
@@ -61,7 +62,7 @@ export default function Exportar() {
         <h2>Do semestre {cenario ? `— ${cenario.nome}` : ""}</h2>
         <p className="sub">{cenario ? "Usa o semestre e a versão selecionados no topo da tela." : "Crie ou selecione um semestre para exportar a grade."}</p>
         <div className="exp-grid">{GRADE.map((it) => <Cartao key={it.id} it={it} cenarioId={cenario?.id} />)}</div>
-        <p className="sub">Precisa de CSV ou PDF, de um período específico ou do comparativo entre versões? Use <a href="/relatorios">Relatórios</a>.</p>
+        <p className="sub">Precisa de um período específico, da grade de uma semana, do comparativo entre versões ou de todos os relatórios de uma vez? Use <a href="/relatorios">Relatórios</a>.</p>
       </section>
       <section className="card">
         <h2>Cadastros</h2>

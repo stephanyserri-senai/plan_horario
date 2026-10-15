@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import logging
 import threading
-from datetime import date, datetime
+import io
+from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, Body, Depends, File, Form, UploadFile
 from fastapi.responses import Response
@@ -226,7 +227,8 @@ def relatorio_imp(iid: int, formato: str = "xlsx", ctx: Contexto = Depends(reque
     linhas = [{"linha": i["linha"], "acao": i["acao"], "erros": "; ".join(i["erros"]), "avisos": "; ".join(i["avisos"])} for i in imp.previa["itens"]]
     for b in (imp.relatorio or {}).get("aulas_bloqueadas", []):
         linhas.append({"linha": b["linha"], "acao": "bloqueada_na_gravacao", "erros": b["motivo"], "avisos": ""})
-    return _arquivo(linhas, formato, f"importacao_{iid}", f"Relatório da importação #{iid} – {imp.arquivo_nome}")
+    return _arquivo(linhas, formato, f"importacao_{iid}", f"Relatório da importação #{iid} – {imp.arquivo_nome}", aba="importacao",
+                    meta=_meta(db, ctx))
 
 
 @router.get("/importacao/modelo/{tipo}")
@@ -242,31 +244,83 @@ def modelo(tipo: str, ctx: Contexto = Depends(get_contexto), db: Session = Depen
 
 
 # ============================================================================ exportação
-def _arquivo(linhas, formato, nome, titulo, abas=None):
+XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+def _arquivo(linhas, formato, nome, titulo, abas=None, aba="dados", meta=None):
+    """XLSX ou PDF com o mesmo conteúdo (CSV ainda aceito por compatibilidade)."""
     if formato == "csv":
         return Response(exportacao.para_csv(linhas), media_type="text/csv; charset=utf-8", headers={"Content-Disposition": f'attachment; filename="{nome}.csv"'})
     if formato == "pdf":
-        return Response(exportacao.para_pdf(titulo or nome, linhas), media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{nome}.pdf"'})
+        return Response(exportacao.para_pdf(titulo or nome, linhas, abas=abas, meta=meta, aba=aba), media_type="application/pdf",
+                        headers={"Content-Disposition": f'attachment; filename="{nome}.pdf"'})
     if formato == "xlsx":
-        return Response(exportacao.para_xlsx(abas or {"dados": linhas}, titulo), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        return Response(exportacao.para_xlsx(abas or {aba: linhas}, titulo, meta), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         headers={"Content-Disposition": f'attachment; filename="{nome}.xlsx"'})
-    raise EntradaInvalida("Formato inválido (xlsx, csv, pdf).")
+    raise EntradaInvalida("Formato inválido: use xlsx ou pdf.")
+
+
+def _meta(db, ctx, cenario_id=None, d0=None, d1=None, filtro=None) -> list[str]:
+    """Linhas de identificação do relatório (semestre, período, filtro, quem gerou e quando)."""
+    from datetime import datetime
+    m = []
+    if cenario_id:
+        m.append(f"Semestre: {exportacao.nome_cenario(db, cenario_id)}")
+    if d0 and d1:
+        m.append(f"Período: {d0:%d/%m/%Y} a {d1:%d/%m/%Y}")
+    if filtro:
+        m.append(f"Filtro: {filtro}")
+    m.append(f"Gerado em {datetime.now():%d/%m/%Y %H:%M} por {getattr(ctx.usuario, 'nome', None) or 'usuário'}")
+    return m
+
+
+def _rotulo_filtro(db, filtro, filtro_id) -> str | None:
+    if not filtro or not filtro_id:
+        return None
+    from app.models import Ambiente, Instrutor, Turma, Turno
+    modelo = {"turma": (Turma, "codigo", "Turma"), "instrutor": (Instrutor, "nome", "Instrutor"), "ambiente": (Ambiente, "nome", "Sala"),
+              "turno": (Turno, "nome", "Turno")}.get(filtro)
+    if not modelo:
+        return None
+    obj = db.get(modelo[0], filtro_id)
+    return f"{modelo[2]} {getattr(obj, modelo[1], filtro_id)}"
 
 
 @router.get("/exportar/grade")
 def exportar_grade(cenario_id: int, formato: str = "xlsx", filtro: str | None = None, filtro_id: int | None = None, inicio: date | None = None,
                    fim: date | None = None, semana: date | None = None, ctx: Contexto = Depends(requer("exportacao.executar")), db: Session = Depends(get_db)):
     linhas = exportacao.linhas_grade(db, cenario_id, filtro, filtro_id, inicio, fim, ctx.unidades)
-    titulo = f"Grade horária – {exportacao.nome_cenario(db, cenario_id)}" + (f" – {filtro} #{filtro_id}" if filtro else "")
+    rot = _rotulo_filtro(db, filtro, filtro_id)
+    titulo = "Lista de aulas" + (f" – {rot}" if rot else "")
     auditoria.registrar(db, ctx, "exportacao.grade", "cenarios_planejamento", cenario_id, depois={"formato": formato, "filtro": filtro, "filtro_id": filtro_id})
     db.commit()
     if semana:
         matriz = exportacao.matriz_semanal(linhas, semana)
+        titulo = "Grade da semana" + (f" – {rot}" if rot else "")
+        meta = _meta(db, ctx, cenario_id, semana, semana + timedelta(days=5), rot)
         if formato == "pdf":
-            return Response(exportacao.para_pdf(titulo, matriz, f"Semana de {semana:%d/%m/%Y}"), media_type="application/pdf",
+            return Response(exportacao.para_pdf(titulo, matriz, meta=meta, aba="semana"), media_type="application/pdf",
                             headers={"Content-Disposition": 'attachment; filename="grade_semana.pdf"'})
-        return _arquivo(matriz, formato, "grade_semana", titulo, {"semana": matriz, "aulas": linhas})
-    return _arquivo(linhas, formato, "grade", titulo)
+        if formato != "xlsx":
+            return _arquivo(matriz, formato, "grade_semana", titulo, aba="semana", meta=meta)
+        # planilha: visão geral da semana + uma aba por turma + a lista das aulas
+        seg = semana - timedelta(days=semana.weekday())
+        da_semana = [l for l in linhas if seg <= l["_data"] < seg + timedelta(days=7)]
+        abas, tipos, titulos = {"Semana (todas as turmas)": matriz}, {"Semana (todas as turmas)": "semana"}, {}
+        nomes_turma = {l["turma"]: l["turma"] for l in da_semana}
+        for turma in sorted(nomes_turma):
+            abas[turma] = exportacao.matriz_semanal([l for l in da_semana if l["turma"] == turma], semana, sem_turma=True)
+            tipos[turma], titulos[turma] = "semana", f"Grade da semana – turma {turma}"
+        abas["Aulas da semana"], tipos["Aulas da semana"] = da_semana, "grade"
+        return Response(exportacao.para_xlsx(abas, titulo, meta, tipos, titulos), media_type=XLSX_MIME,
+                        headers={"Content-Disposition": 'attachment; filename="grade_semana.xlsx"'})
+    d = [l["_data"] for l in linhas]
+    return _arquivo(linhas, formato, "aulas", titulo, aba="grade",
+                    meta=_meta(db, ctx, cenario_id, inicio or (min(d) if d else None), fim or (max(d) if d else None), rot))
+
+
+TITULOS_INDICADORES = {"ambientes": "Ocupação das salas e laboratórios", "instrutores": "Ocupação e carga horária dos instrutores",
+                       "turmas": "Carga horária por turma e UC", "gargalos": "Gargalos de capacidade"}
 
 
 @router.get("/exportar/indicadores/{tipo}")
@@ -282,17 +336,22 @@ def exportar_indicadores(tipo: str, cenario_id: int, formato: str = "xlsx", inic
         abas = {"instrutores": linhas}
     elif tipo == "turmas":
         r = indicadores.turmas_ucs(db, cenario_id, unidades_permitidas=ctx.unidades)
+        from app.models import Ambiente
+        cod = {a.id: a.codigo for a in db.query(Ambiente).all()}
+        for it in r["itens"]:  # salas pelo código, não pelo número interno
+            it["ambientes_utilizados"] = [cod.get(x, x) for x in it.get("ambientes_utilizados") or []]
         linhas = exportacao.achatar(r["itens"])
         abas = {"turmas_ucs": linhas}
     elif tipo == "gargalos":
         r = gargalos.analisar(db, cenario_id, d0, d1)
-        linhas = exportacao.achatar([{k: v for k, v in g.items() if k != "itens"} for g in r["gargalos"]])
+        linhas = exportacao.achatar([{k: v for k, v in g.items() if k not in ("itens", "calculo")} for g in r["gargalos"]])
         abas = {"gargalos": linhas}
     else:
         raise NaoEncontrado("Relatório inexistente.")
     auditoria.registrar(db, ctx, "exportacao.indicadores", "cenarios_planejamento", cenario_id, depois={"tipo": tipo, "formato": formato})
     db.commit()
-    return _arquivo(linhas, formato, f"indicadores_{tipo}", f"Indicadores – {tipo} – {exportacao.nome_cenario(db, cenario_id)} ({d0:%d/%m/%Y}–{d1:%d/%m/%Y})", abas)
+    nomes = {"ambientes": "ocupacao_salas", "instrutores": "ocupacao_instrutores", "turmas": "carga_horaria_turmas_ucs", "gargalos": "gargalos"}
+    return _arquivo(linhas, formato, nomes[tipo], TITULOS_INDICADORES[tipo], abas, meta=_meta(db, ctx, cenario_id, d0, d1))
 
 
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -302,35 +361,78 @@ def _xlsx(conteudo: bytes, nome: str) -> Response:
     return Response(conteudo, media_type=XLSX, headers={"Content-Disposition": f'attachment; filename="{nome}.xlsx"'})
 
 
+def _rico(conteudo: bytes, formato: str, nome: str, titulo: str, meta: list[str]) -> Response:
+    """Relatório com várias abas formatadas: a planilha como está ou o PDF gerado a partir dela."""
+    if formato == "pdf":
+        return Response(exportacao.planilha_para_pdf(conteudo, titulo, meta), media_type="application/pdf",
+                        headers={"Content-Disposition": f'attachment; filename="{nome}.pdf"'})
+    if formato != "xlsx":
+        raise EntradaInvalida("Formato inválido: use xlsx ou pdf.")
+    return _xlsx(conteudo, nome)
+
+
 @router.get("/exportar/horario_turmas")
-def exportar_horario_turmas(cenario_id: int, turma_id: int | None = None, ctx: Contexto = Depends(requer("exportacao.executar")), db: Session = Depends(get_db)):
+def exportar_horario_turmas(cenario_id: int, turma_id: int | None = None, formato: str = "xlsx", ctx: Contexto = Depends(requer("exportacao.executar")),
+                            db: Session = Depends(get_db)):
     from app.services import exportacao_planilhas
     arq = exportacao_planilhas.horario_turmas(db, cenario_id, turma_id, ctx.unidades)
-    auditoria.registrar(db, ctx, "exportacao.horario_turmas", "cenarios_planejamento", cenario_id, depois={"turma_id": turma_id})
+    auditoria.registrar(db, ctx, "exportacao.horario_turmas", "cenarios_planejamento", cenario_id, depois={"turma_id": turma_id, "formato": formato})
     db.commit()
-    return _xlsx(arq, "horario_turmas")
+    return _rico(arq, formato, "horario_turmas", "Horário das turmas", _meta(db, ctx, cenario_id, filtro=_rotulo_filtro(db, "turma", turma_id)))
 
 
 @router.get("/exportar/agenda_instrutores")
-def exportar_agenda_instrutores(cenario_id: int, instrutor_id: int | None = None, inicio: date | None = None, fim: date | None = None,
+def exportar_agenda_instrutores(cenario_id: int, instrutor_id: int | None = None, inicio: date | None = None, fim: date | None = None, formato: str = "xlsx",
                                 ctx: Contexto = Depends(requer("exportacao.executar")), db: Session = Depends(get_db)):
     from app.services import exportacao_planilhas
     d0, d1 = _periodo(db, cenario_id, inicio, fim)
     arq = exportacao_planilhas.agenda_instrutores(db, cenario_id, d0, d1, instrutor_id, ctx.unidades, ctx.pode("dados_pessoais.ler"))
-    auditoria.registrar(db, ctx, "exportacao.agenda_instrutores", "cenarios_planejamento", cenario_id, depois={"instrutor_id": instrutor_id})
+    auditoria.registrar(db, ctx, "exportacao.agenda_instrutores", "cenarios_planejamento", cenario_id, depois={"instrutor_id": instrutor_id, "formato": formato})
     db.commit()
-    return _xlsx(arq, "agenda_instrutores")
+    return _rico(arq, formato, "agenda_instrutores", "Agenda e ocupação dos instrutores",
+                 _meta(db, ctx, cenario_id, d0, d1, _rotulo_filtro(db, "instrutor", instrutor_id)))
 
 
 @router.get("/exportar/uso_ambientes")
-def exportar_uso_ambientes(cenario_id: int, ambiente_id: int | None = None, inicio: date | None = None, fim: date | None = None,
+def exportar_uso_ambientes(cenario_id: int, ambiente_id: int | None = None, inicio: date | None = None, fim: date | None = None, formato: str = "xlsx",
                            ctx: Contexto = Depends(requer("exportacao.executar")), db: Session = Depends(get_db)):
     from app.services import exportacao_planilhas
     d0, d1 = _periodo(db, cenario_id, inicio, fim)
     arq = exportacao_planilhas.uso_ambientes(db, cenario_id, d0, d1, ambiente_id, ctx.unidades)
-    auditoria.registrar(db, ctx, "exportacao.uso_ambientes", "cenarios_planejamento", cenario_id, depois={"ambiente_id": ambiente_id})
+    auditoria.registrar(db, ctx, "exportacao.uso_ambientes", "cenarios_planejamento", cenario_id, depois={"ambiente_id": ambiente_id, "formato": formato})
     db.commit()
-    return _xlsx(arq, "salas_e_laboratorios")
+    return _rico(arq, formato, "salas_e_laboratorios", "Uso das salas e laboratórios",
+                 _meta(db, ctx, cenario_id, d0, d1, _rotulo_filtro(db, "ambiente", ambiente_id)))
+
+
+@router.get("/exportar/pacote")
+def exportar_pacote(cenario_id: int, formato: str = "xlsx", inicio: date | None = None, fim: date | None = None,
+                    ctx: Contexto = Depends(requer("exportacao.executar")), db: Session = Depends(get_db)):
+    """Todos os relatórios do semestre num ZIP (formato xlsx, pdf ou ambos)."""
+    import zipfile
+    formatos = ["xlsx", "pdf"] if formato == "ambos" else [formato]
+    if any(f not in ("xlsx", "pdf") for f in formatos):
+        raise EntradaInvalida("Formato inválido: use xlsx, pdf ou ambos.")
+    geradores = [
+        ("01_horario_turmas", lambda f: exportar_horario_turmas(cenario_id, None, f, ctx, db)),
+        ("02_agenda_instrutores", lambda f: exportar_agenda_instrutores(cenario_id, None, inicio, fim, f, ctx, db)),
+        ("03_salas_e_laboratorios", lambda f: exportar_uso_ambientes(cenario_id, None, inicio, fim, f, ctx, db)),
+        ("04_lista_de_aulas", lambda f: exportar_grade(cenario_id, f, None, None, inicio, fim, None, ctx, db)),
+        ("05_carga_horaria_turmas_ucs", lambda f: exportar_indicadores("turmas", cenario_id, f, inicio, fim, ctx, db)),
+        ("06_ocupacao_salas", lambda f: exportar_indicadores("ambientes", cenario_id, f, inicio, fim, ctx, db)),
+        ("07_ocupacao_instrutores", lambda f: exportar_indicadores("instrutores", cenario_id, f, inicio, fim, ctx, db)),
+        ("08_gargalos", lambda f: exportar_indicadores("gargalos", cenario_id, f, inicio, fim, ctx, db)),
+    ]
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for nome, gerar in geradores:
+            for f in formatos:
+                z.writestr(f"{nome}.{f}", gerar(f).body)
+    sem = exportacao.nome_cenario(db, cenario_id).split(" (")[0]
+    import unicodedata
+    ascii_ = unicodedata.normalize("NFKD", sem).encode("ascii", "ignore").decode()  # cabeçalho HTTP só aceita ASCII
+    arquivo = "relatorios_" + "".join(ch if ch.isalnum() else "_" for ch in ascii_).strip("_")[:60] + ".zip"
+    return Response(buf.getvalue(), media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="{arquivo}"'})
 
 
 @router.get("/exportar/cadastro/{tipo}")
@@ -354,15 +456,20 @@ def exportar_comparativo(cenarios_ids: str, formato: str = "xlsx", ctx: Contexto
     ids = [int(x) for x in cenarios_ids.split(",")]
     r = cenarios.comparar(db, ids)
     linhas = []
+    from app.solver.criterios import descricao_criterios
+    desc = {c["criterio"]: c["descricao"] for c in descricao_criterios()}
+    est = {"em_elaboracao": "Em edição", "em_validacao": "Em validação", "aguardando_aprovacao": "Aguardando aprovação", "aprovado": "Aprovado",
+           "publicado": "Publicado", "arquivado": "Arquivado"}
     for c in r["cenarios"]:
-        l = {"cenario": c["cenario"]["nome"], "estado": c["cenario"]["estado"], "pontuacao_total": c["avaliacao"]["pontuacao_total"],
-             "aulas": c["indicadores"]["aulas"], "horas_programadas": c["indicadores"]["horas_programadas"], "carga_pendente_h": c["carga_pendente_h"],
-             "ocupacao_ambientes_pct": c["indicadores"]["taxa_ocupacao_ambientes_pct"], "ocupacao_instrutores_pct": c["indicadores"]["ocupacao_media_instrutores_pct"],
-             "bloqueios": (c["validacao"] or {}).get("bloqueios")}
+        l = {"Versão": c["cenario"]["nome"], "Situação": est.get(c["cenario"]["estado"], c["cenario"]["estado"]),
+             "Pontuação total (menor = melhor)": c["avaliacao"]["pontuacao_total"], "Aulas": c["indicadores"]["aulas"],
+             "Horas programadas": c["indicadores"]["horas_programadas"], "Carga pendente (h)": c["carga_pendente_h"],
+             "Ocupação das salas (%)": c["indicadores"]["taxa_ocupacao_ambientes_pct"],
+             "Ocupação dos instrutores (%)": c["indicadores"]["ocupacao_media_instrutores_pct"], "Conflitos (bloqueios)": (c["validacao"] or {}).get("bloqueios")}
         for cr in c["avaliacao"]["criterios"]:
-            l[f"{cr['criterio']} ({cr['unidade']})"] = cr["valor_bruto"]
+            l[f"{desc.get(cr['criterio'], cr['criterio'])} ({cr['unidade']})"] = cr["valor_bruto"]
         linhas.append(l)
-    return _arquivo(linhas, formato, "comparativo_cenarios", "Comparativo de cenários (mesmos pesos)")
+    return _arquivo(linhas, formato, "comparativo_versoes", "Comparativo de versões (mesmos pesos)", aba="comparativo", meta=_meta(db, ctx))
 
 
 @router.get("/exportar/simulacao/{sid}")

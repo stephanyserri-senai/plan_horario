@@ -535,3 +535,17 @@ button.chip-status { cursor: pointer; } .chip-status.alerta { background: #fff3d
 .tag-presenca.vazio { background: var(--fundo); color: var(--mudo); border: 1px solid var(--borda); }
 .txt-alerta { color: var(--alerta); font-weight: 700; }
 .grade td.soltar { outline: 2px dashed var(--primaria); outline-offset: -3px; background: color-mix(in srgb, var(--primaria) 8%, var(--superficie)); }
+
+/* relatórios e importação */
+.rel-topo { display: grid; grid-template-columns: 1fr minmax(260px, 340px); gap: 16px; align-items: start; }
+.rel-topo h2 { margin: 0 0 2px; }
+.rel-pacote { border: 1px solid var(--borda); border-radius: 12px; padding: 12px 14px; background: var(--info-bg); }
+.rel-pacote .sub { margin: 2px 0 8px; }
+.rel-botoes { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+.rel-semana { display: inline-flex; align-items: center; gap: 6px; font-size: .88rem; }
+.exp-acoes { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.passos { list-style: none; padding: 0; margin: 4px 0 14px; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+.passos li { display: flex; gap: 10px; align-items: flex-start; background: var(--superficie); border: 1px solid var(--borda); border-radius: 12px; padding: 12px; }
+.passos li > span { flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%; background: var(--primaria); color: var(--primaria-txt); display: flex; align-items: center; justify-content: center; font-weight: 700; }
+.passos small { display: block; color: var(--mudo); margin-top: 2px; }
+@media (max-width: 760px) { .rel-topo { grid-template-columns: 1fr; } }

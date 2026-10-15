@@ -55,7 +55,8 @@ def _cab(ws, linha: int, titulos: list[str], larguras: list[int] | None = None):
 
 def _titulo(ws, titulo: str, subtitulo: str | None = None):
     ws["A1"] = titulo
-    ws["A1"].font = Font(name=FONTE, bold=True, size=13)
+    ws["A1"].font = Font(name=FONTE, bold=True, size=14, color="1F4E79")
+    ws.row_dimensions[1].height = 22
     if subtitulo:
         ws["A2"] = subtitulo
         ws["A2"].font = Font(name=FONTE, size=9, italic=True, color="595959")
@@ -76,8 +77,17 @@ def _tabela(ws, linha: int, cols: list[tuple[str, str, int]], dados: list[dict])
 
 
 def _salvar(wb: Workbook) -> bytes:
+    from openpyxl.worksheet.properties import PageSetupProperties
     if len(wb.sheetnames) > 1 and not wb.worksheets[0].max_row:
         wb.remove(wb.worksheets[0])
+    for ws in wb.worksheets:  # leitura e impressão: sem linhas de grade, paisagem, cabe na largura, página numerada
+        ws.sheet_view.showGridLines = False
+        ws.page_setup.orientation = "landscape"
+        ws.page_setup.paperSize = ws.PAPERSIZE_A4
+        ws.sheet_properties.pageSetUpPr = PageSetupProperties(fitToPage=True)
+        ws.page_setup.fitToWidth, ws.page_setup.fitToHeight = 1, 0
+        ws.oddFooter.center.text = "Página &P de &N"
+        ws.oddFooter.right.text = exportacao.INSTITUICAO
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()

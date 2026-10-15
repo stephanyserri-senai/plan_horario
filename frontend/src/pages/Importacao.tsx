@@ -13,6 +13,26 @@ const TIPOS: [string, string][] = [
   ["competencias", "Somente competências"], ["disponibilidade_instrutores", "Somente disponibilidade de instrutores"], ["unidades", "Dados complementares das unidades"],
 ];
 const NOME_TIPO = Object.fromEntries(TIPOS);
+const ACOES: Record<string, string> = { criar: "Novo", atualizar: "Atualizado", sem_alteracao: "Sem alteração", erro: "Com erro" };
+const SIGLAS: Record<string, string> = { uc: "UC", ucs: "UCs", ch: "CH", id: "ID", h: "(h)", pct: "(%)", nr: "NR" };
+const CAMPOS: Record<string, string> = {
+  codigo: "Código", nome: "Nome", matricula: "Matrícula", email: "E-mail", unidade: "Unidade", unidade_codigo: "Unidade", area: "Área",
+  carga_horaria_contratual: "Carga contratual (h/semana)", limite_ch_letiva: "Limite de aulas por semana (h)", max_horas_dia: "Máximo de horas por dia",
+  turnos: "Turnos de trabalho", dias: "Dias disponíveis", modalidade: "Modalidade", ucs_pleno: "UCs que ministra", ucs_supervisionado: "UCs sob supervisão",
+  certificacoes: "Certificações", areas_competencia: "Formação e especialidades", turma_codigo: "Turma", uc_codigo: "UC", curso_codigo: "Curso",
+  versao: "Versão da matriz", data_inicio: "Data de início", data_fim: "Data de término", data_limite: "Data-limite", ch_realizada: "CH já realizada",
+  qtd_alunos: "Alunos", turno: "Turno", tipo_curso: "Tipo de curso", carga_horaria_total: "Carga horária total",
+};
+/** Nome legível de um campo técnico ("carga_horaria_contratual" → "Carga contratual (h/semana)"). */
+export function rotuloCampo(c: string) {
+  if (CAMPOS[c]) return CAMPOS[c];
+  const t = c.split("_").filter(Boolean).map((p) => SIGLAS[p] || p).join(" ");
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+const MODELOS: [string, string, string][] = [
+  ["estrutura_curricular", "📚", "Cursos, matrizes e UCs"], ["ambientes", "🏫", "Salas e laboratórios"],
+  ["levantamento_instrutores", "👩‍🏫", "Levantamento de instrutores"], ["turmas", "👥", "Turmas"],
+];
 
 export default function ImportarExportar() {
   const { pode } = useApp();
@@ -20,7 +40,7 @@ export default function ImportarExportar() {
   const podeImp = pode("importacao.executar"), podeExp = pode("exportacao.executar");
   const aba = sp.get("aba") || (podeImp ? "importar" : "exportar");
   return (
-    <Pagina titulo="Importar e exportar" descricao="Traga dados por planilha ou baixe a grade, a ocupação e os cadastros prontos em Excel.">
+    <Pagina titulo="Importar e exportar" descricao="Traga dados por planilha ou baixe a grade, a ocupação e os cadastros prontos em Excel e PDF.">
       <Abas abas={[...(podeImp ? [{ id: "importar", rotulo: "⇪ Importar planilha" }] : []), ...(podeExp ? [{ id: "exportar", rotulo: "⬇ Exportar" }] : [])]}
         ativa={aba} mudar={(a) => setSp({ aba: a })} />
       {aba === "importar" && podeImp && <Importacao />}
@@ -60,7 +80,19 @@ function Importacao() {
   const itens = (previa?.itens || []).filter((i: any) => !filtroAcao || i.acao === filtroAcao);
   return (
     <>
-      <p className="sub">Baixe o modelo, preencha e envie. O sistema reconhece as colunas, mostra uma prévia com o que será criado ou atualizado e só grava quando você confirmar.</p>
+      <ol className="passos">
+        <li><span>1</span><div><b>Baixe o modelo</b><small>Cada modelo traz instruções, listas de opções e uma linha de exemplo.</small></div></li>
+        <li><span>2</span><div><b>Preencha no Excel</b><small>Uma linha por registro; as colunas obrigatórias estão marcadas.</small></div></li>
+        <li><span>3</span><div><b>Envie e confira</b><small>A prévia mostra o que será criado ou atualizado; nada é gravado sem a sua confirmação.</small></div></li>
+      </ol>
+      <section className="card">
+        <h2>Modelos de planilha</h2>
+        <div className="exp-grid">{MODELOS.map(([t, ic, r]) => (
+          <div key={t} className="exp-cartao"><div className="exp-ico" aria-hidden="true">{ic}</div>
+            <div className="exp-corpo"><b>{r}</b><div className="exp-acoes">
+              <button className="btn" onClick={() => baixar(`/api/importacao/modelo/${t}`, `modelo_${t}.xlsx`)}>⬇ Baixar modelo</button></div></div></div>))}
+        </div>
+      </section>
       <Card titulo="1. Selecionar arquivo">
         <div className="form-grid">
           <Campo rotulo="Arquivo (.xlsx, .csv)" ajuda={auth ? `Tamanho máximo: ${auth.limite_upload_mb} MB` : undefined}><input type="file" accept=".xlsx,.xlsm,.csv,.txt" onChange={(e) => setArquivo(e.target.files?.[0] || null)} /></Campo>
@@ -77,15 +109,15 @@ function Importacao() {
           {previa.arquivo_ja_processado && <p className="aviso-inline"><Badge tipo="alerta">Arquivo já importado</Badge> Este arquivo (mesmo conteúdo) foi confirmado na importação #{previa.arquivo_ja_processado.importacao_id}. Registros existentes serão reconhecidos pela chave e não duplicados.</p>}
           {previa.planilhas.length > 1 && <Campo rotulo="Planilha"><select value={previa.planilha} onChange={(e) => remapear({ planilha: e.target.value })}>{previa.planilhas.map((p: string) => <option key={p}>{p}</option>)}</select></Campo>}
           <div className="form-grid">{Object.entries(previa.campos).map(([campo, info]: any) => (
-            <Campo key={campo} rotulo={campo} obrigatorio={info.obrigatorio}><select value={mapa[campo] ?? ""} onChange={(e) => setMapa({ ...mapa, [campo]: e.target.value || null })}>
+            <Campo key={campo} rotulo={rotuloCampo(campo)} obrigatorio={info.obrigatorio}><select value={mapa[campo] ?? ""} onChange={(e) => setMapa({ ...mapa, [campo]: e.target.value || null })}>
               <option value="">(não importar)</option>{previa.cabecalhos.map((c: string) => <option key={c}>{c}</option>)}</select></Campo>))}</div>
           <button className="btn" onClick={() => remapear()}>Aplicar mapeamento e revalidar</button>
         </Card>
         <Card titulo="3. Prévia e validação">
-          <p>{Object.entries(previa.resumo).map(([k, v]) => <Badge key={k} tipo={k === "erro" ? "bloqueio" : k === "criar" ? "ok" : "info"}>{k}: {String(v)}</Badge>)}</p>
-          <select aria-label="Filtrar ação" value={filtroAcao} onChange={(e) => setFiltroAcao(e.target.value)}><option value="">Todas as linhas</option>{["criar", "atualizar", "sem_alteracao", "erro"].map((a) => <option key={a}>{a}</option>)}</select>
-          <Tabela colunas={[{ chave: "linha", rotulo: "Linha" }, { chave: "acao", rotulo: "Ação", render: (i: any) => <Badge tipo={i.acao === "erro" ? "bloqueio" : i.acao === "criar" ? "ok" : "info"}>{i.acao}</Badge> },
-            { chave: "valores", rotulo: "Valores", render: (i: any) => <small>{Object.entries(i.valores).filter(([, v]) => v != null).map(([k, v]) => `${k}=${v}`).join(" · ")}</small> },
+          <p>{Object.entries(previa.resumo).map(([k, v]) => <Badge key={k} tipo={k === "erro" ? "bloqueio" : k === "criar" ? "ok" : "info"}>{ACOES[k] || rotuloCampo(k)}: {String(v)}</Badge>)}</p>
+          <select aria-label="Filtrar ação" value={filtroAcao} onChange={(e) => setFiltroAcao(e.target.value)}><option value="">Todas as linhas</option>{["criar", "atualizar", "sem_alteracao", "erro"].map((a) => <option key={a} value={a}>{ACOES[a]}</option>)}</select>
+          <Tabela colunas={[{ chave: "linha", rotulo: "Linha" }, { chave: "acao", rotulo: "Ação", render: (i: any) => <Badge tipo={i.acao === "erro" ? "bloqueio" : i.acao === "criar" ? "ok" : "info"}>{ACOES[i.acao] || i.acao}</Badge> },
+            { chave: "valores", rotulo: "Valores", render: (i: any) => <small>{Object.entries(i.valores).filter(([, v]) => v != null).map(([k, v]) => `${rotuloCampo(k)}: ${v}`).join(" · ")}</small> },
             { chave: "erros", rotulo: "Erros / avisos", render: (i: any) => <small>{[...i.erros, ...i.avisos].join("; ")}</small> }]} linhas={itens.slice(0, 500)} chave={(i) => i.linha} />
           <p className="sub">Corrija o arquivo e gere nova prévia, ajuste o mapeamento, ou confirme ignorando as linhas com erro (elas constarão no relatório).</p>
           <div className="acoes"><button className="btn btn-primario" disabled={previa.resumo.erro > 0} onClick={() => confirmar(false)}>Confirmar importação</button>
@@ -96,9 +128,9 @@ function Importacao() {
       {rel && <Card titulo="Resultado"><p>Criados: {rel.criados} · Atualizados: {rel.atualizados} · Sem alteração: {rel.sem_alteracao} · Ignorados por erro: {rel.ignorados_por_erro}</p>
         {rel.aulas_bloqueadas?.length > 0 && <><h3>Aulas bloqueadas pela validação</h3><ul>{rel.aulas_bloqueadas.map((b: any, i: number) => <li key={i}>Linha {b.linha}: {b.motivo} {(b.ocorrencias || []).map((o: any) => o.descricao).join("; ")}</li>)}</ul></>}</Card>}
       <Card titulo="Histórico de importações">
-        <Tabela colunas={[{ chave: "id", rotulo: "#" }, { chave: "arquivo", rotulo: "Arquivo" }, { chave: "tipo", rotulo: "Tipo" }, { chave: "status", rotulo: "Status" },
+        <Tabela colunas={[{ chave: "id", rotulo: "#" }, { chave: "arquivo", rotulo: "Arquivo" }, { chave: "tipo", rotulo: "Tipo", render: (i: any) => NOME_TIPO[i.tipo] || i.tipo }, { chave: "status", rotulo: "Situação" },
           { chave: "criado_em", rotulo: "Enviado", render: (i: any) => new Date(i.criado_em).toLocaleString("pt-BR") }, { chave: "hash", rotulo: "SHA-256", render: (i: any) => <code>{i.hash.slice(0, 12)}…</code> },
-          { chave: "r", rotulo: "Relatório", render: (i: any) => <button className="btn-link" onClick={() => baixar(`/api/importacao/${i.id}/relatorio?formato=xlsx`, `importacao_${i.id}.xlsx`)}>XLSX</button> }]}
+          { chave: "r", rotulo: "Relatório", render: (i: any) => <>{["xlsx", "pdf"].map((f) => <button key={f} className="btn-link" onClick={() => baixar(`/api/importacao/${i.id}/relatorio?formato=${f}`, `importacao_${i.id}.${f}`)}>{f === "xlsx" ? "Excel" : "PDF"}</button>)}</> }]}
           linhas={hist.dados || []} />
       </Card>
     </>
