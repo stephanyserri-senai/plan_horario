@@ -72,6 +72,8 @@ function CartaoGrade({ base, semanaInicial }: { base: Record<string, any>; seman
   const [tipo, setTipo] = useState("");
   const [fid, setFid] = useState("");
   const [semana, setSemana] = useState(semanaInicial);
+  const [per, setPer] = useState("semana");
+  const [mes, setMes] = useState(semanaInicial.slice(0, 7));
   const ops = useOpcoes(ENT[tipo]);
   const filtro = tipo && fid ? { filtro: tipo, filtro_id: fid } : {};
   return (
@@ -93,12 +95,19 @@ function CartaoGrade({ base, semanaInicial }: { base: Record<string, any>; seman
       <div className="exp-cartao">
         <div className="exp-ico" aria-hidden="true">🗓️</div>
         <div className="exp-corpo">
-          <b>Grade de uma semana</b>
-          <p>Quadro horário × dia. No Excel, uma aba com todas as turmas e uma aba para cada turma; o PDF traz o quadro geral.</p>
+          <b>Grade horária (quadro)</b>
+          <p>Quadro horário × dia de uma semana, de um mês ou do semestre inteiro (semana a semana). No Excel, uma aba com todas as turmas
+            e uma aba para cada turma; o PDF traz o quadro geral.</p>
           <div className="exp-acoes">
-            <label className="rel-semana">Semana de <input type="date" value={semana} onChange={(e) => setSemana(e.target.value)} /></label>
-            <Botoes desabilitado={!semana || (!!tipo && !fid)}
-              gerar={(f) => baixar(`/api/exportar/grade${qs({ cenario_id: base.cenario_id, ...filtro, semana, formato: f })}`, `grade_semana.${f}`)} />
+            <select aria-label="Período da grade" value={per} onChange={(e) => setPer(e.target.value)}>
+              <option value="semana">Uma semana</option><option value="mes">Um mês</option><option value="semestre">Semestre inteiro</option></select>
+            {per === "semana" && <label className="rel-semana">Semana de <input type="date" value={semana} onChange={(e) => setSemana(e.target.value)} /></label>}
+            {per === "mes" && <label className="rel-semana">Mês <input type="month" value={mes} onChange={(e) => setMes(e.target.value)} /></label>}
+          </div>
+          <div className="exp-acoes">
+            <Botoes desabilitado={(per === "semana" && !semana) || (per === "mes" && !mes) || (!!tipo && !fid)}
+              gerar={(f) => baixar(`/api/exportar/grade${qs({ cenario_id: base.cenario_id, ...filtro, periodo: per, semana: per === "semana" ? semana : undefined,
+                mes: per === "mes" ? mes : undefined, formato: f })}`, `grade_${per === "mes" ? mes.replace("-", "_") : per}.${f}`)} />
           </div>
           {tipo && <p className="mudo">Usa o mesmo recorte da lista de aulas ({TIPOS_GRADE.find((t) => t[0] === tipo)?.[1].toLowerCase()}).</p>}
         </div>

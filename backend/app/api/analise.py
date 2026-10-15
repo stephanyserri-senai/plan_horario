@@ -288,35 +288,60 @@ def _rotulo_filtro(db, filtro, filtro_id) -> str | None:
 
 @router.get("/exportar/grade")
 def exportar_grade(cenario_id: int, formato: str = "xlsx", filtro: str | None = None, filtro_id: int | None = None, inicio: date | None = None,
-                   fim: date | None = None, semana: date | None = None, ctx: Contexto = Depends(requer("exportacao.executar")), db: Session = Depends(get_db)):
+                   fim: date | None = None, semana: date | None = None, periodo: str | None = None, mes: str | None = None,
+                   ctx: Contexto = Depends(requer("exportacao.executar")), db: Session = Depends(get_db)):
+    """Lista de aulas; com `semana` ou `periodo` (semana | mes | semestre), o quadro horário × dia."""
+    if periodo == "semana" and not semana:
+        raise EntradaInvalida("Escolha a semana.")
+    if periodo == "mes":
+        try:
+            ano, m = (int(x) for x in (mes or "").split("-")[:2])
+            inicio = date(ano, m, 1)
+            fim = date(ano + (m == 12), m % 12 + 1, 1) - timedelta(days=1)
+        except ValueError:
+            raise EntradaInvalida("Escolha o mês (AAAA-MM).")
+    elif periodo == "semestre":
+        inicio, fim = _periodo(db, cenario_id, None, None)
+    elif semana:
+        periodo = "semana"
+        inicio = semana - timedelta(days=semana.weekday())
+        fim = inicio + timedelta(days=6)
     linhas = exportacao.linhas_grade(db, cenario_id, filtro, filtro_id, inicio, fim, ctx.unidades)
     rot = _rotulo_filtro(db, filtro, filtro_id)
-    titulo = "Lista de aulas" + (f" – {rot}" if rot else "")
-    auditoria.registrar(db, ctx, "exportacao.grade", "cenarios_planejamento", cenario_id, depois={"formato": formato, "filtro": filtro, "filtro_id": filtro_id})
+    auditoria.registrar(db, ctx, "exportacao.grade", "cenarios_planejamento", cenario_id,
+                        depois={"formato": formato, "filtro": filtro, "filtro_id": filtro_id, "periodo": periodo})
     db.commit()
-    if semana:
-        matriz = exportacao.matriz_semanal(linhas, semana)
-        titulo = "Grade da semana" + (f" – {rot}" if rot else "")
-        meta = _meta(db, ctx, cenario_id, semana, semana + timedelta(days=5), rot)
-        if formato == "pdf":
-            return Response(exportacao.para_pdf(titulo, matriz, meta=meta, aba="semana"), media_type="application/pdf",
-                            headers={"Content-Disposition": 'attachment; filename="grade_semana.pdf"'})
-        if formato != "xlsx":
-            return _arquivo(matriz, formato, "grade_semana", titulo, aba="semana", meta=meta)
-        # planilha: visão geral da semana + uma aba por turma + a lista das aulas
-        seg = semana - timedelta(days=semana.weekday())
-        da_semana = [l for l in linhas if seg <= l["_data"] < seg + timedelta(days=7)]
-        abas, tipos, titulos = {"Semana (todas as turmas)": matriz}, {"Semana (todas as turmas)": "semana"}, {}
-        nomes_turma = {l["turma"]: l["turma"] for l in da_semana}
-        for turma in sorted(nomes_turma):
-            abas[turma] = exportacao.matriz_semanal([l for l in da_semana if l["turma"] == turma], semana, sem_turma=True)
-            tipos[turma], titulos[turma] = "semana", f"Grade da semana – turma {turma}"
-        abas["Aulas da semana"], tipos["Aulas da semana"] = da_semana, "grade"
-        return Response(exportacao.para_xlsx(abas, titulo, meta, tipos, titulos), media_type=XLSX_MIME,
-                        headers={"Content-Disposition": 'attachment; filename="grade_semana.xlsx"'})
-    d = [l["_data"] for l in linhas]
-    return _arquivo(linhas, formato, "aulas", titulo, aba="grade",
-                    meta=_meta(db, ctx, cenario_id, inicio or (min(d) if d else None), fim or (max(d) if d else None), rot))
+    if not periodo:
+        d = [l["_data"] for l in linhas]
+        return _arquivo(linhas, formato, "aulas", "Lista de aulas" + (f" – {rot}" if rot else ""), aba="grade",
+                        meta=_meta(db, ctx, cenario_id, inicio or (min(d) if d else None), fim or (max(d) if d else None), rot))
+    # quadro horário × dia: uma semana, um mês (semana a semana) ou o semestre inteiro
+    MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"]
+    nome_per = {"semana": f"semana de {inicio:%d/%m/%Y}", "mes": f"{MESES[inicio.month - 1]} de {inicio.year}", "semestre": "semestre inteiro"}[periodo]
+    titulo = f"Grade horária – {nome_per}" + (f" – {rot}" if rot else "")
+    arq = {"semana": "grade_semana", "mes": f"grade_{inicio:%Y_%m}", "semestre": "grade_semestre"}[periodo]
+    fim_vis = inicio + timedelta(days=5) if periodo == "semana" else fim
+    meta = _meta(db, ctx, cenario_id, inicio, fim_vis, rot)
+    if periodo == "semana":
+        geral, tipo = exportacao.matriz_semanal(linhas, inicio), "semana"
+        por_turma = lambda ls: exportacao.matriz_semanal(ls, inicio, sem_turma=True)
+    else:
+        geral, tipo = exportacao.matriz_periodo(linhas, inicio, fim), "periodo"
+        por_turma = lambda ls: exportacao.matriz_periodo(ls, inicio, fim, sem_turma=True)
+    if formato == "pdf":
+        return Response(exportacao.para_pdf(titulo, geral, meta=meta, aba=tipo), media_type="application/pdf",
+                        headers={"Content-Disposition": f'attachment; filename="{arq}.pdf"'})
+    if formato != "xlsx":
+        raise EntradaInvalida("Formato inválido: use xlsx ou pdf.")
+    # planilha: visão geral + uma aba por turma + a lista das aulas do período
+    nome_geral = "Todas as turmas"
+    abas, tipos, titulos = {nome_geral: geral}, {nome_geral: tipo}, {}
+    for turma in sorted({l["turma"] for l in linhas}):
+        abas[turma] = por_turma([l for l in linhas if l["turma"] == turma])
+        tipos[turma], titulos[turma] = tipo, f"Grade horária – {nome_per} – turma {turma}"
+    abas["Lista de aulas"], tipos["Lista de aulas"] = linhas, "grade"
+    return Response(exportacao.para_xlsx(abas, titulo, meta, tipos, titulos), media_type=XLSX_MIME,
+                    headers={"Content-Disposition": f'attachment; filename="{arq}.xlsx"'})
 
 
 TITULOS_INDICADORES = {"ambientes": "Ocupação das salas e laboratórios", "instrutores": "Ocupação e carga horária dos instrutores",
@@ -414,14 +439,14 @@ def exportar_pacote(cenario_id: int, formato: str = "xlsx", inicio: date | None 
     if any(f not in ("xlsx", "pdf") for f in formatos):
         raise EntradaInvalida("Formato inválido: use xlsx, pdf ou ambos.")
     geradores = [
-        ("01_horario_turmas", lambda f: exportar_horario_turmas(cenario_id, None, f, ctx, db)),
-        ("02_agenda_instrutores", lambda f: exportar_agenda_instrutores(cenario_id, None, inicio, fim, f, ctx, db)),
-        ("03_salas_e_laboratorios", lambda f: exportar_uso_ambientes(cenario_id, None, inicio, fim, f, ctx, db)),
-        ("04_lista_de_aulas", lambda f: exportar_grade(cenario_id, f, None, None, inicio, fim, None, ctx, db)),
-        ("05_carga_horaria_turmas_ucs", lambda f: exportar_indicadores("turmas", cenario_id, f, inicio, fim, ctx, db)),
-        ("06_ocupacao_salas", lambda f: exportar_indicadores("ambientes", cenario_id, f, inicio, fim, ctx, db)),
-        ("07_ocupacao_instrutores", lambda f: exportar_indicadores("instrutores", cenario_id, f, inicio, fim, ctx, db)),
-        ("08_gargalos", lambda f: exportar_indicadores("gargalos", cenario_id, f, inicio, fim, ctx, db)),
+        ("01_horario_turmas", lambda f: exportar_horario_turmas(cenario_id, None, formato=f, ctx=ctx, db=db)),
+        ("02_agenda_instrutores", lambda f: exportar_agenda_instrutores(cenario_id, None, inicio, fim, formato=f, ctx=ctx, db=db)),
+        ("03_salas_e_laboratorios", lambda f: exportar_uso_ambientes(cenario_id, None, inicio, fim, formato=f, ctx=ctx, db=db)),
+        ("04_lista_de_aulas", lambda f: exportar_grade(cenario_id, f, inicio=inicio, fim=fim, ctx=ctx, db=db)),
+        ("05_carga_horaria_turmas_ucs", lambda f: exportar_indicadores("turmas", cenario_id, f, inicio, fim, ctx=ctx, db=db)),
+        ("06_ocupacao_salas", lambda f: exportar_indicadores("ambientes", cenario_id, f, inicio, fim, ctx=ctx, db=db)),
+        ("07_ocupacao_instrutores", lambda f: exportar_indicadores("instrutores", cenario_id, f, inicio, fim, ctx=ctx, db=db)),
+        ("08_gargalos", lambda f: exportar_indicadores("gargalos", cenario_id, f, inicio, fim, ctx=ctx, db=db)),
     ]
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:

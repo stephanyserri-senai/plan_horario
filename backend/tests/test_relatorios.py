@@ -34,8 +34,19 @@ def test_relatorios_excel_pdf_e_pacote(db, mundo):
     assert not any("_" in t and t.islower() for t in textos), textos  # nada de nome técnico
     # grade da semana: visão geral + uma aba por turma + lista
     wb = load_workbook(io.BytesIO(c.get(f"/api/exportar/grade?cenario_id={cid}&semana={SEG}&formato=xlsx", headers=h).content))
-    assert wb.sheetnames[0] == "Semana (todas as turmas)" and wb.sheetnames[-1] == "Aulas da semana"
+    assert wb.sheetnames[0] == "Todas as turmas" and wb.sheetnames[-1] == "Lista de aulas"
     assert {m.t1.codigo, m.t2.codigo} <= set(wb.sheetnames)
+    # mês e semestre: quadro semana a semana (coluna Semana + Horário + dias), também por turma
+    for extra in (f"periodo=mes&mes={SEG:%Y-%m}", "periodo=semestre"):
+        for f in ("xlsx", "pdf"):
+            r = c.get(f"/api/exportar/grade?cenario_id={cid}&{extra}&formato={f}", headers=h)
+            assert r.status_code == 200, (extra, f, r.text[:300])
+        wb = load_workbook(io.BytesIO(c.get(f"/api/exportar/grade?cenario_id={cid}&{extra}&formato=xlsx", headers=h).content))
+        ws = wb[m.t1.codigo]
+        cab = [v for row in ws.iter_rows(max_row=12, values_only=True) for v in row if v]
+        assert "Semana" in cab and "Horário" in cab and "Segunda" in cab, cab
+        assert ws.max_row > 12  # várias semanas
+    assert c.get(f"/api/exportar/grade?cenario_id={cid}&periodo=mes&mes=xx&formato=xlsx", headers=h).status_code in (400, 422)
     # todos de uma vez
     r = c.get(f"/api/exportar/pacote?cenario_id={cid}&formato=ambos", headers=h)
     assert r.status_code == 200

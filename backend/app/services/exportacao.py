@@ -112,6 +112,7 @@ COLUNAS: dict[str, list[tuple[str, str, int, bool]]] = {
                  ("oferta_h", "Oferta (h/sem)", 11, True), ("atendivel_h", "Atendível (h/sem)", 11, False), ("deficit_h", "Falta (h/sem)", 10, True),
                  ("descricao", "Descrição", 60, True), ("alternativas", "O que fazer", 50, True), ("instrutores_habilitados", "Instrutores habilitados", 30, False)],
     "semana": [("horario", "Horário", 16, True)] + [(d, d, 30, True) for d in DIAS[:6]],
+    "periodo": [("semana", "Semana", 14, True), ("horario", "Horário", 13, True)] + [(d, d, 30, True) for d in DIAS[:6]],
     "importacao": [("linha", "Linha", 8, True), ("acao", "Resultado", 22, True), ("erros", "Erros", 60, True), ("avisos", "Avisos", 50, True)],
 }
 NOMES_ABA = {"dados": "Dados", "ambientes": "Salas e laboratórios", "por_turno": "Por turno", "por_dia": "Por dia da semana",
@@ -263,6 +264,23 @@ def matriz_semanal(linhas: list[dict], semana: date, sem_turma: bool = False) ->
     dias = [k for k in range(6) if k < 5 or any(dk == k for (_h, dk) in cel)]  # sábado só se houver aula
     sep = "\n\n" if sem_turma else "\n"
     return [{"horario": h, **{DIAS[k]: sep.join(cel.get((h, k), [])) for k in dias}} for h in sorted(horarios)]
+
+
+def matriz_periodo(linhas: list[dict], d0: date, d1: date, sem_turma: bool = False) -> list[dict]:
+    """Quadro horário × dia semana após semana (mês ou semestre): cada linha leva a semana e o horário."""
+    linhas = [l for l in linhas if d0 <= l["_data"] <= d1]
+    usa_sab = any(l["_data"].weekday() == 5 for l in linhas)
+    res, seg = [], d0 - timedelta(days=d0.weekday())
+    while seg <= d1:
+        da_semana = [l for l in linhas if seg <= l["_data"] < seg + timedelta(days=7)]
+        if da_semana:
+            rot = f"{max(seg, d0):%d/%m} a {min(seg + timedelta(days=5 if usa_sab else 4), d1):%d/%m}"
+            for r in matriz_semanal(da_semana, seg, sem_turma):
+                if usa_sab:
+                    r.setdefault(DIAS[5], "")
+                res.append({"semana": rot, **r})
+        seg += timedelta(days=7)
+    return res
 
 
 def para_pdf(titulo: str, linhas: list[dict] | None = None, subtitulo: str | None = None, max_linhas: int = 3000,
