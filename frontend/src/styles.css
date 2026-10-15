@@ -489,3 +489,13 @@ button.chip-status { cursor: pointer; } .chip-status.alerta { background: #fff3d
 .lista-notif li > div:nth-child(2) { flex: 1; min-width: 0; } .lista-notif p { margin: 2px 0; }
 .notif-ico { font-size: 1.2rem; width: 28px; text-align: center; }
 .notif-acoes { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+
+/* Grade: unidade e visão geral */
+.seletor-unidade { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+.seletor-unidade button { border: 1px solid var(--borda); background: var(--superficie); border-radius: 999px; padding: 6px 14px; cursor: pointer; font-weight: 600; }
+.seletor-unidade button small { font-weight: 400; color: var(--mudo); }
+.seletor-unidade button.ativo { background: var(--primaria); border-color: var(--primaria); color: var(--primaria-txt); }
+.seletor-unidade button.ativo small { color: inherit; opacity: .85; }
+.grade-geral td { vertical-align: top; padding: 4px; }
+.aulas-turno { display: flex; flex-direction: column; gap: 4px; }
+.grade-geral .aula { height: 58px; min-height: 58px; overflow: hidden; width: 100%; }

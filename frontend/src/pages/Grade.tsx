@@ -14,7 +14,7 @@ type Aula = { unidade_id?: number; id: number; versao: number; data: string; ini
 type Periodo = { id: number; turno_id: number; turno: string; ordem: number; inicio: string; fim: string; dias_semana: number[]; excepcional: boolean };
 
 const MODOS = [{ id: "turma", rotulo: "Por turma" }, { id: "instrutor", rotulo: "Por instrutor" }, { id: "ambiente", rotulo: "Por ambiente" },
-  { id: "turno", rotulo: "Por turno" }, { id: "curso", rotulo: "Por curso" }, { id: "unidade", rotulo: "Por unidade" }];
+  { id: "turno", rotulo: "Por turno" }, { id: "curso", rotulo: "Por curso" }];
 const ENT: Record<string, string> = { turma: "turmas", instrutor: "instrutores", ambiente: "ambientes", turno: "turnos", curso: "cursos", unidade: "unidades" };
 
 function corDe(id: number) {
@@ -29,7 +29,8 @@ export default function Grade() {
   const [alvo, setAlvo] = useState<string>(sp.get(modoInicial) || "");
   const [q, setQ] = useState("");
   const [semana, setSemana] = useState<Date>(() => segundaDe(cenario?.periodo_inicio ? new Date(cenario.periodo_inicio + "T12:00") : new Date()));
-  const [unidade, setUnidade] = useState<string>("");
+  const [unidade, setUnidadeEstado] = useState<string>(() => { try { return localStorage.getItem("grade_unidade") || ""; } catch { return ""; } });
+  const setUnidade = (u: string) => { setUnidadeEstado(u); try { localStorage.setItem("grade_unidade", u); } catch { /* sem armazenamento */ } };
   const [mostrarLivres, setMostrarLivres] = useState(false);
   const [form, setForm] = useState<any | null>(null);
   const [aulaSel, setAulaSel] = useState<Aula | null>(null);
@@ -37,25 +38,44 @@ export default function Grade() {
   const [substituir, setSubstituir] = useState<{ aula: Aula | null } | null>(null);
   const [versaoSub, setVersaoSub] = useState(0);
   const unidades = useOpcoes("unidades");
-  const opsAlvo = useOpcoes(ENT[modo]);
-  const [unidadeManual, setUnidadeManual] = useState(false);
-  useEffect(() => { setUnidadeManual(false); }, [cenario?.id]);
+  const todasOpcoes = useOpcoes(ENT[modo]) as any[];
+  // as listas de turma, instrutor, sala, turno e curso mostram só o que é da unidade escolhida
+  const opsAlvo = todasOpcoes.filter((o) => !unidade || o.unidade_id == null || String(o.unidade_id) === unidade);
   useEffect(() => { if (cenario?.periodo_inicio) setSemana(segundaDe(new Date(cenario.periodo_inicio + "T12:00"))); }, [cenario?.id]);
+  // unidade inicial: a do semestre; senão a última usada; senão a primeira
+  useEffect(() => {
+    if (!unidades.length) return;
+    const doCenario = (cenario as any)?.unidade_id ? String((cenario as any).unidade_id) : "";
+    const valida = (u: string) => unidades.some((x) => String(x.id) === u);
+    const escolhida = doCenario || (valida(unidade) ? unidade : String(unidades[0].id));
+    if (escolhida !== unidade) setUnidade(escolhida);
+  }, [unidades, cenario?.id]);
+  // escolheu (ou abriu pelo link) uma turma/instrutor/sala de outra unidade: muda a unidade junto
+  useEffect(() => {
+    if (!alvo) return;
+    const o = todasOpcoes.find((x) => String(x.id) === String(alvo));
+    if (o?.unidade_id && String(o.unidade_id) !== unidade) setUnidade(String(o.unidade_id));
+  }, [alvo, todasOpcoes]);
+  const trocarUnidade = (u: string) => {
+    if (u === unidade) return;
+    const o = todasOpcoes.find((x) => String(x.id) === String(alvo));
+    if (alvo && o?.unidade_id && String(o.unidade_id) !== u) { setAlvo(""); setSp({}); }
+    setUnidade(u);
+  };
 
   const fimSemana = addDias(semana, 6);
-  const filtro: any = { cenario_id: cenario?.id, inicio: iso(semana), fim: iso(fimSemana), q };
+  const filtro: any = { cenario_id: cenario?.id, inicio: iso(semana), fim: iso(fimSemana), q, unidade_id: unidade };
   if (alvo) filtro[`${modo}_id`] = alvo;
-  const aulas = useCarregar<Aula[]>(() => cenario ? api.get(`/api/grade${qs(filtro)}`) : Promise.resolve([]), [cenario?.id, modo, alvo, iso(semana), q]);
-  // Unidade da grade de horários escolhida automaticamente (a menos que o usuário escolha):
-  // unidade do cenário → unidade das aulas exibidas → primeira unidade cadastrada.
-  useEffect(() => {
-    if (unidadeManual || !unidades.length) return;
-    const contagem: Record<string, number> = {};
-    (aulas.dados || []).forEach((a) => { if (a.unidade_id) contagem[a.unidade_id] = (contagem[a.unidade_id] || 0) + 1; });
-    const daAulas = Object.entries(contagem).sort((x, y) => y[1] - x[1])[0]?.[0];
-    const escolhida = (cenario as any)?.unidade_id ? String((cenario as any).unidade_id) : daAulas || unidade || String(unidades[0].id);
-    if (escolhida !== unidade) setUnidade(escolhida);
-  }, [unidades, aulas.dados, cenario?.id, unidadeManual]);
+  const aulas = useCarregar<Aula[]>(() => cenario && unidade ? api.get(`/api/grade${qs(filtro)}`) : Promise.resolve([]), [cenario?.id, modo, alvo, iso(semana), q, unidade]);
+  // aulas da semana em cada unidade (para os botões de unidade)
+  const contagem = useCarregar<Record<string, number>>(async () => {
+    if (!cenario) return {};
+    const r: Record<string, number> = {};
+    await Promise.all(unidades.map(async (u) => {
+      r[u.id] = (await api.get(`/api/grade${qs({ cenario_id: cenario.id, inicio: iso(semana), fim: iso(fimSemana), unidade_id: u.id })}`)).length;
+    }));
+    return r;
+  }, [cenario?.id, iso(semana), unidades.length, versaoSub]);
   const periodos = useCarregar<Periodo[]>(() => unidade ? api.get(`/api/periodos?unidade_id=${unidade}`) : Promise.resolve([]), [unidade]);
   const livres = useCarregar<any[]>(() => cenario && mostrarLivres && alvo && ["turma", "instrutor", "ambiente"].includes(modo)
     ? api.get(`/api/grade/livres${qs({ cenario_id: cenario.id, semana: iso(semana), [`${modo}_id`]: alvo, unidade_id: unidade })}`) : Promise.resolve([]),
@@ -97,6 +117,36 @@ export default function Grade() {
     }
     return { span, coberta };
   }, [porCelula, linhas, dias, iso(semana)]);
+  // Visão geral (sem turma/instrutor/sala filtrados): uma linha por turno, todas as aulas em cartões do mesmo tamanho.
+  const visaoGeral = !alvo || modo === "turno" || modo === "curso";
+  const turnosLinhas = useMemo(() => {
+    const m = new Map<number, { turno_id: number; turno: string; inicio: string; fim: string; primeiro: Periodo; dias: Set<number> }>();
+    for (const p of linhas) {
+      const t = m.get(p.turno_id);
+      if (!t) m.set(p.turno_id, { turno_id: p.turno_id, turno: p.turno, inicio: p.inicio, fim: p.fim, primeiro: p, dias: new Set(p.dias_semana) });
+      else { t.fim = p.fim > t.fim ? p.fim : t.fim; p.dias_semana.forEach((d) => t.dias.add(d)); }
+    }
+    return [...m.values()];
+  }, [linhas]);
+  const porTurnoDia = useMemo(() => {
+    const m: Record<string, Aula[]> = {};
+    (aulas.dados || []).forEach((a) => {
+      const p = linhas.find((x) => x.inicio === a.inicio) || linhas.find((x) => x.inicio <= a.inicio && a.inicio < x.fim);
+      const k = `${a.data}|${p?.turno_id ?? "fora"}`;
+      (m[k] = m[k] || []).push(a);
+    });
+    Object.values(m).forEach((l) => l.sort((x, y) => x.turma.localeCompare(y.turma) || x.inicio.localeCompare(y.inicio)));
+    return m;
+  }, [aulas.dados, linhas]);
+  const cartao = (a: Aula) => (
+    <button key={a.id} className="aula" style={{ ["--cor" as any]: corDe(a.turma_uc_id) }} draggable={!!editavel && !a.fixa}
+      onDragStart={(e) => e.dataTransfer.setData("text/aula", String(a.id))} onClick={() => setAulaSel(a)}
+      title={`${a.turma} · ${a.uc} ${a.uc_nome} · ${a.instrutor || "sem instrutor"}${a.instrutor_titular ? ` (substituindo ${a.instrutor_titular})` : ""} · ${a.ambiente || "sem ambiente"}`}>
+      <b>{a.turma}{a.grupo ? ` G${a.grupo}` : ""}</b> {a.uc}<br />
+      <small>{a.inicio}–{a.fim} · {a.instrutor_titular && <span title={`substituindo ${a.instrutor_titular}`}>🔁 </span>}{a.instrutor || <i>sem instrutor</i>} · {a.ambiente || <i>sem sala</i>}</small>
+      {a.fixa && <span className="tag-fixa" aria-label="aula fixa"> 📌</span>}
+    </button>
+  );
   const continuacao = (data: string, p: Periodo) => (aulas.dados || []).some((a) => a.data === data && a.inicio < p.inicio && a.fim > p.inicio);
   const livre = (data: string, p: Periodo) => (livres.dados || []).some((l) => l.data === data && l.periodo_id === p.id);
 
@@ -127,12 +177,17 @@ export default function Grade() {
       </>}>
       {!editavel && <AvisoSomenteLeitura />}
       <SubstituicoesEmVigor cenarioId={cenario.id} podeEditar={!!podeSubstituir} versao={versaoSub} mudou={() => aulas.recarregar()} />
+      <div className="seletor-unidade" role="group" aria-label="Unidade">
+        {unidades.map((u) => (
+          <button key={u.id} className={String(u.id) === unidade ? "ativo" : ""} aria-pressed={String(u.id) === unidade} onClick={() => trocarUnidade(String(u.id))}>
+            🏫 {u.rotulo}{contagem.dados && <small> · {contagem.dados[u.id] ?? 0} aula(s) na semana</small>}
+          </button>))}
+      </div>
       <div className="filtros">
-        <select aria-label="Visualização" value={modo} onChange={(e) => { setModo(e.target.value); setAlvo(""); setSp({}); }}>
+        <select aria-label="Visualização" value={modo} onChange={(e) => { setModo(e.target.value); setAlvo(""); setSp({}); setMostrarLivres(false); }}>
           {MODOS.map((m) => <option key={m.id} value={m.id}>{m.rotulo}</option>)}
         </select>
         <Selecao rotulo="Filtrar" valor={alvo} mudar={setAlvo} opcoes={opsAlvo} vazio="(todos)" />
-        <Selecao rotulo="Unidade (grade de períodos)" valor={unidade} mudar={(v) => { setUnidade(v); setUnidadeManual(true); }} opcoes={unidades} vazio="Unidade" />
         <input type="search" aria-label="Pesquisa rápida" placeholder="Pesquisa rápida" value={q} onChange={(e) => setQ(e.target.value)} />
         <button className="btn" aria-label="Semana anterior" onClick={() => setSemana(addDias(semana, -7))}>‹</button>
         <input type="date" aria-label="Semana" value={iso(semana)} onChange={(e) => e.target.value && setSemana(segundaDe(new Date(e.target.value + "T12:00")))} />
@@ -141,52 +196,75 @@ export default function Grade() {
       </div>
       <p className="sub">Semana de {dataBR(iso(semana))} a {dataBR(iso(fimSemana))} · {aulas.dados?.length ?? 0} aula(s)</p>
       {(() => {
-        const outras = (aulas.dados || []).filter((a) => a.unidade_id && String(a.unidade_id) !== unidade);
         const foraDoPeriodo = cenario.periodo_inicio && (iso(fimSemana) < cenario.periodo_inicio || (cenario.periodo_fim && iso(semana) > cenario.periodo_fim));
         return <>
-          {outras.length > 0 && <p className="aviso-inline">{outras.length} aula(s) desta semana são de outra unidade e não aparecem nesta grade.{" "}
-            <button className="btn-link" onClick={() => { setUnidade(String(outras[0].unidade_id)); setUnidadeManual(true); }}>Mostrar a unidade {unidades.find((u) => String(u.id) === String(outras[0].unidade_id))?.rotulo || ""}</button></p>}
           {foraDoPeriodo && <p className="aviso-inline">Esta semana está fora do período do semestre ({dataBR(cenario.periodo_inicio)} a {dataBR(cenario.periodo_fim)}).{" "}
             <button className="btn-link" onClick={() => setSemana(segundaDe(new Date(cenario.periodo_inicio + "T12:00")))}>Ir para a primeira semana</button></p>}
         </>;
       })()}
       {aulas.erro && <div className="erro-box">{aulas.erro}</div>}
       <div className="grade-wrap">
+        {visaoGeral ? (
+          <table className="grade grade-geral">
+            <thead><tr><th>Turno</th>{dias.map((d) => <th key={d}>{DIAS_CURTOS[d]} {dataBR(iso(addDias(semana, d))).slice(0, 5)}</th>)}</tr></thead>
+            <tbody>
+              {turnosLinhas.map((t) => (
+                <tr key={t.turno_id}>
+                  <th className="periodo"><span>{t.turno}</span>{t.inicio}–{t.fim}</th>
+                  {dias.map((d) => {
+                    const data = iso(addDias(semana, d));
+                    const lista = t.dias.has(d) ? porTurnoDia[`${data}|${t.turno_id}`] || [] : [];
+                    return (
+                      <td key={d} className={!t.dias.has(d) ? "indisp" : ""}
+                          onDragOver={(e) => editavel && e.preventDefault()}
+                          onDrop={(e) => { e.preventDefault(); const id = Number(e.dataTransfer.getData("text/aula")); if (id) mover(id, data, t.primeiro); }}
+                          onDoubleClick={() => editavel && setForm({ data, periodo_inicio_id: t.primeiro.id, turma_id: modo === "turma" ? alvo : "" })}>
+                        <div className="aulas-turno">{lista.map(cartao)}</div>
+                        {lista.length === 0 && t.dias.has(d) && <span className="sr">sem aulas</span>}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
         <table className="grade">
-          <thead><tr><th>Período</th>{dias.map((d) => <th key={d}>{DIAS_CURTOS[d]} {dataBR(iso(addDias(semana, d))).slice(0, 5)}</th>)}</tr></thead>
-          <tbody>
-            {linhas.map((p, i) => (
-              <tr key={p.id} className={i > 0 && linhas[i - 1].turno_id !== p.turno_id ? "novo-turno" : ""}>
-                <th className="periodo"><span>{p.turno}</span>{p.ordem}º {p.inicio}–{p.fim}{p.excepcional && <Badge tipo="alerta">excepcional</Badge>}</th>
-                {dias.map((d) => {
-                  const data = iso(addDias(semana, d));
-                  if (coberta.has(`${data}|${i}`)) return null;
-                  const n = span[`${data}|${i}`] || 1;
-                  const lista = p.dias_semana.includes(d) ? porCelula[`${data}|${p.id}`] || [] : [];
-                  const ehLivre = mostrarLivres && livre(data, p);
-                  return (
-                    <td key={d} rowSpan={n} style={n > 1 ? { ["--n" as any]: n } : undefined} className={`${n > 1 ? "bloco" : ""} ${ehLivre ? "livre" : ""} ${!p.dias_semana.includes(d) ? "indisp" : ""}`}
-                        onDragOver={(e) => editavel && e.preventDefault()}
-                        onDrop={(e) => { e.preventDefault(); const id = Number(e.dataTransfer.getData("text/aula")); if (id) mover(id, data, p); }}
-                        onDoubleClick={() => editavel && setForm({ data, periodo_inicio_id: p.id, turma_id: modo === "turma" ? alvo : "", instrutor_id: modo === "instrutor" ? alvo : "", ambiente_id: modo === "ambiente" ? alvo : "" })}>
-                      {lista.map((a) => (
-                        <button key={a.id} className="aula" style={{ ["--cor" as any]: corDe(a.turma_uc_id) }} draggable={!!editavel && !a.fixa}
-                          onDragStart={(e) => e.dataTransfer.setData("text/aula", String(a.id))} onClick={() => setAulaSel(a)}
-                          title={`${a.turma} · ${a.uc} ${a.uc_nome} · ${a.instrutor || "sem instrutor"}${a.instrutor_titular ? ` (substituindo ${a.instrutor_titular})` : ""} · ${a.ambiente || "sem ambiente"}`}>
-                          <b>{a.turma}{a.grupo ? ` G${a.grupo}` : ""}</b> {a.uc}<br />
-                          <small>{a.inicio}–{a.fim} · {a.instrutor_titular && <span title={`substituindo ${a.instrutor_titular}`}>🔁 </span>}{a.instrutor || <i>sem instrutor</i>} · {a.ambiente || <i>sem sala</i>}</small>
-                          {a.fixa && <span className="tag-fixa" aria-label="aula fixa"> 📌</span>}
-                        </button>
-                      ))}
-                      {lista.length === 0 && continuacao(data, p) && <span className="cont" aria-hidden="true">┆</span>}
-                      {ehLivre && lista.length === 0 && <span className="sr">livre</span>}
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+            <thead><tr><th>Período</th>{dias.map((d) => <th key={d}>{DIAS_CURTOS[d]} {dataBR(iso(addDias(semana, d))).slice(0, 5)}</th>)}</tr></thead>
+            <tbody>
+              {linhas.map((p, i) => (
+                <tr key={p.id} className={i > 0 && linhas[i - 1].turno_id !== p.turno_id ? "novo-turno" : ""}>
+                  <th className="periodo"><span>{p.turno}</span>{p.ordem}º {p.inicio}–{p.fim}{p.excepcional && <Badge tipo="alerta">excepcional</Badge>}</th>
+                  {dias.map((d) => {
+                    const data = iso(addDias(semana, d));
+                    if (coberta.has(`${data}|${i}`)) return null;
+                    const n = span[`${data}|${i}`] || 1;
+                    const lista = p.dias_semana.includes(d) ? porCelula[`${data}|${p.id}`] || [] : [];
+                    const ehLivre = mostrarLivres && livre(data, p);
+                    return (
+                      <td key={d} rowSpan={n} style={n > 1 ? { ["--n" as any]: n } : undefined} className={`${n > 1 ? "bloco" : ""} ${ehLivre ? "livre" : ""} ${!p.dias_semana.includes(d) ? "indisp" : ""}`}
+                          onDragOver={(e) => editavel && e.preventDefault()}
+                          onDrop={(e) => { e.preventDefault(); const id = Number(e.dataTransfer.getData("text/aula")); if (id) mover(id, data, p); }}
+                          onDoubleClick={() => editavel && setForm({ data, periodo_inicio_id: p.id, turma_id: modo === "turma" ? alvo : "", instrutor_id: modo === "instrutor" ? alvo : "", ambiente_id: modo === "ambiente" ? alvo : "" })}>
+                        {lista.map((a) => (
+                          <button key={a.id} className="aula" style={{ ["--cor" as any]: corDe(a.turma_uc_id) }} draggable={!!editavel && !a.fixa}
+                            onDragStart={(e) => e.dataTransfer.setData("text/aula", String(a.id))} onClick={() => setAulaSel(a)}
+                            title={`${a.turma} · ${a.uc} ${a.uc_nome} · ${a.instrutor || "sem instrutor"}${a.instrutor_titular ? ` (substituindo ${a.instrutor_titular})` : ""} · ${a.ambiente || "sem ambiente"}`}>
+                            <b>{a.turma}{a.grupo ? ` G${a.grupo}` : ""}</b> {a.uc}<br />
+                            <small>{a.inicio}–{a.fim} · {a.instrutor_titular && <span title={`substituindo ${a.instrutor_titular}`}>🔁 </span>}{a.instrutor || <i>sem instrutor</i>} · {a.ambiente || <i>sem sala</i>}</small>
+                            {a.fixa && <span className="tag-fixa" aria-label="aula fixa"> 📌</span>}
+                          </button>
+                        ))}
+                        {lista.length === 0 && continuacao(data, p) && <span className="cont" aria-hidden="true">┆</span>}
+                        {ehLivre && lista.length === 0 && <span className="sr">livre</span>}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
         {linhas.length === 0 && !periodos.carregando && <div className="vazio-grade">
           <p><b>A unidade selecionada ainda não tem horários de aula cadastrados</b>, por isso a grade não pode ser desenhada.</p>
           <p>Escolha outra unidade no seletor acima ou cadastre os turnos e os horários de cada aula em <Link to="/cadastros/turnos">Cadastros → Turnos e horários</Link>.</p>
