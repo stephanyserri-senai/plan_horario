@@ -73,6 +73,18 @@ def _semanas(d0: date, d1: date) -> int:
     return max(1, math.ceil(((d1 - d0).days + 1) / 7))
 
 
+def _rotulo_turno(db, turnos: dict, t, todos) -> str:
+    """Nome do turno; com mais de uma unidade no resultado, acrescenta a unidade (ex.: "Manhã – Beira Mar")."""
+    if t not in turnos:
+        return str(t)
+    unidades = {turnos[x].unidade_id for x in todos if x in turnos}
+    if len(unidades) <= 1:
+        return turnos[t].nome
+    from app.models import Unidade
+    un = db.get(Unidade, turnos[t].unidade_id)
+    return f"{turnos[t].nome} – {un.nome.removeprefix('Unidade ') if un else turnos[t].unidade_id}"
+
+
 def ocupacao_ambientes(db: Session, cenario_id: int, d0: date, d1: date, unidade_id=None, tipo_ambiente_id=None,
                        ambiente_id=None, turno_id=None, unidades_permitidas=None) -> dict:
     q = select(Ambiente).where(Ambiente.ativo.is_(True))
@@ -185,7 +197,7 @@ def ocupacao_ambientes(db: Session, cenario_id: int, d0: date, d1: date, unidade
             "subutilizados": sum(1 for l in linhas if l["classificacao"] == "subutilizado"),
             "demanda_excessiva": sum(1 for l in linhas if l["classificacao"] == "demanda_excessiva"),
         },
-        "por_turno": [{"turno_id": t, "turno": turnos[t].nome if t in turnos else str(t), "horas_ocupadas": round(v[0] / 60, 1),
+        "por_turno": [{"turno_id": t, "turno": _rotulo_turno(db, turnos, t, por_turno), "horas_ocupadas": round(v[0] / 60, 1),
                        "horas_disponiveis": round(v[1] / 60, 1), "taxa_ocupacao_pct": pct(v)} for t, v in sorted(por_turno.items())],
         "por_dia_semana": [{"dia": DIAS[d], "horas_ocupadas": round(v[0] / 60, 1), "horas_disponiveis": round(v[1] / 60, 1),
                             "taxa_ocupacao_pct": pct(v)} for d, v in sorted(por_dia.items())],

@@ -35,9 +35,13 @@ CONFIGS = {
 
 
 def executar(db, admin_email: str | None = None, admin_senha: str | None = None):
-    if not db.scalar(select(PermissaoPerfil).limit(1)):
-        for perfil, acoes in PADRAO.items():
-            for a in acoes:
+    # Perfis ainda sem configuração recebem as ações padrão. As migrações só acrescentam ações novas
+    # (ex.: 0005), então um perfil que só tem essas ações ainda não foi configurado.
+    acrescentadas_por_migracao = {"observacoes.gerenciar", "portal.instrutor"}
+    for perfil, acoes in PADRAO.items():
+        atuais = set(db.scalars(select(PermissaoPerfil.acao).where(PermissaoPerfil.perfil == perfil)))
+        if atuais <= acrescentadas_por_migracao:
+            for a in set(acoes) - atuais:
                 db.add(PermissaoPerfil(perfil=perfil, acao=a))
     if not db.scalar(select(ParametrosOtimizacao).limit(1)):
         db.add(ParametrosOtimizacao(nome="Padrão", pesos=pesos_padrao(), limite_tempo_s=30, padrao=True))

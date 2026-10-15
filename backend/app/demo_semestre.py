@@ -1,0 +1,302 @@
+"""Semestre completo de demonstração (2026/2, Beira Mar e Porto) para apresentar a plataforma.
+
+Monta cadastros (cursos, UCs, salas e laboratórios, instrutores e turmas das 11 áreas),
+gera a grade com o próprio gerador de horários, publica o semestre, marca como realizadas as
+aulas já passadas, registra uma substituição e observações de instrutores (com notificações).
+
+Só é usado por scripts/gerar_semestre_demo_sql.py, num banco temporário, para produzir
+backend/sql/demo_semestre_completo.sql. Nunca roda no banco real.
+"""
+from __future__ import annotations
+
+from datetime import date, datetime, time
+
+from sqlalchemy import func, select, update
+
+from app.models import (Alocacao, Ambiente, AmbienteArea, Area, Calendario, CalendarioExcecao, CenarioPlanejamento, CompetenciaInstrutor,
+                        Curso, DisponibilidadeInstrutor, HabilitacaoInstrutor, Instrutor, InstrutorArea, MatrizCurricular, ObservacaoInstrutor,
+                        TipoAmbiente, Turma, TurmaUC, Turno, UCTipoAmbiente, Unidade, UnidadeCurricular)
+
+ANO = 2026
+INICIO, FIM = date(ANO, 8, 3), date(ANO, 12, 18)
+FERIADOS = [(date(ANO, 9, 7), "Independência do Brasil"), (date(ANO, 10, 12), "Nossa Senhora Aparecida"),
+            (date(ANO, 11, 2), "Finados"), (date(ANO, 11, 20), "Dia da Consciência Negra")]
+HOJE_DEMO = date(ANO, 10, 16)  # aulas antes desta data aparecem como realizadas
+
+TIPOS = [  # código, nome, especializado
+    ("SALA", "Sala de aula", False), ("INFO", "Laboratório de informática", True), ("CMD", "Laboratório de comandos elétricos", True),
+    ("ELN", "Laboratório de eletrônica", True), ("CLP", "Laboratório de automação e CLP", True), ("HP", "Laboratório de hidráulica e pneumática", True),
+    ("INS", "Laboratório de instrumentação", True), ("OMEC", "Oficina mecânica", True), ("OAUT", "Oficina automotiva", True),
+    ("LLOG", "Laboratório de logística (armazém simulado)", True), ("CRI", "Estúdio de economia criativa", True),
+]
+
+# unidade, código, nome, tipo, áreas (lista ou "TODAS"), lugares, alunos recomendados, bloco
+AMBIENTES = [
+    ("BEIRA-MAR", "BM-S101", "Sala 101", "SALA", "TODAS", 40, 36, "Bloco A"),
+    ("BEIRA-MAR", "BM-S102", "Sala 102", "SALA", "TODAS", 40, 36, "Bloco A"),
+    ("BEIRA-MAR", "BM-S103", "Sala 103", "SALA", "TODAS", 40, 36, "Bloco A"),
+    ("BEIRA-MAR", "BM-S104", "Sala 104", "SALA", "TODAS", 36, 32, "Bloco A"),
+    ("BEIRA-MAR", "BM-LINF1", "Laboratório de Informática 1", "INFO", "TODAS", 32, 32, "Bloco B"),
+    ("BEIRA-MAR", "BM-LCMD", "Laboratório de Comandos Elétricos", "CMD", ["ENERGIAS", "AUTOMACAO"], 32, 30, "Bloco C"),
+    ("BEIRA-MAR", "BM-LELN", "Laboratório de Eletrônica", "ELN", ["ENERGIAS", "AUTOMACAO", "MECATRONICA", "INSTRUMENTACAO", "AUTOMOTIVA"], 32, 30, "Bloco C"),
+    ("BEIRA-MAR", "BM-LCLP", "Laboratório de Automação e CLP", "CLP", ["AUTOMACAO", "MECATRONICA", "INSTRUMENTACAO"], 32, 30, "Bloco C"),
+    ("BEIRA-MAR", "BM-LHP", "Laboratório de Hidráulica e Pneumática", "HP", ["MECANICA", "MECATRONICA", "AUTOMACAO"], 32, 30, "Bloco D"),
+    ("BEIRA-MAR", "BM-LINS", "Laboratório de Instrumentação", "INS", ["INSTRUMENTACAO", "AUTOMACAO"], 32, 30, "Bloco C"),
+    ("BEIRA-MAR", "BM-OMEC", "Oficina de Usinagem", "OMEC", ["MECANICA", "MECATRONICA"], 32, 28, "Galpão 1"),
+    ("BEIRA-MAR", "BM-OAUT", "Oficina Automotiva", "OAUT", ["AUTOMOTIVA"], 32, 28, "Galpão 2"),
+    ("PORTO", "PT-S201", "Sala 201", "SALA", "TODAS", 40, 36, "Bloco Porto"),
+    ("PORTO", "PT-S202", "Sala 202", "SALA", "TODAS", 40, 36, "Bloco Porto"),
+    ("PORTO", "PT-S203", "Sala 203", "SALA", "TODAS", 36, 32, "Bloco Porto"),
+    ("PORTO", "PT-LINF1", "Laboratório de Informática 1", "INFO", "TODAS", 32, 32, "Bloco Porto"),
+    ("PORTO", "PT-LINF2", "Laboratório de Informática 2", "INFO", "TODAS", 32, 32, "Bloco Porto"),
+    ("PORTO", "PT-LLOG", "Armazém Simulado", "LLOG", ["LOGISTICA", "PORTOS"], 36, 32, "Galpão Porto"),
+    ("PORTO", "PT-LCRI", "Estúdio Criativo", "CRI", ["ECONOMIA-CRIATIVA"], 28, 26, "Bloco Porto"),
+]
+
+# sigla, nome, área, tipo de curso, UCs: (código, nome, CH em hora-aula, dias por semana, tipos de sala aceitos, certificação)
+CURSOS = [
+    ("ELT", "Técnico em Eletrotécnica", "ENERGIAS", "técnico", [
+        ("ELT-IEP", "Instalações Elétricas Prediais", 80, 2, ["CMD"], None),
+        ("ELT-CMD", "Comandos Elétricos", 96, 2, ["CMD"], "NR-10"),
+        ("ELT-ELA", "Eletrônica Analógica", 60, 1, ["ELN"], None)]),
+    ("AUT", "Técnico em Automação Industrial", "AUTOMACAO", "aprendizagem industrial", [
+        ("AUT-CLP", "Controladores Lógicos Programáveis", 96, 2, ["CLP"], None),
+        ("AUT-INB", "Instrumentação Básica", 48, 1, ["INS"], None),
+        ("AUT-RDI", "Redes Industriais", 48, 1, ["INFO"], None),
+        ("AUT-PNE", "Pneumática", 40, 1, ["HP"], None)]),
+    ("MEC", "Técnico em Mecânica", "MECANICA", "técnico", [
+        ("MEC-USI", "Usinagem Convencional", 112, 2, ["OMEC"], None),
+        ("MEC-DTM", "Desenho Técnico Mecânico", 60, 1, ["INFO", "SALA"], None),
+        ("MEC-MET", "Metrologia", 48, 1, ["OMEC", "SALA"], None),
+        ("MEC-HID", "Hidráulica Industrial", 40, 1, ["HP"], None)]),
+    ("MAU", "Mecânico de Automóveis", "AUTOMOTIVA", "aprendizagem industrial", [
+        ("MAU-MCI", "Motores de Combustão Interna", 112, 2, ["OAUT"], None),
+        ("MAU-SDF", "Suspensão, Direção e Freios", 96, 2, ["OAUT"], None),
+        ("MAU-ELA", "Eletricidade Automotiva", 48, 1, ["OAUT", "ELN"], None)]),
+    ("MCT", "Técnico em Mecatrônica", "MECATRONICA", "técnico", [
+        ("MCT-ROB", "Robótica Industrial", 80, 2, ["CLP"], None),
+        ("MCT-EPN", "Eletropneumática", 56, 1, ["HP"], None),
+        ("MCT-MIC", "Microcontroladores", 60, 1, ["ELN"], None),
+        ("MCT-CAD", "Modelagem 3D (CAD)", 48, 1, ["INFO"], None)]),
+    ("INS", "Técnico em Instrumentação", "INSTRUMENTACAO", "técnico", [
+        ("INS-MCV", "Medição e Controle de Variáveis", 96, 2, ["INS"], None),
+        ("INS-MCT", "Malhas de Controle", 64, 2, ["INS", "CLP"], None),
+        ("INS-CAL", "Calibração de Instrumentos", 48, 1, ["INS"], None)]),
+    ("LOG", "Técnico em Logística", "LOGISTICA", "técnico", [
+        ("LOG-GAR", "Gestão de Armazenagem", 80, 2, ["LLOG", "SALA"], None),
+        ("LOG-TRD", "Transportes e Distribuição", 56, 1, ["SALA"], None),
+        ("LOG-WMS", "Sistemas de Gestão Logística (WMS)", 48, 1, ["INFO"], None),
+        ("LOG-CUS", "Custos Logísticos", 40, 1, ["SALA"], None)]),
+    ("POR", "Técnico em Portos", "PORTOS", "técnico", [
+        ("POR-OPP", "Operações Portuárias", 96, 2, ["SALA", "LLOG"], None),
+        ("POR-LPA", "Legislação Portuária e Aduaneira", 48, 1, ["SALA"], None),
+        ("POR-SEG", "Segurança do Trabalho Portuário (NR-29)", 40, 1, ["SALA"], "NR-29"),
+        ("POR-GCT", "Gestão de Contêineres", 40, 1, ["LLOG"], None)]),
+    ("DDS", "Técnico em Desenvolvimento de Sistemas", "DDS-TI", "técnico", [
+        ("DDS-LOP", "Lógica de Programação", 96, 2, ["INFO"], None),
+        ("DDS-BDD", "Banco de Dados", 60, 1, ["INFO"], None),
+        ("DDS-WEB", "Desenvolvimento Web", 60, 1, ["INFO"], None),
+        ("DDS-ANS", "Análise de Sistemas", 40, 1, ["SALA"], None)]),
+    ("DGR", "Design Gráfico", "ECONOMIA-CRIATIVA", "qualificação", [
+        ("DGR-TIM", "Tratamento de Imagens", 64, 2, ["CRI"], None),
+        ("DGR-ILD", "Ilustração Digital", 48, 1, ["CRI"], None),
+        ("DGR-IDV", "Identidade Visual", 64, 2, ["CRI"], None)]),
+    ("ADM", "Assistente Administrativo", "GESTAO", "qualificação", [
+        ("ADM-ROT", "Rotinas Administrativas", 48, 1, ["SALA"], None),
+        ("ADM-PLA", "Planilhas Eletrônicas", 48, 1, ["INFO"], None),
+        ("ADM-ATC", "Atendimento ao Cliente", 32, 1, ["SALA"], None)]),
+]
+
+# código, curso, nome, turno, alunos, dias (None = seg a sex), prazos especiais {UC: data-limite}
+TURMAS = [
+    ("HTC-ELT-12", "ELT", "Eletrotécnica 12 – Habilitação técnica", "M", 30, None, {}),
+    ("HTC-ELT-13", "ELT", "Eletrotécnica 13 – Habilitação técnica", "N", 28, None, {"ELT-CMD": date(ANO, 12, 4)}),
+    ("AIT-AUT-05", "AUT", "Automação Industrial 05 – Aprendizagem industrial técnica", "T", 24, None, {}),
+    ("HTC-MEC-08", "MEC", "Mecânica 08 – Habilitação técnica", "N", 26, None, {}),
+    ("AIB-MAU-03", "MAU", "Mecânico de Automóveis 03 – Aprendizagem industrial básica", "M", 24, None, {}),
+    ("HTC-MCT-04", "MCT", "Mecatrônica 04 – Habilitação técnica", "T", 26, None, {}),
+    ("HTC-INS-02", "INS", "Instrumentação 02 – Habilitação técnica", "N", 22, None, {}),
+    ("HTC-LOG-21", "LOG", "Logística 21 – Habilitação técnica", "N", 32, None, {}),
+    ("AIT-LOG-07", "LOG", "Logística 07 – Aprendizagem industrial técnica", "M", 28, None, {}),
+    ("HTC-POR-03", "POR", "Portos 03 – Habilitação técnica", "N", 30, None, {"POR-GCT": date(ANO, 11, 13)}),
+    ("HTC-DDS-09", "DDS", "Desenvolvimento de Sistemas 09 – Habilitação técnica", "T", 30, None, {}),
+    ("QUA-DGR-01", "DGR", "Design Gráfico 01 – Qualificação profissional", "N", 24, None, {}),
+    ("EMP-ADM-02", "ADM", "Assistente Administrativo 02 – Turma para empresa", "T", 20, [0, 2, 4], {}),
+]
+
+# matrícula, nome, unidade, área principal, outras áreas, turnos, UCs (pleno), certificações, formação
+INSTRUTORES = [
+    ("BM-1001", "Marcos Vieira", "BEIRA-MAR", "ENERGIAS", [], "MT", ["ELT-IEP", "ELT-CMD"], ["NR-10"], "Eng. eletricista; 12 anos em manutenção industrial"),
+    ("BM-1002", "Juliana Prates", "BEIRA-MAR", "ENERGIAS", ["AUTOMACAO"], "MN", ["ELT-CMD", "ELT-ELA", "ELT-IEP"], ["NR-10"], "Tecnóloga em automação; comandos e acionamentos"),
+    ("BM-1003", "Ricardo Nunes", "BEIRA-MAR", "ENERGIAS", [], "N", ["ELT-IEP", "ELT-CMD"], ["NR-10", "NR-35"], "Técnico em eletrotécnica; instalações prediais e industriais"),
+    ("BM-1004", "Patrícia Lemos", "BEIRA-MAR", "ENERGIAS", ["MECATRONICA", "INSTRUMENTACAO"], "MN", ["ELT-ELA", "MCT-MIC"], [], "Eng. eletrônica; sistemas embarcados"),
+    ("BM-1005", "Fábio Teixeira", "BEIRA-MAR", "AUTOMACAO", ["MECATRONICA"], "TN", ["AUT-CLP", "MCT-ROB", "INS-MCT"], ["NR-10"], "Eng. de controle e automação; CLP Siemens e Rockwell"),
+    ("BM-1006", "Larissa Campos", "BEIRA-MAR", "AUTOMACAO", [], "MT", ["AUT-RDI", "AUT-CLP"], [], "Tecnóloga em redes industriais (Profinet, Modbus)"),
+    ("BM-1007", "Henrique Duarte", "BEIRA-MAR", "AUTOMACAO", ["INSTRUMENTACAO"], "TN", ["AUT-INB", "INS-MCV", "INS-CAL"], [], "Técnico em instrumentação; 15 anos em refinaria"),
+    ("BM-1008", "Sérgio Andrade", "BEIRA-MAR", "MECANICA", [], "TN", ["MEC-USI", "MEC-MET"], [], "Técnico em mecânica; ferramentaria"),
+    ("BM-1009", "Camila Rocha", "BEIRA-MAR", "MECANICA", ["MECATRONICA", "AUTOMACAO"], "TN", ["MEC-DTM", "MCT-CAD", "MEC-HID", "AUT-PNE"], [], "Eng. mecânica; projetos em CAD/CAE"),
+    ("BM-1010", "Paulo Mendes", "BEIRA-MAR", "MECANICA", [], "N", ["MEC-USI", "MEC-MET", "MEC-HID"], [], "Técnico em mecânica; usinagem CNC"),
+    ("BM-1011", "Rogério Lima", "BEIRA-MAR", "AUTOMOTIVA", [], "MT", ["MAU-MCI", "MAU-SDF"], [], "Mecânico automotivo; 20 anos em concessionária"),
+    ("BM-1012", "Tiago Barbosa", "BEIRA-MAR", "AUTOMOTIVA", [], "M", ["MAU-MCI", "MAU-SDF", "MAU-ELA"], [], "Técnico em manutenção automotiva; injeção eletrônica"),
+    ("BM-1013", "Elaine Souza", "BEIRA-MAR", "AUTOMOTIVA", ["ENERGIAS"], "MT", ["MAU-ELA", "MAU-SDF"], ["NR-10"], "Tecnóloga em eletrônica automotiva"),
+    ("BM-1014", "Gustavo Pires", "BEIRA-MAR", "MECATRONICA", ["AUTOMACAO"], "T", ["MCT-ROB", "MCT-EPN", "AUT-PNE"], [], "Eng. mecatrônico; robótica colaborativa"),
+    ("BM-1015", "Renata Alves", "BEIRA-MAR", "MECATRONICA", ["ENERGIAS"], "TN", ["MCT-MIC", "MCT-EPN", "MCT-CAD"], [], "Tecnóloga em mecatrônica; Arduino e ESP32"),
+    ("BM-1016", "Leandro Costa", "BEIRA-MAR", "INSTRUMENTACAO", [], "N", ["INS-MCV", "INS-MCT", "INS-CAL"], [], "Técnico em instrumentação; calibração RBC"),
+    ("BM-1017", "Vanessa Martins", "BEIRA-MAR", "INSTRUMENTACAO", ["AUTOMACAO"], "TN", ["INS-CAL", "AUT-INB", "INS-MCT"], [], "Eng. química; controle de processos"),
+    ("PT-2001", "Aline Ferreira", "PORTO", "LOGISTICA", [], "MN", ["LOG-GAR", "LOG-TRD", "LOG-CUS"], [], "Administradora; gestão de centros de distribuição"),
+    ("PT-2002", "Bruno Cardoso", "PORTO", "LOGISTICA", ["PORTOS"], "MN", ["LOG-WMS", "LOG-GAR", "POR-GCT"], [], "Tecnólogo em logística; WMS e TMS"),
+    ("PT-2003", "Débora Ramos", "PORTO", "LOGISTICA", ["GESTAO"], "MT", ["LOG-TRD", "LOG-CUS", "ADM-ATC"], [], "Economista; custos e transportes"),
+    ("PT-2004", "Eduardo Salles", "PORTO", "PORTOS", [], "N", ["POR-OPP", "POR-GCT", "POR-SEG"], ["NR-29", "NR-35"], "Oficial de náutica; operações em terminal de contêineres"),
+    ("PT-2005", "Flávia Moura", "PORTO", "PORTOS", ["LOGISTICA"], "N", ["POR-LPA", "POR-SEG", "POR-OPP"], ["NR-29"], "Advogada; comércio exterior e aduana"),
+    ("PT-2006", "Igor Batista", "PORTO", "DDS-TI", [], "T", ["DDS-LOP", "DDS-BDD"], [], "Desenvolvedor back-end; Python e PostgreSQL"),
+    ("PT-2007", "Natália Freitas", "PORTO", "DDS-TI", ["GESTAO"], "TN", ["DDS-WEB", "DDS-LOP", "ADM-PLA"], [], "Desenvolvedora front-end; React"),
+    ("PT-2008", "Otávio Ribeiro", "PORTO", "DDS-TI", [], "T", ["DDS-BDD", "DDS-ANS", "DDS-WEB"], [], "Analista de sistemas; UML e metodologias ágeis"),
+    ("PT-2009", "Priscila Gomes", "PORTO", "ECONOMIA-CRIATIVA", [], "N", ["DGR-TIM", "DGR-IDV"], [], "Designer gráfica; branding"),
+    ("PT-2010", "Rafael Torres", "PORTO", "ECONOMIA-CRIATIVA", [], "TN", ["DGR-ILD", "DGR-TIM", "DGR-IDV"], [], "Ilustrador; animação 2D"),
+    ("PT-2011", "Sabrina Lopes", "PORTO", "GESTAO", [], "T", ["ADM-ROT", "ADM-ATC", "ADM-PLA"], [], "Administradora; rotinas de RH e financeiro"),
+    ("PT-2012", "Thiago Moreira", "PORTO", "GESTAO", ["LOGISTICA"], "TN", ["ADM-ROT", "LOG-CUS"], [], "Contador; custos e orçamento"),
+]
+
+# logins do portal do instrutor na demonstração (senha comum, só para apresentação)
+LOGINS_PORTAL = {"BM-1002": "juliana.prates", "BM-1001": "marcos.vieira", "PT-2006": "igor.batista", "PT-2004": "eduardo.salles"}
+SENHA_PORTAL = "portal@2026"
+
+
+def carga_no_semestre(ch: int, enc: int) -> int:
+    """Carga que ocupa o semestre até dezembro (com folga): ~14 semanas de encontros, em múltiplos de 4 aulas."""
+    if enc >= 2:
+        return 112 if ch < 96 else 120
+    return 56 if ch <= 48 else 60
+
+
+def montar(db, ctx, limite_s: float = 120) -> dict:
+    """Cria o semestre, gera e publica a grade. Retorna um resumo."""
+    from app.services import cenarios, otimizacao, substituicao
+    unid = {u.codigo: u for u in db.scalars(select(Unidade))}
+    area = {a.codigo: a for a in db.scalars(select(Area))}
+    turno = {(t.unidade_id, t.codigo): t for t in db.scalars(select(Turno))}
+
+    cal = {}
+    for cod, u in unid.items():
+        c = Calendario(unidade_id=u.id, nome=f"Calendário {ANO}/2 – {u.nome}", data_inicio=INICIO, data_fim=FIM)
+        db.add(c)
+        db.flush()
+        for d, desc in FERIADOS:
+            db.add(CalendarioExcecao(calendario_id=c.id, data=d, tipo="feriado", descricao=desc))
+        cal[cod] = c
+    tipos = {}
+    for cod, nome, esp in TIPOS:
+        tipos[cod] = TipoAmbiente(codigo=cod, nome=nome, especializado=esp)
+        db.add(tipos[cod])
+    db.flush()
+    for un, cod, nome, tp, areas, lug, rec, bloco in AMBIENTES:
+        todas = areas == "TODAS"
+        a = Ambiente(codigo=cod, nome=nome, unidade_id=unid[un].id, tipo_ambiente_id=tipos[tp].id, todas_areas=todas,
+                     area_id=None if todas else area[areas[0]].id, capacidade_fisica=lug, capacidade_operacional=rec, predio=bloco,
+                     acessivel=True, tempo_preparacao_min=0 if tp in ("SALA", "INFO") else 10)
+        db.add(a)
+        db.flush()
+        for extra in ([] if todas else areas[1:]):
+            db.add(AmbienteArea(ambiente_id=a.id, area_id=area[extra].id))
+
+    ucs, cursos = {}, {}
+    for sigla, nome, ar, tipo, lista in CURSOS:
+        u_cod = area[ar].unidade_id
+        c = Curso(codigo=sigla, nome=nome, area_id=area[ar].id, unidade_id=u_cod, modalidade="presencial", tipo=tipo,
+                  carga_horaria_total=sum(carga_no_semestre(x[2], x[3]) for x in lista) * (4 if tipo == "técnico" else 1))
+        db.add(c)
+        db.flush()
+        m = MatrizCurricular(curso_id=c.id, versao=f"{ANO}.1", situacao="vigente", vigencia_inicio=date(ANO, 1, 1))
+        db.add(m)
+        db.flush()
+        cursos[sigla] = (c, m)
+        for seq, (cod, nome_uc, ch, enc, tps, cert) in enumerate(lista, start=1):
+            ch = carga_no_semestre(ch, enc)
+            uc = UnidadeCurricular(matriz_id=m.id, codigo=cod, nome=nome_uc, carga_horaria_total=ch, encontros_semanais=enc,
+                                   duracao_bloco_periodos=4, sequencia=seq, certificacao_exigida=cert, modulo="Módulo específico")
+            db.add(uc)
+            db.flush()
+            for t in tps:
+                db.add(UCTipoAmbiente(uc_id=uc.id, tipo_ambiente_id=tipos[t].id))
+            ucs[cod] = uc
+
+    instrutores = {}
+    for mat, nome, un, ar, outras, turnos_i, comps, certs, formacao in INSTRUTORES:
+        u = unid[un]
+        i = Instrutor(matricula=mat, nome=nome, email=f"{LOGINS_PORTAL.get(mat, mat.lower())}@demo.senai.br", unidade_id=u.id,
+                      area_id=area[ar].id, carga_horaria_contratual=40, limite_ch_letiva=28, max_horas_dia=8, areas_competencia=formacao,
+                      situacao="ativo", ativo=True)
+        db.add(i)
+        db.flush()
+        instrutores[mat] = i
+        for o in outras:
+            db.add(InstrutorArea(instrutor_id=i.id, area_id=area[o].id))
+        for cuc in comps:
+            db.add(CompetenciaInstrutor(instrutor_id=i.id, uc_id=ucs[cuc].id, nivel="pleno", ativo=True))
+        for cert in certs:
+            db.add(HabilitacaoInstrutor(instrutor_id=i.id, nome=cert, ativo=True))
+        for tc in turnos_i:
+            t = turno[(u.id, tc)]
+            for d in range(5):
+                db.add(DisponibilidadeInstrutor(instrutor_id=i.id, dia_semana=d, hora_inicio=t.hora_inicio, hora_fim=t.hora_fim))
+
+    for cod, sigla, nome, tc, alunos, dias, prazos in TURMAS:
+        c, m = cursos[sigla]
+        u_id = area[[x for x in CURSOS if x[0] == sigla][0][2]].unidade_id
+        un_cod = next(k for k, v in unid.items() if v.id == u_id)
+        t = Turma(codigo=cod, nome=nome, curso_id=c.id, matriz_id=m.id, unidade_id=u_id, area_id=c.area_id, calendario_id=cal[un_cod].id,
+                  turno_id=turno[(u_id, tc)].id, qtd_alunos=alunos, data_inicio=INICIO, data_fim=FIM,
+                  dias_possiveis=dias or [0, 1, 2, 3, 4], num_grupos=1, situacao="em_andamento")
+        db.add(t)
+        db.flush()
+        for uc in db.scalars(select(UnidadeCurricular).where(UnidadeCurricular.matriz_id == m.id)):
+            db.add(TurmaUC(turma_id=t.id, uc_id=uc.id, situacao="ofertada", data_limite=prazos.get(uc.codigo)))
+    db.flush()
+
+    cen = cenarios.criar(db, ctx, f"Planejamento {ANO}/2", periodo_inicio=INICIO, periodo_fim=FIM,
+                         descricao="Semestre de demonstração: Beira Mar e Porto, 13 turmas nos três turnos.")
+    db.commit()
+    ex = otimizacao.criar_execucao(db, ctx, cen.id, {"tipo": "instituicao"}, limite_tempo_s=limite_s)
+    db.commit()
+    otimizacao.executar(ex.id, ctx)
+    db.expire_all()
+
+    # publicação pelo fluxo normal (validação → aprovação → publicação); avisa os instrutores
+    for estado in ("em_validacao", "aguardando_aprovacao", "aprovado", "publicado"):
+        cenarios.transicionar(db, ctx, cen.id, estado, motivo="Demonstração")
+        db.commit()
+
+    # aulas já passadas aparecem como realizadas
+    db.execute(update(Alocacao).where(Alocacao.cenario_id == cen.id, Alocacao.data < HOJE_DEMO).values(status="realizada"))
+    db.commit()
+
+    # uma substituição (falta por atestado) numa aula futura da Juliana
+    juliana = instrutores["BM-1002"]
+    alvo = db.scalars(select(Alocacao).where(Alocacao.cenario_id == cen.id, Alocacao.instrutor_id == juliana.id,
+                                             Alocacao.data >= date(ANO, 10, 20)).order_by(Alocacao.inicio)).first()
+    sub_info = None
+    if alvo:
+        cand = substituicao.candidatos(db, cen.id, [alvo])
+        livres = [c for c in cand["instrutores"] if c["grupo"] in ("recomendado", "excecao")]
+        if livres:
+            r = substituicao.substituir(db, ctx, cen.id, [alvo], livres[0]["id"], "Atestado médico da titular (1 dia)")
+            db.commit()
+            sub_info = {"data": alvo.data.isoformat(), "substituto": livres[0]["nome"], "substituidas": r["substituidas"]}
+
+    # observações enviadas pelos instrutores no portal (uma nova, uma já respondida)
+    def obs(mat, turma_cod, uc_cod, tipo, texto, resposta=None):
+        tuc = db.scalars(select(TurmaUC).join(Turma).join(UnidadeCurricular, UnidadeCurricular.id == TurmaUC.uc_id)
+                         .where(Turma.codigo == turma_cod, UnidadeCurricular.codigo == uc_cod)).first()
+        o = ObservacaoInstrutor(instrutor_id=instrutores[mat].id, turma_uc_id=tuc.id if tuc else None, tipo=tipo, texto=texto,
+                                status="resolvida" if resposta else "nova", resposta=resposta,
+                                respondido_por_id=ctx.id if resposta else None, respondido_em=datetime(ANO, 10, 9, 10, 30) if resposta else None)
+        db.add(o)
+    obs("BM-1001", "HTC-ELT-12", "ELT-CMD", "recurso", "As bancadas 3 e 7 do Laboratório de Comandos estão com contatores danificados. "
+        "Peço a troca antes das aulas práticas de partida estrela-triângulo.")
+    obs("PT-2006", "HTC-DDS-09", "DDS-LOP", "sugestao", "Sugiro reservar o Laboratório de Informática 2 nas avaliações práticas: o 1 tem 4 máquinas lentas.",
+        "Combinado: as avaliações de Lógica de Programação ficam no Laboratório 2 a partir de 20/10.")
+    obs("PT-2004", "HTC-POR-03", "POR-GCT", "horario", "A UC de Gestão de Contêineres tem prazo em 13/11. Se possível, incluir mais um encontro semanal.")
+    db.commit()
+
+    n_aulas = db.scalar(select(func.count()).select_from(Alocacao).where(Alocacao.cenario_id == cen.id))
+    return {"cenario_id": cen.id, "aulas": n_aulas, "execucao": ex.id, "substituicao": sub_info}

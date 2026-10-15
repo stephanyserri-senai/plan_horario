@@ -523,3 +523,68 @@ def test_scripts_do_sql_editor_funcionam_comando_a_comando():
         with adm.connect() as c:
             c.execute(text(f"DROP DATABASE IF EXISTS {nome} WITH (FORCE)"))
         adm.dispose()
+
+
+def test_sql_do_semestre_de_demonstracao():
+    """demo_semestre_completo.sql (SQL Editor, comando a comando, duas vezes): limpa, carrega o semestre publicado e o sistema funciona em cima dele."""
+    import psycopg
+    from alembic import command
+    from alembic.config import Config
+    from fastapi.testclient import TestClient
+    from sqlalchemy import create_engine
+
+    from app.core.db import reset_engine
+    from app.main import app
+    base = URL.rsplit("/", 1)[0]
+    nome = f"plan_demo_{uuid.uuid4().hex[:6]}"
+    adm = create_engine(base + "/postgres", isolation_level="AUTOCOMMIT")
+    with adm.connect() as c:
+        c.execute(text(f"CREATE DATABASE {nome}"))
+    url = f"{base}/{nome}"
+    try:
+        cfg = Config(str(RAIZ / "backend" / "alembic.ini"))
+        cfg.set_main_option("script_location", str(RAIZ / "backend" / "alembic"))
+        os.environ["ALEMBIC_DATABASE_URL"] = url
+        try:
+            command.upgrade(cfg, "head")
+        finally:
+            os.environ.pop("ALEMBIC_DATABASE_URL", None)
+        dsn = url.replace("postgresql+psycopg://", "postgresql://")
+        sql_dir = RAIZ / "backend" / "sql"
+        for arq in ("seed_inicial.sql", "demo_recarregar.sql", "demo_semestre_completo.sql", "demo_semestre_completo.sql"):
+            for cmd in _comandos_sql((sql_dir / arq).read_text(encoding="utf-8")):
+                with psycopg.connect(dsn, autocommit=True) as conn:
+                    conn.execute(cmd.encode())
+        eng = create_engine(url)
+        with eng.connect() as c:
+            cont = lambda t: c.scalar(text(f"SELECT count(*) FROM {t}"))  # noqa: E731
+            assert (cont("turmas"), cont("cursos"), cont("instrutores"), cont("alocacoes")) == (13, 11, 29, 909)
+            assert c.scalar(text("SELECT count(*) FROM turmas WHERE codigo LIKE 'DEMO-%'")) == 0  # a demonstração antiga foi limpa
+            assert c.scalar(text("SELECT estado FROM cenarios_planejamento")) == "publicado"
+            assert cont("notificacoes") > 0 and cont("observacoes_instrutor") == 3
+            assert c.scalar(text("SELECT count(*) FROM alocacoes WHERE instrutor_titular_id IS NOT NULL")) == 1
+            assert c.scalar(text("SELECT count(*) FROM usuarios WHERE perfil = 'instrutor' AND instrutor_id IS NOT NULL")) == 4
+            # sequências acertadas: novos registros não colidem
+            c.execute(text("INSERT INTO tipos_ambiente (codigo, nome, especializado, ativo) VALUES ('NOVO', 'Novo', false, true)"))
+            c.rollback()
+        eng.dispose()
+        reset_engine(url)
+        try:
+            cli = TestClient(app)
+            h = {"Authorization": "Bearer " + cli.post("/api/auth/login", json={"email": "admin", "senha": "admin@123"}).json()["token"]}
+            cen = cli.get("/api/cenarios", headers=h).json()[0]
+            painel = cli.get(f"/api/painel?cenario_id={cen['id']}", headers=h).json()
+            assert painel["indicadores"]["aulas"] == 909 and painel["indicadores"]["pct_com_horario"] == 100
+            assert cli.post(f"/api/cenarios/{cen['id']}/validar", headers=h).json()["resumo"]["bloqueios"] == 0
+            assert any(e["chave"] == "conferir" and e["status"] == "ok" for e in painel["etapas"]), painel["etapas"]
+            prop = cli.post(f"/api/cenarios/{cen['id']}/proposta", json={"nome": "Ajustes de novembro"}, headers=h)
+            assert prop.status_code == 200, prop.text
+            hi = {"Authorization": "Bearer " + cli.post("/api/auth/login", json={"email": "juliana.prates", "senha": "portal@2026"}).json()["token"]}
+            turmas = cli.get("/api/portal/turmas", headers=hi).json()
+            assert turmas and turmas[0]["publicado"] and turmas[0]["turmas_ucs"]
+            assert cli.get("/api/portal/notificacoes", headers=hi).json()
+        finally:
+            reset_engine(URL)
+    finally:
+        with adm.connect() as c:
+            c.execute(text(f"DROP DATABASE IF EXISTS {nome} WITH (FORCE)"))
