@@ -579,3 +579,20 @@ button.chip-status { cursor: pointer; } .chip-status.alerta { background: #fff3d
 .dist-faixas { display: flex; flex-wrap: wrap; gap: 10px 16px; margin: 6px 0 12px; }
 .num-curto { width: 64px; }
 .tabela-dados { margin-top: 6px; }
+
+/* quadro de instrutores: encaixe de turma nova */
+.nova-turma { display: flex; flex-direction: column; gap: 2px; min-width: 170px; }
+.nova-turma .nt-plano { list-style: none; margin: 2px 0 0; padding: 0; font-size: 12px; line-height: 1.35; }
+.nova-turma .nt-uc { display: inline-block; min-width: 44px; color: var(--mudo); }
+.nova-turma .nt-falta { color: var(--erro); }
+.cel-instr { white-space: nowrap; }
+
+/* turmas 80-20: dia de atividades a distância */
+.tags-ead { display: flex; flex-wrap: wrap; gap: 3px; margin-bottom: 3px; }
+.tag-ead { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 10px;
+  background: var(--ead-fundo, #e8f0fb); color: var(--ead-texto, #1f4f86); border: 1px dashed currentColor; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .tag-ead { --ead-fundo: #1c2d44; --ead-texto: #a9c8f0; } }
+:root[data-theme="dark"] .tag-ead { --ead-fundo: #1c2d44; --ead-texto: #a9c8f0; }
+.o-que-fazer { display: flex; flex-direction: column; gap: 4px; min-width: 240px; max-width: 360px; }
+.nova-turma { min-width: 200px; }
+.nova-turma .nt-plano li { white-space: nowrap; }

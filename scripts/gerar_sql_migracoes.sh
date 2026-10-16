@@ -45,3 +45,9 @@ echo "Gerado backend/sql/atualizacao_0007.sql"
   ALEMBIC_DATABASE_URL="postgresql+psycopg://usuario:senha@host/banco" python -m alembic upgrade 0007:0008 --sql
 } > sql/atualizacao_0008.sql
 echo "Gerado backend/sql/atualizacao_0008.sql"
+{
+  echo "-- Atualização 0008 -> 0009: nível do instrutor (básico = AIB e qualificações; técnico = todas as modalidades) e dias EAD da turma (turmas 80-20)."
+  echo "-- Não destrutiva: todos os instrutores começam como técnico e nenhuma turma tem dia EAD. Cole o arquivo inteiro no SQL Editor do Supabase e clique em Run."
+  ALEMBIC_DATABASE_URL="postgresql+psycopg://usuario:senha@host/banco" python -m alembic upgrade 0008:0009 --sql
+} > sql/atualizacao_0009.sql
+echo "Gerado backend/sql/atualizacao_0009.sql"

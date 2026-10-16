@@ -57,6 +57,35 @@ def linhas_grade(db: Session, cenario_id: int, filtro: str | None = None, filtro
     return res
 
 
+def linhas_ead(db: Session, d0: date, d1: date, filtro: str | None = None, filtro_id: int | None = None, unidades_permitidas=None) -> list[dict]:
+    """Dias EAD das turmas 80-20 como linhas da grade (no turno da turma, em dia letivo), só para os quadros:
+    aparecem com a etiqueta "EAD – atividades a distância" e não contam como aula presencial."""
+    from app.services.calendario import Calendarios
+    if filtro in ("instrutor", "ambiente"):
+        return []
+    q = select(Turma).where(Turma.ativo.is_(True), Turma.simulacao_id.is_(None), Turma.dias_ead != [])
+    if filtro == "turma":
+        q = q.where(Turma.id == filtro_id)
+    elif filtro == "turno":
+        q = q.where(Turma.turno_id == filtro_id)
+    turnos = {t.id: t for t in db.scalars(select(Turno))}
+    cal = Calendarios(db)
+    res = []
+    for t in db.scalars(q):
+        if (unidades_permitidas is not None and t.unidade_id not in unidades_permitidas) or t.turno_id not in turnos:
+            continue
+        tn = turnos[t.turno_id]
+        d = max(d0, t.data_inicio)
+        while d <= min(d1, t.data_fim):
+            if d.weekday() in (t.dias_ead or []) and cal.dia_letivo(t, d)[0]:
+                res.append({"data": d.strftime("%d/%m/%Y"), "dia": DIAS[d.weekday()], "inicio": tn.hora_inicio.strftime("%H:%M"),
+                            "fim": tn.hora_fim.strftime("%H:%M"), "turma": t.codigo, "turno": tn.nome, "uc": "EAD – atividades a distância",
+                            "grupo": "", "instrutor": "turma 80-20", "ambiente": "a distância", "horas": 0, "situacao": "ead", "fixa": "",
+                            "_data": d, "_ini": tn.hora_inicio, "_ead": True})
+            d += timedelta(days=1)
+    return res
+
+
 def _limpo(linhas):
     return [{k: v for k, v in l.items() if not k.startswith("_")} for l in linhas]
 

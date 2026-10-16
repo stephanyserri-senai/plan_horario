@@ -353,6 +353,8 @@ class Turma(TimestampMixin, Base):
     data_inicio: Mapped[date] = mapped_column(Date)
     data_fim: Mapped[date] = mapped_column(Date)
     dias_possiveis: Mapped[list[int]] = mapped_column(ARRAY(Integer), default=lambda: [0, 1, 2, 3, 4])
+    # turmas 80-20: dias da semana de atividades a distância (normalmente a sexta); sem aula presencial nesses dias
+    dias_ead: Mapped[list[int]] = mapped_column(ARRAY(Integer), default=list, server_default=text("'{}'"))
     num_grupos: Mapped[int] = mapped_column(Integer, default=1)
     prioridade: Mapped[int] = mapped_column(Integer, default=3)
     necessidades_acessibilidade: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -386,7 +388,8 @@ class TurmaUC(TimestampMixin, Base):
 class Instrutor(TimestampMixin, Base):
     __tablename__ = "instrutores"
     __table_args__ = (CheckConstraint("limite_ch_letiva <= carga_horaria_contratual"),
-                      CheckConstraint("modalidade in ('mensalista','horista')", name="instrutores_modalidade_check"))
+                      CheckConstraint("modalidade in ('mensalista','horista')", name="instrutores_modalidade_check"),
+                      CheckConstraint("nivel in ('basico','tecnico')", name="instrutores_nivel_check"))
     id: Mapped[int] = mapped_column(primary_key=True)
     matricula: Mapped[str] = mapped_column(String(40), unique=True)
     nome: Mapped[str] = mapped_column(String(200))
@@ -405,6 +408,8 @@ class Instrutor(TimestampMixin, Base):
     ativo: Mapped[bool] = mapped_column(Boolean, default=True)
     # mensalista: horas garantidas (turnos sem aula = planejamento/projeto); horista: horas não garantidas (pode haver dispensa)
     modalidade: Mapped[str] = mapped_column(String(12), default="mensalista", server_default="mensalista")
+    # básico: só aprendizagem industrial básica (AIB) e qualificações; técnico: todas as modalidades (AIB, AIT, HTC...)
+    nivel: Mapped[str] = mapped_column(String(10), default="tecnico", server_default="tecnico")
     # última vez que o próprio instrutor atualizou os dados pelo portal
     atualizado_pelo_instrutor_em: Mapped[datetime | None] = mapped_column(DateTime)
 

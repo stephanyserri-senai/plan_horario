@@ -60,9 +60,48 @@ def area_da_turma(db: Session, turma) -> int | None:
     return curso.area_id if curso else None
 
 
-def instrutores_elegiveis(db: Session, uc: UnidadeCurricular, unidade_id: int, na_data: date | None = None, area_id: int | None = None) -> list[dict]:
-    """Elegibilidade pela matriz de competências (nunca por seleção manual) e, se informada,
-    pela área da turma (instrutor sem área definida é aceito)."""
+# Nível do instrutor: o BÁSICO só dá aula em aprendizagem industrial básica (AIB) e qualificações;
+# o TÉCNICO, em todas as modalidades. O tipo de oferta vem do prefixo do código da turma (HTC-ELT-12);
+# sem prefixo conhecido, vale o tipo do curso.
+OFERTAS_BASICAS = {"AIB", "QUA"}
+OFERTAS_TECNICAS = {"HTC", "AIT", "ESP"}
+NIVEIS_INSTRUTOR = {"basico": "Básico (AIB e qualificações)", "tecnico": "Técnico (todas as modalidades)"}
+
+
+def _sem_acento(s: str) -> str:
+    import unicodedata
+    return "".join(c for c in unicodedata.normalize("NFD", s or "") if unicodedata.category(c) != "Mn").lower()
+
+
+def nivel_da_turma(db: Session, turma) -> str:
+    """Nível de instrutor que a turma exige: "basico" (aceita básico e técnico) ou "tecnico" (só técnico)."""
+    if turma is None:
+        return "basico"
+    pref = (getattr(turma, "codigo", "") or "").split("-")[0].strip().upper()
+    if pref in OFERTAS_BASICAS:
+        return "basico"
+    if pref in OFERTAS_TECNICAS:
+        return "tecnico"
+    curso = db.get(Curso, turma.curso_id) if getattr(turma, "curso_id", None) else None
+    tipo = _sem_acento(curso.tipo if curso else "")
+    return "basico" if ("qualifica" in tipo or "basic" in tipo) else "tecnico"
+
+
+def dias_com_ead(dias_possiveis, dias_ead, ead_antes=None) -> list[int]:
+    """Dias de aula presencial: os dias EAD (turma 80-20) saem dos dias de aula; um dia que deixa de ser EAD volta a ser de aula."""
+    ead = set(dias_ead or [])
+    dias = set(dias_possiveis or []) | (set(ead_antes or []) - ead)
+    return sorted(dias - ead)
+
+
+def nivel_atende(nivel_instrutor: str | None, nivel_turma: str | None) -> bool:
+    return not (nivel_turma == "tecnico" and (nivel_instrutor or "tecnico") == "basico")
+
+
+def instrutores_elegiveis(db: Session, uc: UnidadeCurricular, unidade_id: int, na_data: date | None = None, area_id: int | None = None,
+                          nivel: str | None = None) -> list[dict]:
+    """Elegibilidade pela matriz de competências (nunca por seleção manual), pelo nível exigido pela turma
+    (instrutor básico não entra em turma técnica) e, se informada, pela área da turma (instrutor sem área definida é aceito)."""
     na_data = na_data or date.today()
     q = (
         select(Instrutor, CompetenciaInstrutor)
@@ -77,6 +116,8 @@ def instrutores_elegiveis(db: Session, uc: UnidadeCurricular, unidade_id: int, n
             continue
         if area_id and not recurso_atende(db, inst, area_id):
             continue
+        if not nivel_atende(inst.nivel, nivel):
+            continue
         unidades = {inst.unidade_id, *db.scalars(select(InstrutorUnidade.unidade_id).where(InstrutorUnidade.instrutor_id == inst.id))}
         if unidade_id not in unidades:
             continue
@@ -87,7 +128,8 @@ def instrutores_elegiveis(db: Session, uc: UnidadeCurricular, unidade_id: int, n
                 (HabilitacaoInstrutor.valido_ate.is_(None)) | (HabilitacaoInstrutor.valido_ate >= na_data)))
             if not ok:
                 continue
-        res.append({"id": inst.id, "nome": inst.nome, "matricula": inst.matricula, "nivel": comp.nivel, "area_id": inst.area_id})
+        res.append({"id": inst.id, "nome": inst.nome, "matricula": inst.matricula, "nivel": comp.nivel, "area_id": inst.area_id,
+                    "nivel_instrutor": inst.nivel})
     return res
 
 
@@ -195,7 +237,7 @@ def matriz_oferta(db: Session, cenario_id: int | None, turma_ids: list[int] | No
         if detalhar:
             uc = db.get(UnidadeCurricular, tuc.uc_id)
             turma = db.get(Turma, tuc.turma_id)
-            info["instrutores_elegiveis"] = instrutores_elegiveis(db, uc, turma.unidade_id, area_id=area_da_turma(db, turma))
+            info["instrutores_elegiveis"] = instrutores_elegiveis(db, uc, turma.unidade_id, area_id=area_da_turma(db, turma), nivel=nivel_da_turma(db, turma))
             info["ambientes_compativeis"] = ambientes_compativeis(db, uc, turma, info["divide_grupos"])
         res.append(info)
     return res

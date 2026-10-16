@@ -1219,5 +1219,15 @@ INSERT INTO permissoes_perfil (perfil, acao) VALUES ('observador', 'exportacao.e
 
 UPDATE alembic_version SET version_num='0008' WHERE alembic_version.version_num = '0007';
 
+-- Running upgrade 0008 -> 0009
+
+ALTER TABLE instrutores ADD COLUMN nivel VARCHAR(10) DEFAULT 'tecnico' NOT NULL;
+
+ALTER TABLE instrutores ADD CONSTRAINT instrutores_nivel_check CHECK (nivel in ('basico','tecnico'));
+
+ALTER TABLE turmas ADD COLUMN dias_ead INTEGER[] DEFAULT '{}' NOT NULL;
+
+UPDATE alembic_version SET version_num='0009' WHERE alembic_version.version_num = '0008';
+
 COMMIT;
 

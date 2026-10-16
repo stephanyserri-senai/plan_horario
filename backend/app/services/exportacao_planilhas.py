@@ -142,6 +142,14 @@ def _quadro(ws, linha: int, linhas: list[dict], texto, chave_cor) -> int:
     return r + 1
 
 
+def _blocos_dia(aulas: list[dict]) -> list[tuple[dict, str]]:
+    """Blocos do dia (mesma turma/UC): (primeira aula, horário total)."""
+    blocos: dict[tuple, list[dict]] = {}
+    for a in aulas:
+        blocos.setdefault((a["turno"], a["turma"], a["uc"]), []).append(a)
+    return [(bs[0], f"{min(b['inicio'] for b in bs)}–{max(b['fim'] for b in bs)}") for bs in blocos.values()]
+
+
 def _agrupar_dia(aulas: list[dict], rotulo) -> list[str]:
     """Junta os períodos de um mesmo bloco (mesma turma/UC no dia) numa linha com o horário total."""
     blocos: dict[tuple, list[dict]] = {}
@@ -169,6 +177,11 @@ def horario_turmas(db: Session, cenario_id: int, turma_id: int | None = None, un
     por_turma = defaultdict(list)
     for l in linhas:
         por_turma[l["turma"]].append(l)
+    ead_turma = defaultdict(list)  # turmas 80-20: o dia EAD aparece no quadro da turma
+    if turmas:
+        for l in exportacao.linhas_ead(db, min(t.data_inicio for t in turmas), max(t.data_fim for t in turmas), "turma" if turma_id else None,
+                                       turma_id, unidades):
+            ead_turma[l["turma"]].append(l)
     wb = Workbook()
     resumo = wb.active
     resumo.title = "Resumo"
@@ -190,8 +203,10 @@ def horario_turmas(db: Session, cenario_id: int, turma_id: int | None = None, un
         _titulo(ws, f"{t.codigo} — {t.nome}", f"{cursos[t.curso_id].nome if t.curso_id in cursos else ''} · {turnos.get(t.turno_id, '')} · "
                 f"{t.data_inicio:%d/%m/%Y} a {t.data_fim:%d/%m/%Y} · {nome_cen}")
         if aulas_t:
-            r = _quadro(ws, 4, aulas_t, lambda aulas: "\n".join(_agrupar_dia(aulas, lambda a, h: f"{a['uc']}\n{a['instrutor']} · {a['ambiente']} · {h}")),
-                        lambda a: a["uc"])
+            com_ead = aulas_t + [e for e in ead_turma.get(t.codigo, []) if min(a["_data"] for a in aulas_t) <= e["_data"] <= max(a["_data"] for a in aulas_t)]
+            r = _quadro(ws, 4, com_ead, lambda aulas: "\n".join(
+                "EAD – atividades a distância" if a.get("_ead") else f"{a['uc']}\n{a['instrutor']} · {a['ambiente']} · {h}"
+                for a, h in ((bs, h) for bs, h in _blocos_dia(aulas))), lambda a: "EAD" if a.get("_ead") else a["uc"])
         else:
             ws["A4"] = "Ainda não há aulas na grade para esta turma."
             r = 6
@@ -341,7 +356,7 @@ def linhas_cadastro(db: Session, tipo: str, unidades=None) -> list[list]:
             sup = sorted({ucs[c.uc_id] for c in comp if c.uc_id in ucs and c.nivel == "supervisionado"})
             cert = [h.nome for h in db.scalars(select(HabilitacaoInstrutor).where(HabilitacaoInstrutor.instrutor_id == i.id, HabilitacaoInstrutor.ativo.is_(True)))]
             res.append([i.matricula, i.nome, i.email, unid.get(i.unidade_id), _areas_de(db, i.area_id, InstrutorArea, "instrutor_id", i.id, i.todas_areas, areas),
-                        (i.modalidade or "mensalista").capitalize(), float(i.carga_horaria_contratual), float(i.limite_ch_letiva), float(i.max_horas_dia), jornada,
+                        (i.modalidade or "mensalista").capitalize(), "Básico" if i.nivel == "basico" else "Técnico", float(i.carga_horaria_contratual), float(i.limite_ch_letiva), float(i.max_horas_dia), jornada,
                         "; ".join(abrev[d] for d in dias), "; ".join(pleno), "; ".join(sup), "; ".join(cert), i.areas_competencia])
     elif tipo == "turmas":
         cursos = {c.id: c.codigo for c in db.scalars(select(Curso))}
@@ -352,5 +367,6 @@ def linhas_cadastro(db: Session, tipo: str, unidades=None) -> list[list]:
                 continue
             res.append([t.codigo, t.nome, cursos.get(t.curso_id), matrizes.get(t.matriz_id), unid.get(t.unidade_id), turnos_nome.get(t.turno_id, ""),
                         t.qtd_alunos, t.data_inicio.strftime("%d/%m/%Y"), t.data_fim.strftime("%d/%m/%Y"),
-                        "; ".join(abrev[d] for d in sorted(t.dias_possiveis or [])), areas.get(t.area_id, "")])
+                        "; ".join(abrev[d] for d in sorted(t.dias_possiveis or [])), areas.get(t.area_id, ""),
+                        "; ".join(abrev[d] for d in sorted(t.dias_ead or []))])
     return res

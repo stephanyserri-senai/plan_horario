@@ -171,7 +171,7 @@ SPECS: dict[str, dict] = {
         "curso_codigo": ("str", True, ["curso", "codigo_do_curso"]), "versao": ("str", True, ["versao_matriz", "matriz", "versao_da_matriz"]),
         "unidade_codigo": ("str", True, ["unidade"]), "turno_codigo": ("str", False, ["turno"]), "qtd_alunos": ("int", False, ["alunos", "quantidade_alunos"]),
         "data_inicio": ("date", True, ["inicio"]), "data_fim": ("date", True, ["fim", "termino"]), "dias_possiveis": ("dias", False, ["dias", "dias_de_aula"]),
-        "num_grupos": ("int", False, ["grupos"]), "area": ("str", False, ["area_tecnologica"])}},
+        "dias_ead": ("dias", False, ["dias_ead", "dias_ead_turma_80_20", "ead"]), "num_grupos": ("int", False, ["grupos"]), "area": ("str", False, ["area_tecnologica"])}},
     "turma_ucs": {"chave": ["turma_codigo", "uc_codigo"], "campos": {
         "turma_codigo": ("str", True, ["turma"]), "uc_codigo": ("str", True, ["uc", "codigo_uc"]), "situacao": ("str", False, []),
         "data_inicio": ("date", False, ["inicio"]), "data_limite": ("date", False, ["limite", "fim"]), "ch_realizada": ("float", False, ["realizada"])}},
@@ -179,7 +179,8 @@ SPECS: dict[str, dict] = {
         "matricula": ("str", True, ["registro", "identificacao", "id_institucional"]), "nome": ("str", True, ["instrutor", "docente", "professor"]),
         "email": ("str", False, ["e_mail"]), "unidade_codigo": ("str", True, ["unidade"]), "carga_horaria_contratual": ("float", False, ["ch_contratual", "jornada"]),
         "limite_ch_letiva": ("float", False, ["ch_letiva", "limite_letivo"]), "areas_competencia": ("str", False, ["areas"]),
-        "area": ("str", False, ["area_tecnologica"]), "modalidade": ("str", False, ["vinculo"])}},
+        "area": ("str", False, ["area_tecnologica"]), "modalidade": ("str", False, ["vinculo"]),
+        "nivel": ("str", False, ["nivel_do_instrutor"])}},
     "competencias": {"chave": ["matricula", "uc_codigo"], "campos": {
         "matricula": ("str", True, ["instrutor"]), "uc_codigo": ("str", True, ["uc"]), "curso_codigo": ("str", False, ["curso"]),
         "versao": ("str", False, ["matriz"]), "nivel": ("str", False, []), "valido_ate": ("date", False, ["validade"])}},
@@ -207,6 +208,7 @@ SPECS: dict[str, dict] = {
         "matricula": ("str", True, ["matricula_ou_registro"]), "nome": ("str", True, ["nome_completo", "instrutor"]), "email": ("str", False, ["e_mail"]),
         "unidade": ("str", True, ["unidade_principal"]), "area": ("str", True, ["areas_em_que_atua", "areas"]),
         "modalidade": ("str", False, ["modalidade_do_instrutor", "vinculo"]),
+        "nivel": ("str", False, ["nivel_do_instrutor", "nivel_basico_ou_tecnico"]),
         "carga_horaria_contratual": ("float", False, ["carga_horaria_contratual_h_semana", "jornada"]),
         "limite_ch_letiva": ("float", False, ["limite_de_aulas_por_semana_h", "limite_letivo"]),
         "max_horas_dia": ("float", False, ["maximo_de_horas_por_dia"]),
@@ -457,6 +459,19 @@ def _modalidade(v, d, E):
             d["modalidade"] = m
 
 
+def _nivel(v, d, E):
+    """Nível do instrutor: básico (só AIB e qualificações) ou técnico (todas as modalidades)."""
+    import unicodedata
+    m = "".join(c for c in unicodedata.normalize("NFD", (v.get("nivel") or "").strip().lower()) if unicodedata.category(c) != "Mn")
+    if m:
+        if m.startswith("basic"):
+            d["nivel"] = "basico"
+        elif m.startswith("tecnic"):
+            d["nivel"] = "tecnico"
+        else:
+            E.append(f"nível '{v['nivel']}' inválido: use Básico ou Técnico")
+
+
 def _preparar_levantamento(db, r, v, E, A):
     """Uma linha = um instrutor com áreas, disponibilidade (turnos × dias), competências e certificações."""
     uid = r.unidade(v["unidade"])
@@ -470,6 +485,7 @@ def _preparar_levantamento(db, r, v, E, A):
         E.append("limite de aulas por semana maior que a carga contratual")
     _regra_90(d, E)
     _modalidade(v, d, E)
+    _nivel(v, d, E)
     _area(r, v, d, E, A, multiplas=True)
     disp = []
     from app.services.regras_aula import JORNADAS, horas_dia_pela_carga, normalizar_jornada, validar_jornada
@@ -553,9 +569,12 @@ def _preparar(db: Session, r: Resolvedor, tipo: str, v: dict) -> tuple[dict | No
             E.append(f"unidade '{v['unidade_codigo']}' não cadastrada")
         d = {"codigo": v["codigo"], "nome": v["nome"] or v["codigo"], "curso_id": r.curso(v["curso_codigo"]), "matriz_id": mid, "unidade_id": uid,
              "data_inicio": v["data_inicio"], "data_fim": v["data_fim"]}
-        for k in ("qtd_alunos", "dias_possiveis", "num_grupos"):
-            if v[k] is not None:
+        for k in ("qtd_alunos", "dias_possiveis", "num_grupos", "dias_ead"):
+            if v.get(k) is not None:
                 d[k] = v[k]
+        if d.get("dias_ead"):  # turma 80-20: o dia EAD não é dia de aula presencial
+            from app.services.planejamento import dias_com_ead
+            d["dias_possiveis"] = dias_com_ead(d.get("dias_possiveis") or [0, 1, 2, 3, 4], d["dias_ead"])
         if v["turno_codigo"] and uid:
             d["turno_id"] = r.turno(uid, v["turno_codigo"]) or E.append(f"turno '{v['turno_codigo']}' não cadastrado na unidade")
         if v["data_inicio"] and v["data_fim"] and v["data_fim"] < v["data_inicio"]:
@@ -584,6 +603,7 @@ def _preparar(db: Session, r: Resolvedor, tipo: str, v: dict) -> tuple[dict | No
         d = {k: v[k] for k in ("matricula", "nome", "email", "carga_horaria_contratual", "limite_ch_letiva", "areas_competencia") if v[k] is not None}
         d["unidade_id"] = uid
         _modalidade(v, d, E)
+        _nivel(v, d, E)
         _regra_90(d, E)
         _area(r, v, d, E, A, multiplas=True)
         return d, db.scalars(select(Instrutor).where(Instrutor.matricula == v["matricula"])).first(), E, A

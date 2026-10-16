@@ -63,7 +63,14 @@ function CelulaRef({ ent, id }: { ent: string; id: any }) {
   return <>{id == null ? <span className="mudo">—</span> : rotuloDe(ops, id)}</>;
 }
 
+// rótulos amigáveis de valores de listas (o banco guarda o código)
+const VALOR_ENUM: Record<string, string> = { tecnico: "Técnico (todas as modalidades)", basico: "Básico (só AIB e qualificações)",
+  mensalista: "Mensalista", horista: "Horista", em_formacao: "Em formação", ferias: "Férias", manutencao: "Manutenção" };
+const rotEnum = (o: any) => VALOR_ENUM[o] ?? o;
+const CURTO: Record<string, string> = { tecnico: "Técnico", basico: "Básico" };  // na lista, o rótulo curto
+
 function valorCelula(c: CampoMeta, v: any) {
+  if (c.tipo === "enum") return v == null || v === "" ? <span className="mudo">—</span> : <span title={rotEnum(v)}>{CURTO[v] ?? rotEnum(v)}</span>;
   if (c.tipo === "ref" && c.ref) return <CelulaRef ent={c.ref} id={v} />;
   if (c.tipo === "date") return dataBR(v);
   if (c.tipo === "dias") return (v || []).map((d: number) => DIAS[d]?.slice(0, 3)).join(", ");
@@ -184,7 +191,7 @@ function CampoEntrada({ c, v, set, unidadeId, excluir }: { c: CampoMeta; v: any;
         <datalist id={`lista-${c.nome}`}>{(c.opcoes || []).map((o: any) => <option key={o.valor} value={o.valor}>{o.rotulo}</option>)}</datalist></>;
       break;
     case "enum":
-      input = <select value={v ?? ""} onChange={(e) => set(e.target.value)}><option value="">—</option>{c.opcoes!.map((o) => <option key={o} value={o}>{o}</option>)}</select>;
+      input = <select value={v ?? ""} onChange={(e) => set(e.target.value)}><option value="">—</option>{c.opcoes!.map((o) => <option key={o} value={o}>{rotEnum(o)}</option>)}</select>;
       break;
     case "dia":
       input = <select value={v ?? ""} onChange={(e) => set(e.target.value)}><option value="">—</option>{DIAS.map((d, i) => <option key={i} value={i}>{d}</option>)}</select>;
@@ -359,7 +366,7 @@ export function Diferenca({ antes, depois }: { antes: any; depois: any }) {
 
 function FiltroRef({ c, valor, mudar }: { c: CampoMeta; valor: string; mudar: (v: string) => void }) {
   const ops = useOpcoes(c.tipo === "ref" ? c.ref : null);
-  const lista = c.tipo === "enum" ? (c.opcoes || []).map((o) => ({ id: o, rotulo: o })) : ops;
+  const lista = c.tipo === "enum" ? (c.opcoes || []).map((o) => ({ id: o, rotulo: rotEnum(o) })) : ops;
   return (
     <select aria-label={`Filtrar por ${c.rotulo}`} value={valor} onChange={(e) => mudar(e.target.value)}>
       <option value="">{c.rotulo}: todos</option>

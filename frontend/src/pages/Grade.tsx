@@ -126,6 +126,25 @@ export default function Grade() {
   }, [porCelula, linhas, dias, iso(semana)]);
   // Visão geral (sem turma/instrutor/sala filtrados): uma linha por turno, todas as aulas em cartões do mesmo tamanho.
   const visaoGeral = !alvo || modo === "turno" || modo === "curso";
+  // dias EAD (turmas 80-20): etiqueta no turno da turma, nas visões por turma, turno e curso
+  const [versaoEad, setVersaoEad] = useState(0);
+  const turmasEad = useCarregar<any[]>(() => api.get("/api/cadastros/turmas/opcoes?limite=2000").catch(() => []), [versaoEad, unidade]);
+  const eadNoDia = (d: number, data: string, turnoId: any) => !["turma", "turno", "curso"].includes(modo) ? [] : (turmasEad.dados || []).filter((t) =>
+    (t.dias_ead || []).includes(d) && String(t.turno_id) === String(turnoId) && t.data_inicio <= data && data <= t.data_fim &&
+    (!unidade || String(t.unidade_id) === unidade) && (!alvo || (modo === "turma" ? String(t.id) === alvo : modo === "turno" ? String(t.turno_id) === alvo : String(t.curso_id) === alvo)));
+  const tagEad = (lista: any[]) => lista.length > 0 && <div className="tags-ead">{lista.map((t) => (
+    <span key={t.id} className="tag-ead" title={`${t.rotulo}: dia de atividades a distância (turma 80-20), sem aula presencial`}>
+      EAD{modo !== "turma" || !alvo ? ` · ${String(t.rotulo).split(" – ")[0]}` : " · atividades a distância"}</span>))}</div>;
+  const turmaSel = modo === "turma" && alvo ? (turmasEad.dados || []).find((t) => String(t.id) === alvo) : null;
+  const alternarEad = async () => {
+    if (!turmaSel) return;
+    const sextaEad = (turmaSel.dias_ead || []).includes(4);
+    const novo = sextaEad ? (turmaSel.dias_ead || []).filter((x: number) => x !== 4) : [...(turmaSel.dias_ead || []), 4];
+    if (!confirm(sextaEad ? `Desmarcar a sexta como EAD na ${String(turmaSel.rotulo).split(" – ")[0]}? A sexta volta a ser dia de aula presencial.`
+      : `Marcar a sexta como EAD na ${String(turmaSel.rotulo).split(" – ")[0]} (turma 80-20)? A sexta deixa de ser dia de aula presencial; aulas já marcadas nas sextas passam a acusar conflito na validação.`)) return;
+    try { await api.put(`/api/cadastros/turmas/${turmaSel.id}`, { dias_ead: novo }); aviso(sextaEad ? "Sexta voltou a ser presencial." : "Sexta marcada como EAD."); setVersaoEad((v) => v + 1); aulas.recarregar(); }
+    catch (e: any) { aviso(e?.message || String(e), "erro"); }
+  };
   const turnosLinhas = useMemo(() => {
     const m = new Map<number, { turno_id: number; turno: string; inicio: string; fim: string; primeiro: Periodo; dias: Set<number> }>();
     for (const p of linhas) {
@@ -189,6 +208,8 @@ export default function Grade() {
       acoes={<>
         {editavel && <button className="btn btn-primario" onClick={() => setForm({ data: iso(semana), turma_id: modo === "turma" ? alvo : "" })}>+ Nova aula</button>}
         {editavel && modo === "turma" && alvo && <button className="btn" onClick={() => setCopiar(true)}>Copiar semana</button>}
+        {turmaSel && pode("cadastros.editar") && <button className="btn" onClick={alternarEad} title="Turmas 80-20: a sexta fica para atividades a distância">
+          {(turmaSel.dias_ead || []).includes(4) ? "Sexta EAD ✓ (desmarcar)" : "Marcar sexta como EAD"}</button>}
         {podeSubstituir && <button className="btn" onClick={() => setSubstituir({ aula: null })}>🔁 Substituir instrutor</button>}
         {pode("exportacao.executar") && <button className="btn" onClick={() => baixar(`/api/exportar/grade${qs({ cenario_id: cenario.id, formato: "pdf", semana: iso(semana),
           filtro: alvo && ["turma", "instrutor", "ambiente", "turno"].includes(modo) ? modo : "", filtro_id: alvo })}`, "grade_semana.pdf")}>PDF da semana</button>}
@@ -236,6 +257,7 @@ export default function Grade() {
                       <td key={d} className={`${!t.dias.has(d) ? "indisp" : ""} ${soltar === `${data}|t${t.turno_id}` ? "soltar" : ""}`}
                           {...alvoSoltar(`${data}|t${t.turno_id}`, data, t.primeiro)}
                           onDoubleClick={() => editavel && setForm({ data, periodo_inicio_id: t.primeiro.id, turma_id: modo === "turma" ? alvo : "" })}>
+                        {tagEad(eadNoDia(d, data, t.turno_id))}
                         <div className="aulas-turno">{lista.map(cartao)}</div>
                         {lista.length === 0 && t.dias.has(d) && <span className="sr">sem aulas</span>}
                       </td>
@@ -263,6 +285,7 @@ export default function Grade() {
                           className={`${n > 1 ? "bloco" : ""} ${ehLivre ? "livre" : ""} ${!p.dias_semana.includes(d) ? "indisp" : ""} ${soltar === `${data}|${p.id}` ? "soltar" : ""}`}
                           {...alvoSoltar(`${data}|${p.id}`, data, p)}
                           onDoubleClick={() => editavel && setForm({ data, periodo_inicio_id: p.id, turma_id: modo === "turma" ? alvo : "", instrutor_id: modo === "instrutor" ? alvo : "", ambiente_id: modo === "ambiente" ? alvo : "" })}>
+                        {(i === 0 || linhas[i - 1].turno_id !== p.turno_id) && tagEad(eadNoDia(d, data, p.turno_id))}
                         {lista.map(cartao)}
                         {lista.length === 0 && continuacao(data, p) && <span className="cont" aria-hidden="true">┆</span>}
                         {ehLivre && lista.length === 0 && <span className="sr">livre</span>}

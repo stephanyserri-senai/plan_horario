@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 
 from app.models import (Alocacao, Bloqueio, CompetenciaInstrutor, DisponibilidadeInstrutor, HabilitacaoInstrutor, Instrutor, Turma, TurmaUC,
                         Turno, UnidadeCurricular)
-from app.services.planejamento import area_da_turma, instrutores_elegiveis
+from app.services.planejamento import area_da_turma, instrutores_elegiveis, nivel_atende, nivel_da_turma
 from app.services.regras_aula import HORAS_POR_TURNO, teto_letivo
 
 DIAS = ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"]
@@ -96,7 +96,8 @@ def analisar(db: Session, cenario_id: int, turma_uc_id: int, hoje: date | None =
         return {"turma": turma.codigo, "uc": uc.codigo, "habilitados": [], "quase": [], "sugestoes": []}
     rot_turno = turno.nome.lower()
     area_id = area_da_turma(db, turma)
-    elegiveis = {e["id"] for e in instrutores_elegiveis(db, uc, turma.unidade_id, inicio, area_id)}
+    nivel_turma = nivel_da_turma(db, turma)
+    elegiveis = {e["id"] for e in instrutores_elegiveis(db, uc, turma.unidade_id, inicio, area_id, nivel=nivel_turma)}
     com_uc = set(db.scalars(select(CompetenciaInstrutor.instrutor_id).where(CompetenciaInstrutor.uc_id == uc.id, CompetenciaInstrutor.ativo.is_(True))))
     cert = (uc.certificacao_exigida or "").strip().lower()
     com_cert = set(db.scalars(select(HabilitacaoInstrutor.instrutor_id).where(HabilitacaoInstrutor.ativo.is_(True),
@@ -131,6 +132,8 @@ def analisar(db: Session, cenario_id: int, turma_uc_id: int, hoje: date | None =
                 falta.append(f"habilitação em {uc.codigo}")
             if cert and i.id not in com_cert:
                 falta.append(f"certificação {uc.certificacao_exigida}")
+            if not nivel_atende(i.nivel, nivel_turma):
+                falta.append("nível técnico (é instrutor básico: só AIB e qualificações)")
             linha["falta"] = falta
             linha["motivo"] = (f"Falta {' e '.join(falta) or 'requisito'}; {txt}; "
                                f"{rot_turno}s livres: {', '.join(linha['livres_no_turno']) or 'nenhuma'}.")
@@ -139,7 +142,7 @@ def analisar(db: Session, cenario_id: int, turma_uc_id: int, hoje: date | None =
     # 1) habilitar quem já tem a certificação/área e espaço no turno
     area_inst = {i.id: i.area_id for i in insts}
     for q in [q for q in sorted(quase, key=lambda x: (len(x["falta"]), area_inst.get(x["id"]) != area_id, x["turnos_com_aula"]))
-              if q["cabe_encontros"] >= n_enc][:3]:
+              if q["cabe_encontros"] >= n_enc and not any(x.startswith("nível") for x in q["falta"])][:3]:
         if True:
             so_hab = q["falta"] == [f"habilitação em {uc.codigo}"]
             sugestoes.append({"tipo": "habilitar", "prioridade": 1 if so_hab else 3,
@@ -165,14 +168,14 @@ def analisar(db: Session, cenario_id: int, turma_uc_id: int, hoje: date | None =
             if min(len(livres_depois), teto_h - (ocup_h - len(slots))) < n_enc:
                 continue
             uc2, turma2 = db.get(UnidadeCurricular, t2.uc_id), db.get(Turma, t2.turma_id)
-            ok2 = {e["id"] for e in instrutores_elegiveis(db, uc2, turma2.unidade_id, inicio, area_da_turma(db, turma2))} - {h.id}
+            ok2 = {e["id"] for e in instrutores_elegiveis(db, uc2, turma2.unidade_id, inicio, area_da_turma(db, turma2), nivel=nivel_da_turma(db, turma2))} - {h.id}
             cert2 = (uc2.certificacao_exigida or "").strip().lower()
             for c in insts:
                 if c.id == h.id:
                     continue
                 livres_c = all((d, t) not in ag.na_semana(c.id, sh) and (d, t) not in ag.bloqueados[c.id] and _disponivel(db, c, d.weekday(), ag, t) for d, t in slots)
                 teto_c, _tot, _ = _situacao(c, len(ag.na_semana(c.id, sh)))
-                if not livres_c or len(ag.na_semana(c.id, sh)) + len(slots) > teto_c:
+                if not livres_c or len(ag.na_semana(c.id, sh)) + len(slots) > teto_c or not nivel_atende(c.nivel, nivel_da_turma(db, turma2)):
                     continue
                 if c.id in ok2:
                     req = "já é habilitado(a)"

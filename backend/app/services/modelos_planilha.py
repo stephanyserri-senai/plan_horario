@@ -80,6 +80,8 @@ MODELOS: dict[str, dict] = {
             ("Áreas em que atua", True, "A primeira é a principal; outras separadas por ';' (ou TODAS).", "areas_ou_todas", 26, "ENERGIAS; AUTOMAÇÃO", "LOGÍSTICA"),
             ("Modalidade", False, "MENSALISTA (horas garantidas: aula, planejamento ou projeto) ou HORISTA (horas não garantidas). Padrão: mensalista.",
              "modalidades_instrutor", 14, "Mensalista", "Horista"),
+            ("Nível", False, "BÁSICO: só aprendizagem industrial básica (AIB) e qualificações. TÉCNICO: todas as modalidades (AIB, AIT, HTC...). "
+             "Padrão: técnico.", "niveis_instrutor", 12, "Técnico", "Básico"),
             ("Carga horária contratual (h/semana)", False, "Jornada contratual: 40 h = dois turnos por dia (MV ou VN); 20 h = um turno.", None, 14, 40, 20),
             ("Limite de aulas por semana (h)", False, "Máximo de horas de aula na semana: até 90% da jornada (40 h → 36 h; 20 h → 16 h). Vazio = o máximo.", None, 14, 28, 16),
             ("Máximo de horas por dia", False, "Padrão: carga contratual ÷ 5 (40 h/sem = 8 h/dia). 4 h = 1 turno por dia; 8 h = até 2 turnos.", None, 12, 8, 4),
@@ -107,6 +109,7 @@ MODELOS: dict[str, dict] = {
             ("Término", True, "Data de término (dd/mm/aaaa).", None, 12, "18/12/2026", None),
             ("Dias de aula", False, "Ex.: seg a sex.", None, 14, "seg a sex", None),
             ("Área", False, "Padrão: a área do curso.", "areas", 18, "ENERGIAS", None),
+            ("Dias EAD (turma 80-20)", False, "Dia(s) de atividades a distância, sem aula presencial. Ex.: sex. Vazio = nenhum.", None, 14, "", None),
         ],
     },
 }
@@ -120,7 +123,7 @@ def gerar_modelo(db: Session, tipo: str, dados: list[list] | None = None) -> byt
     tipos = sorted({*TIPOS_SALA_PADRAO, *(t.nome for t in db.scalars(select(TipoAmbiente).where(TipoAmbiente.ativo.is_(True))) if not t.codigo.startswith("DEMO-"))})
     listas = {
         "unidades": unidades, "areas": [a for a, _ in areas], "areas_ou_todas": ["TODAS"] + [a for a, _ in areas],
-        "tipos_sala": tipos, "turnos": ["Manhã", "Tarde", "Noite"], "jornadas": ["M", "V", "N", "MV", "VN"], "modalidades_instrutor": ["Mensalista", "Horista"], "sim_nao": ["Sim", "Não"],
+        "tipos_sala": tipos, "turnos": ["Manhã", "Tarde", "Noite"], "jornadas": ["M", "V", "N", "MV", "VN"], "modalidades_instrutor": ["Mensalista", "Horista"], "niveis_instrutor": ["Técnico", "Básico"], "sim_nao": ["Sim", "Não"],
         "modalidades": ["presencial", "semipresencial", "EAD"],
         "tipos_curso": ["técnico", "qualificação", "aperfeiçoamento", "aprendizagem industrial", "habilitação", "graduação tecnológica"],
     }

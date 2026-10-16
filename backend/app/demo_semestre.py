@@ -85,7 +85,7 @@ CURSOS = [
         ("INS-MCT", "Malhas de Controle", 64, 2, ["INS", "CLP"], None),
         ("INS-CAL", "Calibração de Instrumentos", 48, 1, ["INS"], None)]),
     ("LOG", "Técnico em Logística", "LOGISTICA", "técnico", [
-        ("LOG-GAR", "Gestão de Armazenagem", 80, 2, ["LLOG", "SALA"], None),
+        ("LOG-GAR", "Gestão de Armazenagem", 80, 1, ["LLOG", "SALA"], None),  # 4 encontros na semana: cabe na turma 80-20 (sexta EAD)
         ("LOG-TRD", "Transportes e Distribuição", 56, 1, ["SALA"], None),
         ("LOG-WMS", "Sistemas de Gestão Logística (WMS)", 48, 1, ["INFO"], None),
         ("LOG-CUS", "Custos Logísticos", 40, 1, ["SALA"], None)]),
@@ -95,7 +95,7 @@ CURSOS = [
         ("POR-SEG", "Segurança do Trabalho Portuário (NR-29)", 40, 1, ["SALA"], "NR-29"),
         ("POR-GCT", "Gestão de Contêineres", 40, 1, ["LLOG"], None)]),
     ("DDS", "Técnico em Desenvolvimento de Sistemas", "DDS-TI", "técnico", [
-        ("DDS-LOP", "Lógica de Programação", 96, 2, ["INFO"], None),
+        ("DDS-LOP", "Lógica de Programação", 96, 1, ["INFO"], None),  # 4 encontros na semana: cabe na turma 80-20 (sexta EAD)
         ("DDS-BDD", "Banco de Dados", 60, 1, ["INFO"], None),
         ("DDS-WEB", "Desenvolvimento Web", 60, 1, ["INFO"], None),
         ("DDS-ANS", "Análise de Sistemas", 40, 1, ["SALA"], None)]),
@@ -178,6 +178,11 @@ LIMITE_NO_TETO = {"BM-1018"}  # aulas até o teto de 90% (36 h); os demais de 40
 # horistas e mensalistas em todos os turnos (a modalidade não depende do turno nem da carga)
 HORISTAS = {"BM-1003", "BM-1006", "BM-1012", "BM-1015", "PT-2003", "PT-2005", "PT-2006", "PT-2010"}
 
+# nível: básicos só dão aula em AIB e qualificações (inclui turmas para empresa de cursos de qualificação); os demais são técnicos
+BASICOS = {"BM-1011", "BM-1012", "BM-1018", "PT-2011"}
+# turmas 80-20: a sexta é de atividades a distância (EAD), sem aula presencial
+EAD_SEXTA = {"HTC-LOG-21", "HTC-DDS-09"}
+
 # logins do portal do instrutor na demonstração (senha comum, só para apresentação)
 LOGINS_PORTAL = {"BM-1002": "juliana.prates", "BM-1001": "marcos.vieira", "PT-2006": "igor.batista", "PT-2004": "eduardo.salles"}
 SENHA_PORTAL = "portal@2026"
@@ -250,7 +255,7 @@ def montar(db, ctx, limite_s: float = 120) -> dict:
                       area_id=area[ar].id, carga_horaria_contratual=40 if dois else 20,
                       limite_ch_letiva=teto_letivo(40) if mat in LIMITE_NO_TETO else 28 if dois else teto_letivo(20),
                       max_horas_dia=8 if dois else 4, areas_competencia=formacao, situacao="ativo", ativo=True,
-                      modalidade="horista" if mat in HORISTAS else "mensalista")
+                      modalidade="horista" if mat in HORISTAS else "mensalista", nivel="basico" if mat in BASICOS else "tecnico")
         db.add(i)
         db.flush()
         instrutores[mat] = i
@@ -272,7 +277,8 @@ def montar(db, ctx, limite_s: float = 120) -> dict:
         un_cod = next(k for k, v in unid.items() if v.id == u_id)
         t = Turma(codigo=cod, nome=nome, curso_id=c.id, matriz_id=m.id, unidade_id=u_id, area_id=c.area_id, calendario_id=cal[un_cod].id,
                   turno_id=turno[(u_id, tc)].id, qtd_alunos=alunos, data_inicio=INICIO, data_fim=FIM,
-                  dias_possiveis=dias or [0, 1, 2, 3, 4], num_grupos=1, situacao="em_andamento")
+                  dias_possiveis=[0, 1, 2, 3] if cod in EAD_SEXTA else (dias or [0, 1, 2, 3, 4]), dias_ead=[4] if cod in EAD_SEXTA else [],
+                  num_grupos=1, situacao="em_andamento")
         db.add(t)
         db.flush()
         for uc in db.scalars(select(UnidadeCurricular).where(UnidadeCurricular.matriz_id == m.id)):

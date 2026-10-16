@@ -43,7 +43,7 @@ from app.models import (
 from app.models.planejamento import TODOS_GRUPOS
 from app.services import auditoria
 from app.services.calendario import Calendarios, bloco_de_periodos, combinar, minutos
-from app.services.planejamento import ambientes_compativeis, area_da_turma, instrutores_elegiveis, periodos_por_encontro
+from app.services.planejamento import ambientes_compativeis, area_da_turma, instrutores_elegiveis, nivel_da_turma, periodos_por_encontro
 from app.services.regras_aula import credito_bloco, credito_periodo, periodos_do_turno, periodos_para_fechar, regras_aula
 from app.services import agenda_instrutor
 from app.services.validacao import AulaProposta, BaseDados, SessaoExistente, carga_horaria_minutos, possui_bloqueio, validar_aula
@@ -241,7 +241,7 @@ def montar_entrada(db: Session, cenario: CenarioPlanejamento, escopo: dict, peso
         df = min(turma.data_fim, tuc.data_limite or turma.data_fim)
         if df < di:
             continue
-        insts = instrutores_elegiveis(db, uc, turma.unidade_id, di, area_da_turma(db, turma))
+        insts = instrutores_elegiveis(db, uc, turma.unidade_id, di, area_da_turma(db, turma), nivel=nivel_da_turma(db, turma))
         ambs = ambientes_compativeis(db, uc, turma, dividir)
         ps_unidade = [p for p in periodos if p.unidade_id == turma.unidade_id and (not turma.turno_id or p.turno_id == turma.turno_id)]
         mpp = (sum(credito_periodo(regras, p) for p in ps_unidade) / len(ps_unidade)) if ps_unidade else 50
@@ -270,7 +270,7 @@ def montar_entrada(db: Session, cenario: CenarioPlanejamento, escopo: dict, peso
             recm = {str(a["id"]): a["requer_recursos_moveis"] for a in ambs if a["requer_recursos_moveis"]}
             at = AtividadeS(
                 chave=chave, turma_id=turma.id, turma_uc_id=tuc.id, uc_id=uc.id, grupo=g, grupos=list(TODOS_GRUPOS) if g is None else [g],
-                unidade_id=turma.unidade_id, turno_id=turma.turno_id, dias_permitidos=list(turma.dias_possiveis or []),
+                unidade_id=turma.unidade_id, turno_id=turma.turno_id, dias_permitidos=[d for d in (turma.dias_possiveis or []) if d not in (turma.dias_ead or [])],
                 num_periodos=num_periodos, encontros=enc, instrutores=[i["id"] for i in insts], ambientes=[a["id"] for a in ambs],
                 tamanho=turma.qtd_alunos if g is None else math.ceil(turma.qtd_alunos / turma.num_grupos),
                 data_ini=di.toordinal(), data_fim=df.toordinal(), prioridade=min(turma.prioridade, uc.prioridade), urgencia=round(urg, 3),

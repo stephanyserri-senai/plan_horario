@@ -285,6 +285,12 @@ def _derivar(db: Session, ent: str, dados: dict, obj=None) -> dict:
                         rot = next((t["rotulo"].split(" – ", 1)[1] for t in TIPOS_OFERTA if t["valor"] == tipo), tipo)
                         turno = db.get(Turno, int(d.get("turno_id") or (obj.turno_id if obj else 0) or 0)) if (d.get("turno_id") or (obj and obj.turno_id)) else None
                         d["nome"] = f"{curso.nome} {num}" + (f" – {rot}" if rot else "") + (f" ({turno.nome})" if turno else "")
+        if "dias_ead" in d or "dias_possiveis" in d:
+            from app.services.planejamento import dias_com_ead
+            ead = d["dias_ead"] if "dias_ead" in d else (obj.dias_ead if obj else [])
+            d["dias_ead"] = sorted({int(x) for x in (ead or [])})
+            d["dias_possiveis"] = dias_com_ead(d["dias_possiveis"] if "dias_possiveis" in d else (obj.dias_possiveis if obj else [0, 1, 2, 3, 4]),
+                                               d["dias_ead"], obj.dias_ead if obj and "dias_ead" in d else None)
         if obj is None and vazio("codigo") and vazio("_numero"):
             raise EntradaInvalida("Informe o número da turma (o código é montado com a sigla do curso e o tipo de oferta).")
         un = d.get("unidade_id") or (obj.unidade_id if obj else None)
@@ -529,6 +535,9 @@ def opcoes(ent: str, q: str | None = None, limite: int = 500, db: Session = Depe
             item["unidade_id"] = s["unidade_id"]
         if "area_id" in s:
             item["area_id"] = s["area_id"]
+        if ent == "turmas":  # a grade usa para marcar os dias EAD (turmas 80-20) no turno da turma
+            item.update({"turno_id": o.turno_id, "curso_id": o.curso_id, "dias_ead": list(o.dias_ead or []), "data_inicio": o.data_inicio.isoformat(),
+                         "data_fim": o.data_fim.isoformat()})
         res.append(item)
     return res
 

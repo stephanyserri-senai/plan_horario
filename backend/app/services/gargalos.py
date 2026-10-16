@@ -51,7 +51,7 @@ def _fator(p) -> float:
     """Converte minutos de relógio de um período em minutos de carga horária."""
     dur = minutos(p.hora_fim) - minutos(p.hora_inicio)
     return 60 / dur if _HORA_AULA["ativo"] and dur > 0 else 1.0
-from app.services.planejamento import ambientes_compativeis, area_da_turma, instrutores_elegiveis, situacao_carga_horaria
+from app.services.planejamento import ambientes_compativeis, area_da_turma, instrutores_elegiveis, nivel_da_turma, situacao_carga_horaria
 
 
 @dataclass
@@ -121,7 +121,7 @@ def demandas_do_cenario(db: Session, cenario_id: int | None, d0: date, d1: date,
         tamanho = math.ceil(turma.qtd_alunos / grupos)
         horas = uc.encontros_semanais * info["horas_por_encontro"]
         ambs = ambientes_compativeis(db, uc, turma, grupos > 1)
-        insts = instrutores_elegiveis(db, uc, turma.unidade_id, d0, area_da_turma(db, turma))
+        insts = instrutores_elegiveis(db, uc, turma.unidade_id, d0, area_da_turma(db, turma), nivel=nivel_da_turma(db, turma))
         for g in range(grupos):
             res.append(Demanda(
                 chave=f"{tuc.id}:{g + 1 if grupos > 1 else 0}", turma_id=turma.id, turma_codigo=turma.codigo, turno_id=turma.turno_id,
@@ -331,7 +331,9 @@ def analisar(db: Session, cenario_id: int | None, d0: date, d1: date, unidade_id
                 "descricao": f"A turma {dems[0].turma_codigo} precisa de {pico:.1f} h semanais simultâneas, mas seu turno e dias permitidos oferecem {horas_turma:.1f} h.",
                 "demanda_h": round(pico, 1), "oferta_h": round(horas_turma, 1), "deficit_h": round(pico - horas_turma, 1),
                 "calculo": "Pico da soma das horas semanais das UCs com períodos de execução sobrepostos × horas de aula do turno nos dias permitidos.",
-                "alternativas": ["Escalonar as UCs ao longo do período (sequência curricular).", "Ampliar os dias permitidos da turma.", "Reduzir encontros semanais e estender o período de execução."],
+                "alternativas": (["Turma 80-20: o dia EAD não tem aula presencial; reduza os encontros semanais das UCs ou reveja o dia EAD."]
+                                 if turma is not None and turma.dias_ead else []) +
+                                ["Escalonar as UCs ao longo do período (sequência curricular).", "Ampliar os dias permitidos da turma.", "Reduzir encontros semanais e estender o período de execução."],
             })
         if turma is None:
             continue

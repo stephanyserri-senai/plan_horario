@@ -409,7 +409,9 @@ def validar_aula(b: BaseDados, a: AulaProposta, ignorar: set[int] | None = None)
             add(ALERTA, "EXCECAO_CALENDARIO", f"Aula em dia não letivo ({motivo}) autorizada pela exceção #{excecao.id}: {excecao.justificativa}")
         else:
             add(BLOQUEIO, "DIA_NAO_LETIVO", f"{d:%d/%m/%Y} não é dia letivo: {motivo}.")
-    if dia not in (turma.dias_possiveis or []):
+    if dia in (turma.dias_ead or []):
+        add(BLOQUEIO, "TURMA_DIA_EAD", f"{('Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo')[dia]} é dia de EAD da turma {turma.codigo} (turma 80-20): sem aula presencial.")
+    elif dia not in (turma.dias_possiveis or []):
         add(BLOQUEIO, "TURMA_FORA_DIAS", f"A turma {turma.codigo} não tem aulas previstas neste dia da semana.")
     turno = b.get(Turno, turma.turno_id)
     if turno and (a.inicio.time() < turno.hora_inicio or a.fim.time() > turno.hora_fim):
@@ -515,6 +517,11 @@ def validar_aula(b: BaseDados, a: AulaProposta, ignorar: set[int] | None = None)
                 add(ALERTA, "EXCECAO_REGRA_ACADEMICA", f"{instrutor.nome} ({nome_area(instrutor.area_id)}) em turma de {nome_area(area_turma)}, por exceção justificada #{excecao.id}: {excecao.justificativa}", "instrutor", instrutor.id)
             else:
                 add(BLOQUEIO, "INSTRUTOR_OUTRA_AREA", f"{instrutor.nome} é da área {nome_area(instrutor.area_id)} e a turma {turma.codigo} é da área {nome_area(area_turma)}.", "instrutor", instrutor.id)
+        from app.services.planejamento import nivel_atende, nivel_da_turma
+        nivel_turma = b._memo(("nivel_turma", turma.id), lambda: nivel_da_turma(b.db, turma))
+        if not nivel_atende(instrutor.nivel, nivel_turma):  # regra de habilitação: não admite exceção
+            add(BLOQUEIO, "INSTRUTOR_NIVEL", f"{instrutor.nome} é instrutor básico (só AIB e qualificações) e a turma {turma.codigo} exige instrutor técnico.",
+                "instrutor", instrutor.id)
         if unidade_aula not in b.unidades_instrutor(instrutor):
             add(BLOQUEIO, "INSTRUTOR_UNIDADE", f"{instrutor.nome} não está autorizado a atuar nesta unidade.", "instrutor", instrutor.id)
         # (5) disponibilidade

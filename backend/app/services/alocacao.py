@@ -39,7 +39,7 @@ from app.models import (
 from app.services import auditoria
 from app.services.calendario import Calendarios, bloco_de_periodos, combinar, minutos_do_bloco, periodos_por_turno
 from app.services.regras_aula import credito_bloco, regras_aula
-from app.services.planejamento import ambientes_compativeis, area_da_turma, instrutores_elegiveis
+from app.services.planejamento import ambientes_compativeis, area_da_turma, instrutores_elegiveis, nivel_da_turma
 from app.services.validacao import (
     BLOQUEIO,
     AulaProposta,
@@ -369,7 +369,7 @@ def sugerir_alternativas(db: Session, cenario_id: int, p: AulaProposta, limite: 
         return not possui_bloqueio(validar_aula(b, prop, ign))
 
     res = {"instrutores": [], "ambientes": [], "horarios": []}
-    for inst in instrutores_elegiveis(db, uc, turma.unidade_id, p.data, area_da_turma(db, turma)):
+    for inst in instrutores_elegiveis(db, uc, turma.unidade_id, p.data, area_da_turma(db, turma), nivel=nivel_da_turma(db, turma)):
         if inst["id"] == p.instrutor_id:
             continue
         if ok(AulaProposta(**{**p.__dict__, "instrutor_id": inst["id"]})):

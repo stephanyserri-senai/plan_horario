@@ -320,7 +320,7 @@ def quadro_instrutores(db: Session, cenario_id: int, unidades=None, hoje: date |
       alocado em turma desta área, e entra com a fração da jornada que dedica a ela.
     - Contratar vem da ocupação. A proporção de 5 instrutores para 4 turmas é um aviso, que pesa quando a folga dos
       instrutores não comporta mais uma turma (divisão preferida 3 + 2: duas UCs, uma com 3 dias e outra com 2)."""
-    from app.services.planejamento import area_da_turma, situacao_carga_horaria
+    from app.services.planejamento import area_da_turma, nivel_atende, nivel_da_turma, situacao_carga_horaria
     from app.services.regras_aula import limite_letivo_efetivo
     cen = db.get(CenarioPlanejamento, cenario_id)
     hoje = hoje or date.today()
@@ -341,11 +341,12 @@ def quadro_instrutores(db: Session, cenario_id: int, unidades=None, hoje: date |
             area_turma[tid] = area_da_turma(db, t) if t else None
         return area_turma[tid]
 
-    dem = defaultdict(lambda: {"grade_h": 0.0, "sem_horario_h": 0.0, "turmas": set(), "simuladas": set(), "ritmo": []})
+    dem = defaultdict(lambda: {"grade_h": 0.0, "sem_horario_h": 0.0, "turmas": set(), "simuladas": set(), "ritmo": [], "niveis": []})
     for t in turmas:
         a = area_de(t.id)
         d = dem[a]
         (d["simuladas"] if t.simulacao_id else d["turmas"]).add(t.codigo)
+        d["niveis"].append(nivel_da_turma(db, t))
         futuras = db.execute(select(Alocacao.data, Alocacao.minutos_aula).where(Alocacao.cenario_id == cenario_id, Alocacao.turma_id == t.id,
                                                                             Alocacao.status != "cancelada", Alocacao.data >= ref)).all()
         por_sem = defaultdict(float)
@@ -394,7 +395,7 @@ def quadro_instrutores(db: Session, cenario_id: int, unidades=None, hoje: date |
 
     linhas = []
     for aid in sorted(set(dem) | set(fracoes), key=lambda x: (areas[x].nome if x in areas else "~")):
-        d = dem.get(aid) or {"grade_h": 0.0, "sem_horario_h": 0.0, "turmas": set(), "simuladas": set(), "ritmo": []}
+        d = dem.get(aid) or {"grade_h": 0.0, "sem_horario_h": 0.0, "turmas": set(), "simuladas": set(), "ritmo": [], "niveis": []}
         n_turmas = len(d["turmas"]) + len(d["simuladas"])
         demanda = (d["grade_h"] + d["sem_horario_h"]) / semanas
         por_turma = demanda / n_turmas if n_turmas and demanda > 0 else 5 * HORAS_POR_TURNO  # sem histórico: 5 turnos (3 + 2)
@@ -414,7 +415,10 @@ def quadro_instrutores(db: Session, cenario_id: int, unidades=None, hoje: date |
         contratar_ocupacao = math.ceil(falta_h / (40 * OCUPACAO_IDEAL) - 1e-9) if falta_h > 0.05 else 0
         # cabe mais uma turma? folga até o teto de cada instrutor, descontada a carga da área ainda sem horário
         sem_horario_sem = d["sem_horario_h"] / semanas + (extra * por_turma if extra else 0)
-        folga = {i.nome: livres_h[i.id] * f for i, f in equipe}
+        # nível da turma nova típica da área: técnico se a maioria das turmas é técnica (ou se a área ainda não tem turmas)
+        niveis = d.get("niveis") or []
+        nivel_nova = "basico" if niveis and niveis.count("basico") > niveis.count("tecnico") else "tecnico"
+        folga = {i.nome: livres_h[i.id] * f for i, f in equipe if nivel_atende(i.nivel, nivel_nova)}
         soma = sum(folga.values())
         fator = max(0.0, (soma - sem_horario_sem) / soma) if soma > 0 else 0.0
         livres = {n: int(h * fator // HORAS_POR_TURNO + 1e-9) for n, h in folga.items()}
@@ -422,6 +426,8 @@ def quadro_instrutores(db: Session, cenario_id: int, unidades=None, hoje: date |
         ritmo_h = ritmo[len(ritmo) // 2] if ritmo else 5 * HORAS_POR_TURNO
         turnos_nova = max(1, min(10, round(ritmo_h / HORAS_POR_TURNO)))
         encaixe = encaixe_nova_turma(livres, turnos_nova)
+        encaixe["nivel"] = nivel_nova
+        encaixe["faltam_turnos"] = max(0, turnos_nova - encaixe["turnos_livres_total"]) if not encaixe["cabe"] else 0
         n_equipe = round(sum(f for _i, f in equipe), 1)
         ideal_proporcao = math.ceil(n_turmas * INSTRUTORES_POR_TURMA - 1e-9)
         deficit_proporcao = max(0, math.ceil(ideal_proporcao - n_equipe - 0.1 - 1e-6))  # tolera frações de instrutores compartilhados
@@ -445,7 +451,10 @@ def quadro_instrutores(db: Session, cenario_id: int, unidades=None, hoje: date |
         linhas.append({
             "area_id": aid, "area": areas[aid].nome if aid in areas else "Sem área",
             "turmas": n_turmas, "turmas_lista": sorted(d["turmas"]), "turmas_simuladas": sorted(d["simuladas"]), "turmas_hipoteticas": extra,
-            "instrutores": len(principais), "instrutores_outras_areas": de_outras, "instrutores_equivalentes": n_equipe,
+            "instrutores": len(principais), "instrutores_outras_areas": de_outras,
+            "instrutores_basicos": sum(1 for i in principais if i.nivel == "basico"),
+            "instrutores_tecnicos": sum(1 for i in principais if i.nivel != "basico"),
+            "turmas_tecnicas": niveis.count("tecnico"), "turmas_basicas": niveis.count("basico"), "instrutores_equivalentes": n_equipe,
             "instrutores_40h_equivalentes": round(carga / 40, 1),
             "razao_instrutores_turma": round(n_equipe / n_turmas, 2) if n_turmas else None,
             "ideal_proporcao": ideal_proporcao, "demanda_semana_h": round(demanda, 1), "na_grade_h": round(d["grade_h"] / semanas, 1),

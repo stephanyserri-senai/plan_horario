@@ -115,16 +115,19 @@ export function QuadroInstrutores() {
         { chave: "area", rotulo: "Área", render: (a: any) => <b>{a.area}</b> },
         { chave: "turmas", rotulo: "Turmas", alinhar: "dir", render: (a: any) => <span title={[...a.turmas_lista, ...a.turmas_simuladas.map((x: string) => `${x} (simulada)`)].join(", ")}>
           {a.turmas}{a.turmas_hipoteticas ? <small className="mudo"> (+{a.turmas_hipoteticas} hip.)</small> : ""}</span> },
-        { chave: "instrutores", rotulo: "Instrutores", alinhar: "dir", render: (a: any) => <span title={a.instrutores_outras_areas.map((o: any) =>
+        { chave: "instrutores", rotulo: "Instrutores", render: (a: any) => (
+          <div className="cel-instr" title={a.instrutores_outras_areas.map((o: any) =>
             `${o.nome} (área principal: ${o.area_principal || "—"}) — ${o.aula_semana_h} h/sem aqui, ${Math.round(o.fracao * 100)}% da jornada`).join("\n")}>
-          {a.instrutores}{a.instrutores_outras_areas.length > 0 && <small className="mudo"> + {a.instrutores_outras_areas.length} de outra área</small>}
-          <br /><small className="mudo">ref. 5:4 = {a.ideal_proporcao}</small></span> },
+            <b>{a.instrutores}</b> da área
+            {a.instrutores > 0 && <small className="mudo"> ({a.instrutores_tecnicos} téc. · {a.instrutores_basicos} bás.)</small>}
+            {a.instrutores_outras_areas.length > 0 && <div><small>+ {a.instrutores_outras_areas.length} de outra área</small></div>}
+          </div>) },
         { chave: "demanda_semana_h", rotulo: "Demanda (h/sem)", alinhar: "dir", render: (a: any) => <span title={`na grade: ${a.na_grade_h} h · ainda sem horário: ${a.sem_horario_semana_h} h`}>{a.demanda_semana_h}</span> },
         { chave: "capacidade_ideal_h", rotulo: "Capacidade 80% (h/sem)", alinhar: "dir" },
         { chave: "ocupacao_projetada_pct", rotulo: "Ocupação projetada", render: (a: any) => <BarraOcupacao pct={a.ocupacao_projetada_pct} /> },
         { chave: "nova_turma", rotulo: "Cabe nova turma?", render: (a: any) => <NovaTurma n={a.nova_turma} /> },
-        { chave: "situacao", rotulo: "Situação", render: (a: any) => { const [tom, txt] = SITUACAO[a.situacao] || ["info", a.situacao]; return <Badge tipo={tom}>{txt}</Badge>; } },
-        { chave: "contratar_recomendado", rotulo: "O que fazer", render: (a: any) => <small>{recomendacao(a)}</small> },
+        { chave: "situacao", rotulo: "Situação e o que fazer", render: (a: any) => { const [tom, txt] = SITUACAO[a.situacao] || ["info", a.situacao];
+          return <div className="o-que-fazer"><Badge tipo={tom}>{txt}</Badge><small>{recomendacao(a)}</small></div>; } },
         { chave: "hip", rotulo: "Simular + turmas", render: (a: any) => a.area_id ? (
           <input type="number" min={0} max={20} className="num-curto" aria-label={`Turmas a mais em ${a.area}`} value={extra[a.area_id] || ""} placeholder="0"
             onChange={(e) => setExtra({ ...extra, [a.area_id]: Math.max(0, Number(e.target.value) || 0) })} />) : null },
@@ -133,19 +136,18 @@ export function QuadroInstrutores() {
   );
 }
 
-const MODO: Record<string, string> = { divisao_preferida: "em 2 UCs", uma_uc: "em 1 UC", um_instrutor: "com um só instrutor", dividida: "dividida entre vários" };
-
-/** Cabe mais uma turma nos turnos livres (até 90%)? Mostra a divisão encontrada (de preferência 3 + 2). */
+/** Cabe mais uma turma nos turnos livres (até 90%)? Lista quem assumiria cada UC (de preferência 2 UCs: 3 + 2 turnos). */
 function NovaTurma({ n }: { n: any }) {
   if (!n) return null;
-  const plano = (n.plano || []).map((p: any) => `${p.instrutor} (${p.turnos})`).join(" + ");
+  const nivel = n.nivel === "basico" ? "básica" : "técnica";
   return (
-    <span title={`Turma nova típica da área: ${n.turnos_semana} turno(s) por semana; divisão preferida ${n.divisao_preferida.join(" + ")}. `
-      + `Turnos livres até o teto: ${n.turnos_livres_total} em ${n.instrutores_com_folga} instrutor(es).`}>
-      {n.cabe ? <Badge tipo="ok">sim, {n.divisao_preferida.join(" + ")} {MODO[n.modo] && n.modo !== "divisao_preferida" ? MODO[n.modo] : ""}</Badge>
-        : <Badge tipo="bloqueio">não cabe</Badge>}
-      <br /><small className="mudo">{n.cabe ? plano : `precisa de ${n.turnos_semana} turnos; há ${n.turnos_livres_total} livres`}</small>
-    </span>
+    <div className="nova-turma" title={`Turnos livres até o teto de 90%: ${n.turnos_livres_total}, em ${n.instrutores_com_folga} instrutor(es) aptos à turma ${nivel}.`}>
+      {n.cabe ? <Badge tipo="ok">cabe</Badge> : <Badge tipo="bloqueio">não cabe</Badge>}
+      <small className="mudo nt-perfil">turma {nivel} de {n.turnos_semana} turno{n.turnos_semana > 1 ? "s" : ""}/semana</small>
+      {n.cabe ? <ul className="nt-plano">{(n.plano || []).map((p: any, k: number) => (
+          <li key={k}><span className="nt-uc">{n.modo === "dividida" ? `parte ${k + 1}` : `UC ${k + 1}`}</span> {p.turnos} turno{p.turnos > 1 ? "s" : ""} · {p.instrutor}</li>))}</ul>
+        : <small className="nt-falta">faltam {n.faltam_turnos || n.turnos_semana} turno(s): há {n.turnos_livres_total} livre(s) até 90%</small>}
+    </div>
   );
 }
 
@@ -154,6 +156,8 @@ function recomendacao(a: any): string {
   if (a.situacao === "sem_instrutor") partes.push(`Não há instrutor na área para ${a.demanda_semana_h} h/semana.`);
   if (a.contratar_recomendado) partes.push(`Pela ocupação: contratar ${a.contratar_recomendado} instrutor(es) de 40 h para ficar em 80%.`);
   if (a.turmas && a.nova_turma && !a.nova_turma.cabe && !a.aviso_proporcao) partes.push("Não cabe mais uma turma com o quadro atual: para abrir outra, contrate ou habilite instrutor de outra área.");
+  if (a.nova_turma && !a.nova_turma.cabe && a.nova_turma.nivel === "tecnico" && a.instrutores_basicos)
+    partes.push(`${a.instrutores_basicos} instrutor(es) básico(s) da área não podem assumir turma técnica.`);
   if (a.aviso_proporcao) partes.push(`⚠ Aviso: ${a.aviso_proporcao.texto}`);
   if (!partes.length && a.situacao === "ociosa") partes.push("Há folga: a área pode receber mais turmas ou ceder instrutores habilitados.");
   if (!partes.length) partes.push("Quadro adequado para a demanda prevista.");

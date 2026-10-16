@@ -375,6 +375,11 @@ def exportar_grade(cenario_id: int, formato: str = "xlsx", filtro: str | None = 
     arq = {"semana": "grade_semana", "mes": f"grade_{inicio:%Y_%m}", "semestre": "grade_semestre"}[periodo]
     fim_vis = inicio + timedelta(days=5) if periodo == "semana" else fim
     meta = _meta(db, ctx, cenario_id, inicio, fim_vis, rot)
+    aulas_lista = linhas
+    ead = exportacao.linhas_ead(db, inicio, fim, filtro, filtro_id, ctx.unidades)
+    if ead:  # turmas 80-20: o dia EAD aparece nos quadros (não na lista de aulas)
+        linhas = sorted(linhas + ead, key=lambda l: (l["_data"], l["_ini"], l["turma"]))
+        meta = meta + ["EAD = dia de atividades a distância das turmas 80-20 (sem aula presencial)."]
     # quadro geral: uma linha por turma em cada horário, colorida pela turma (no Excel e no PDF)
     if periodo == "semana":
         geral, tipo_geral, tipo = exportacao.matriz_geral(linhas, inicio, inicio + timedelta(days=6), False), "geral_semana", "semana"
@@ -394,7 +399,7 @@ def exportar_grade(cenario_id: int, formato: str = "xlsx", filtro: str | None = 
     for turma in sorted({l["turma"] for l in linhas}):
         abas[turma] = por_turma([l for l in linhas if l["turma"] == turma])
         tipos[turma], titulos[turma] = tipo, f"Grade horária – {nome_per} – turma {turma}"
-    abas["Lista de aulas"], tipos["Lista de aulas"] = linhas, "grade"
+    abas["Lista de aulas"], tipos["Lista de aulas"] = aulas_lista, "grade"
     return Response(exportacao.para_xlsx(abas, titulo, meta, tipos, titulos, cores), media_type=XLSX_MIME,
                     headers={"Content-Disposition": f'attachment; filename="{arq}.xlsx"'})
 
