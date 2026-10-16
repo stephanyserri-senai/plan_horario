@@ -725,3 +725,7 @@ li.sem-marcador { list-style: none; margin-left: -18px; }
 .epi-manual-campos label { display: grid; gap: 3px; font-size: .82rem; color: var(--mudo); }
 .epi-manual-campos .epi-nome { flex: 1 1 200px; }
 .epi-manual textarea { width: 100%; font: inherit; }
+.check-dispensa { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px dashed var(--borda); border-radius: 10px; cursor: pointer; }
+.check-dispensa input { width: 18px; height: 18px; margin-top: 2px; }
+.check-dispensa span { display: grid; gap: 2px; }
+.check-dispensa.ativo { border-style: solid; border-color: var(--primaria); background: var(--info-bg); }

@@ -76,3 +76,9 @@ echo "Gerado backend/sql/atualizacao_0012.sql"
   ALEMBIC_DATABASE_URL="postgresql+psycopg://usuario:senha@host/banco" python -m alembic upgrade 0012:0013 --sql
 } > sql/atualizacao_0013.sql
 echo "Gerado backend/sql/atualizacao_0013.sql"
+{
+  echo "-- Atualização 0013 -> 0014: cursos que não precisam de EPI (coluna cursos.dispensa_epi, padrão falso)."
+  echo "-- Só acrescenta a coluna. Cole no SQL Editor do Supabase e clique em Run."
+  ALEMBIC_DATABASE_URL="postgresql+psycopg://usuario:senha@host/banco" python -m alembic upgrade 0013:0014 --sql
+} > sql/atualizacao_0014.sql
+echo "Gerado backend/sql/atualizacao_0014.sql"

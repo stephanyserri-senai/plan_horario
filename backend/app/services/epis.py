@@ -89,9 +89,29 @@ def _validar(dados: dict) -> dict:
     return {"nome": nome[:150], "quantidade_por_aluno": qtd, "antecedencia_dias": ant, "observacao": (dados.get("observacao") or "").strip() or None}
 
 
-def criar_epi_curso(db: Session, ctx, curso_id: int, dados: dict) -> EpiCurso:
-    if db.get(Curso, curso_id) is None:
+SEM_EPI = "Este curso está marcado como \"não precisa de EPI\". Desmarque a opção para montar a lista."
+
+
+def definir_dispensa(db: Session, ctx, curso_id: int, dispensa: bool) -> Curso:
+    """Marca (ou desmarca) que o curso não precisa de EPI. Só dá para marcar com a lista vazia."""
+    c = db.get(Curso, curso_id)
+    if c is None:
         raise NaoEncontrado("Curso não encontrado.")
+    if dispensa and db.scalar(select(EpiCurso.id).where(EpiCurso.curso_id == curso_id, EpiCurso.ativo.is_(True)).limit(1)):
+        raise EntradaInvalida("O curso tem EPIs na lista: retire-os antes de marcar que ele não precisa de EPI.")
+    antes = c.dispensa_epi
+    c.dispensa_epi = bool(dispensa)
+    db.flush()
+    auditoria.registrar(db, ctx, "epi.curso.dispensa", "cursos", c.id, antes={"dispensa_epi": antes}, depois={"dispensa_epi": c.dispensa_epi})
+    return c
+
+
+def criar_epi_curso(db: Session, ctx, curso_id: int, dados: dict) -> EpiCurso:
+    c = db.get(Curso, curso_id)
+    if c is None:
+        raise NaoEncontrado("Curso não encontrado.")
+    if c.dispensa_epi:
+        raise EntradaInvalida(SEM_EPI)
     e = EpiCurso(curso_id=curso_id, **_validar(dados))
     db.add(e)
     db.flush()
@@ -103,8 +123,11 @@ def criar_epi_curso(db: Session, ctx, curso_id: int, dados: dict) -> EpiCurso:
 def importar_lista(db: Session, ctx, curso_id: int, texto: str, antecedencia_padrao: int = 15) -> dict:
     """Lista colada (um EPI por linha; opcional "nome; quantidade por aluno; dias de antecedência"). Repetidos
     (mesmo nome já ativo no curso) são ignorados. As turmas do curso em andamento ou futuras recebem tudo de uma vez."""
-    if db.get(Curso, curso_id) is None:
+    c = db.get(Curso, curso_id)
+    if c is None:
         raise NaoEncontrado("Curso não encontrado.")
+    if c.dispensa_epi:
+        raise EntradaInvalida(SEM_EPI)
     existentes = {e.nome.strip().lower() for e in db.scalars(select(EpiCurso).where(EpiCurso.curso_id == curso_id, EpiCurso.ativo.is_(True)))}
     criados, repetidos = [], []
     for n, linha in enumerate((texto or "").splitlines(), 1):
@@ -151,7 +174,7 @@ def resumo_cursos(db: Session, unidades=None, hoje: date | None = None) -> list[
             continue
         a = areas.get(c.area_id)
         res.append({"id": c.id, "codigo": c.codigo, "nome": c.nome, "area_id": c.area_id, "area": a.nome if a else "Sem área",
-                    "epis": n_epis.get(c.id, 0), "turmas_ativas": turmas.get(c.id, 0)})
+                    "epis": n_epis.get(c.id, 0), "turmas_ativas": turmas.get(c.id, 0), "dispensa_epi": c.dispensa_epi})
     return res
 
 

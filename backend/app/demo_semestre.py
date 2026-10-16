@@ -215,6 +215,7 @@ EPIS = {
     "OPL": [("Calçado de segurança", 1, 15), ("Luva de vaqueta", 1, 15), ("Colete refletivo", 1, 15)],
     "LOG": [("Colete refletivo", 1, 10)],
 }
+SEM_EPI = {"DDS", "DGR", "ADM", "INF"}  # cursos que não precisam de EPI
 LOGINS_PORTAL = {"BM-1002": "juliana.prates", "BM-1001": "marcos.vieira", "PT-2006": "igor.batista", "PT-2004": "eduardo.salles"}
 SENHA_PORTAL = "portal@2026"
 
@@ -503,6 +504,8 @@ def epis_demo(db, cursos) -> dict:
         c, _m = cursos[sigla]
         for nome, qtd, ant in lista:
             db.add(EpiCurso(curso_id=c.id, nome=nome, quantidade_por_aluno=qtd, antecedencia_dias=ant))
+    for sigla in SEM_EPI:  # cursos que não usam EPI
+        cursos[sigla][0].dispensa_epi = True
     db.flush()
     turmas = db.scalars(select(Turma).where(Turma.simulacao_id.is_(None))).all()
     for t in turmas:

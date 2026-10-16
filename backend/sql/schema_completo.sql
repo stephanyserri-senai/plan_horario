@@ -1441,5 +1441,11 @@ END $$;
 
 UPDATE alembic_version SET version_num='0013' WHERE alembic_version.version_num = '0012';
 
+-- Running upgrade 0013 -> 0014
+
+ALTER TABLE cursos ADD COLUMN dispensa_epi BOOLEAN DEFAULT false NOT NULL;
+
+UPDATE alembic_version SET version_num='0014' WHERE alembic_version.version_num = '0013';
+
 COMMIT;
 

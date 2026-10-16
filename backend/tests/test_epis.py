@@ -98,3 +98,21 @@ def test_lista_de_epis_colada_no_curso(db, mundo):
     assert c.post(f"/api/cursos/{m.curso.id}/epis/lista", json={"texto": "X; abc"}, headers=h).status_code == 422
     res = {x["id"]: x for x in c.get("/api/epis-cursos", headers=h).json()}
     assert res[m.curso.id]["epis"] == 3 and res[m.curso.id]["turmas_ativas"] == 2
+
+
+def test_curso_que_nao_precisa_de_epi(db, mundo):
+    m = mundo
+    c = TestClient(app)
+    h = _h(c)
+    assert c.get(f"/api/cursos/{m.curso.id}/epi-config", headers=h).json() == {"dispensa_epi": False}
+    assert c.put(f"/api/cursos/{m.curso.id}/epi-config", json={"dispensa_epi": True}, headers=h).json() == {"dispensa_epi": True}
+    # marcado: não aceita EPI na lista (um a um ou colado)
+    r = c.post(f"/api/cursos/{m.curso.id}/epis", json={"nome": "Luva"}, headers=h)
+    assert r.status_code == 422 and "não precisa de EPI" in r.text
+    assert c.post(f"/api/cursos/{m.curso.id}/epis/lista", json={"texto": "Luva"}, headers=h).status_code == 422
+    assert next(x for x in c.get("/api/epis-cursos", headers=h).json() if x["id"] == m.curso.id)["dispensa_epi"] is True
+    # desmarca, inclui um EPI e aí não deixa marcar de novo com a lista cheia
+    c.put(f"/api/cursos/{m.curso.id}/epi-config", json={"dispensa_epi": False}, headers=h)
+    assert c.post(f"/api/cursos/{m.curso.id}/epis", json={"nome": "Luva"}, headers=h).status_code == 200
+    r = c.put(f"/api/cursos/{m.curso.id}/epi-config", json={"dispensa_epi": True}, headers=h)
+    assert r.status_code == 422 and "retire" in r.text

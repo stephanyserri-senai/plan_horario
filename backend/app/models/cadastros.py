@@ -181,6 +181,7 @@ class Curso(TimestampMixin, Base):
     unidade_id: Mapped[int | None] = mapped_column(ForeignKey("unidades.id"), index=True)
     area_id: Mapped[int | None] = mapped_column(ForeignKey("areas.id"), index=True)
     turnos_possiveis: Mapped[str | None] = mapped_column(String(200))
+    dispensa_epi: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))  # curso que não exige EPI
     situacao: Mapped[str] = mapped_column(String(20), default="ativo")
     ativo: Mapped[bool] = mapped_column(Boolean, default=True)
 

@@ -37,6 +37,22 @@ def incluir_epi(curso_id: int, dados: dict = Body(...), db: Session = Depends(ge
     return epis.ser_curso(e)
 
 
+@router.get("/cursos/{curso_id}/epi-config")
+def config_epi(curso_id: int, db: Session = Depends(get_db), ctx: Contexto = Depends(get_contexto)):
+    ctx.exigir("cadastros.ler")
+    return {"dispensa_epi": _curso(db, ctx, curso_id).dispensa_epi}
+
+
+@router.put("/cursos/{curso_id}/epi-config")
+def definir_config_epi(curso_id: int, dados: dict = Body(...), db: Session = Depends(get_db), ctx: Contexto = Depends(get_contexto)):
+    """{"dispensa_epi": true} marca que o curso não precisa de EPI (só com a lista vazia)."""
+    ctx.exigir("cadastros.editar")
+    _curso(db, ctx, curso_id)
+    c = epis.definir_dispensa(db, ctx, curso_id, bool(dados.get("dispensa_epi")))
+    db.commit()
+    return {"dispensa_epi": c.dispensa_epi}
+
+
 @router.post("/cursos/{curso_id}/epis/lista")
 def incluir_lista(curso_id: int, dados: dict = Body(...), db: Session = Depends(get_db), ctx: Contexto = Depends(get_contexto)):
     """Vários EPIs de uma vez: um por linha ("nome" ou "nome; quantidade por aluno; dias de antecedência")."""

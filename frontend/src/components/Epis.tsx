@@ -16,6 +16,13 @@ export function EpisDoCurso({ cursoId, editavel, mudou }: { cursoId: number; edi
   const l0 = useCarregar<any[]>(() => api.get(`/api/cursos/${cursoId}/epis`), [cursoId]);
   const l = { ...l0, recarregar: () => { l0.recarregar(); mudou?.(); } };
   const [lista, setLista] = useState<string | null>(null);
+  const cfg = useCarregar<any>(() => api.get(`/api/cursos/${cursoId}/epi-config`), [cursoId]);
+  const dispensa = !!cfg.dados?.dispensa_epi;
+  const trocarDispensa = async (v: boolean) => {
+    try { await api.put(`/api/cursos/${cursoId}/epi-config`, { dispensa_epi: v }); cfg.recarregar(); mudou?.();
+      aviso(v ? "Curso marcado: não precisa de EPI." : "Agora você pode montar a lista de EPIs do curso."); }
+    catch (e: any) { aviso(e.message, "erro"); }
+  };
   const colar = async () => {
     try {
       const r = await api.post(`/api/cursos/${cursoId}/epis/lista`, { texto: lista });
@@ -46,6 +53,13 @@ export function EpisDoCurso({ cursoId, editavel, mudou }: { cursoId: number; edi
     <section className="epis-curso" aria-label="EPIs do curso">
       <div className="cursos-barra"><h3 className="subtitulo">🦺 EPIs do curso</h3>
         <small className="mudo">cada turma recebe: quantidade = alunos × por aluno; prazo = início da turma − antecedência</small></div>
+      {cfg.dados && <label className={`check-dispensa ${dispensa ? "ativo" : ""}`}
+        title={!dispensa && (l.dados || []).length ? "Retire os EPIs da lista para marcar esta opção" : undefined}>
+        <input type="checkbox" checked={dispensa} disabled={!editavel || (!dispensa && (l.dados || []).length > 0)} onChange={(e) => trocarDispensa(e.target.checked)} />
+        <span><b>🚫 Este curso não precisa de EPI</b><small className="mudo">{dispensa ? "As turmas deste curso não recebem EPIs e o curso não aparece como pendente."
+          : (l.dados || []).length ? "Para marcar, retire antes os EPIs da lista." : "Marque para cursos que não usam EPI (ex.: informática, gestão)."}</small></span>
+      </label>}
+      {!dispensa && <>
       <Tabela vazio="Nenhum EPI cadastrado para este curso." linhas={l.dados || []} chave={(e: any) => e.id} colunas={[
         { chave: "nome", rotulo: "EPI", render: (e: any) => editando?.id === e.id
           ? <input value={editando.nome} onChange={(x) => setEditando({ ...editando, nome: x.target.value })} /> : <><b>{e.nome}</b>{e.observacao && <small className="mudo"> · {e.observacao}</small>}</> },
@@ -76,6 +90,7 @@ export function EpisDoCurso({ cursoId, editavel, mudou }: { cursoId: number; edi
         <div className="acoes-linha"><button className="btn" onClick={() => setLista(null)}>Cancelar</button>
           <button className="btn btn-primario" disabled={!lista.trim()} onClick={colar}>Incluir {lista.split("\n").filter((x) => x.trim()).length} EPI(s)</button></div>
       </div>}
+      </>}
     </section>
   );
 }
@@ -174,13 +189,15 @@ export function ControleEpis({ turmaId, cursoId, situacaoInicial = "", versao = 
 /** Prévia, no cadastro da turma, dos EPIs que o curso exige (calculados para os alunos e o início informados). */
 export function PreviaEpis({ cursoId, alunos, inicio }: { cursoId: any; alunos: any; inicio: string }) {
   const l = useCarregar<any[]>(() => cursoId ? api.get(`/api/cursos/${cursoId}/epis`) : Promise.resolve([]), [cursoId]);
+  const cfg = useCarregar<any>(() => cursoId ? api.get(`/api/cursos/${cursoId}/epi-config`) : Promise.resolve(null), [cursoId]);
   if (!cursoId || !l.dados) return null;
+  if (cfg.dados?.dispensa_epi) return <div className="previa-epis"><b>🦺 EPIs desta turma</b> <span className="mudo">o curso não precisa de EPI.</span></div>;
   const n = Number(alunos) || 0;
   const prazo = (dias: number) => { if (!inicio) return "—"; const d = new Date(inicio + "T12:00:00"); d.setDate(d.getDate() - dias); return d.toLocaleDateString("pt-BR"); };
   return (
     <div className="previa-epis">
       <b>🦺 EPIs desta turma</b>{" "}
-      {l.dados.length === 0 ? <span className="mudo">o curso não tem EPIs cadastrados (cadastre em Cursos, matrizes e UCs).</span>
+      {l.dados.length === 0 ? <span className="mudo">o curso ainda não tem lista de EPIs (monte em EPIs das turmas → Lista de EPIs por curso, ou marque que não precisa).</span>
         : <ul>{l.dados.map((e) => <li key={e.id}>{e.nome}: {n ? <b>{n * e.quantidade_por_aluno}</b> : <span className="mudo">informe os alunos</span>} ({e.quantidade_por_aluno} por aluno) · pronto até {prazo(e.antecedencia_dias)}</li>)}</ul>}
       {l.dados.length > 0 && <small className="mudo">Entram no controle de EPIs ao salvar; marque lá a compra/separação e a entrega.</small>}
     </div>
@@ -200,7 +217,7 @@ export function ListasPorCurso() {
   const areas = [...new Map((r.dados || []).map((c) => [String(c.area_id), c.area])).entries()].sort((a, b) => String(a[1]).localeCompare(String(b[1])));
   const grupos = [...new Set(cursos.map((c) => c.area))];
   const atual = sel && (r.dados || []).find((c) => c.id === sel.id);
-  const semLista = (r.dados || []).filter((c) => !c.epis && c.turmas_ativas).length;
+  const semLista = (r.dados || []).filter((c) => !c.epis && !c.dispensa_epi && c.turmas_ativas).length;
   return (
     <div className="cursos-layout">
       <aside className="cursos-lista">
@@ -209,11 +226,11 @@ export function ListasPorCurso() {
             <option value="">Todas as áreas</option>{areas.map(([id, nome]) => <option key={id} value={id}>{nome}</option>)}</select>
           <input type="search" placeholder="Curso ou sigla" aria-label="Pesquisar curso" value={busca} onChange={(e) => setBusca(e.target.value)} />
         </div>
-        {semLista > 0 && <small className="aviso-nl">{semLista} curso(s) com turma em andamento ainda sem lista de EPIs</small>}
+        {semLista > 0 && <small className="aviso-nl">{semLista} curso(s) com turma em andamento ainda sem lista de EPIs (monte a lista ou marque que não precisa)</small>}
         {grupos.map((g) => <div key={g} className="cursos-area"><h4>{g}</h4><ul>
           {cursos.filter((c) => c.area === g).map((c) => <li key={c.id}><button className={sel?.id === c.id ? "ativo" : ""} onClick={() => setSel(c)}>
             <b>{c.codigo}</b> {c.nome}
-            <small className="mudo">{c.epis ? `${c.epis} EPI(s)` : "sem lista de EPIs"} · {c.turmas_ativas} turma(s) ativa(s)</small></button></li>)}
+            <small className="mudo">{c.dispensa_epi ? "🚫 não precisa de EPI" : c.epis ? `${c.epis} EPI(s)` : "⚠ sem lista de EPIs"} · {c.turmas_ativas} turma(s) ativa(s)</small></button></li>)}
         </ul></div>)}
         {r.dados && cursos.length === 0 && <p className="sub">Nenhum curso encontrado.</p>}
       </aside>

@@ -261,7 +261,9 @@ export function ListaEntidade({ ent }: { ent: string }) {
       invalidarOpcoes(ent);
       if (ent === "turmas" && novo) {
         const ep = await api.get(`/api/epis-turmas?turma_id=${salvo.id}`).catch(() => null);
+        const cfg = await api.get(`/api/cursos/${salvo.curso_id}/epi-config`).catch(() => null);
         aviso(ep?.itens?.length ? `Turma ${salvo.codigo} criada. ${ep.itens.length} EPI(s) do curso entraram no controle de entregas (menu EPIs das turmas).`
+          : cfg?.dispensa_epi ? `Turma ${salvo.codigo} criada (o curso não precisa de EPI).`
           : `Turma ${salvo.codigo} criada. O curso ainda não tem lista de EPIs: monte-a em EPIs das turmas → Lista de EPIs por curso.`);
       } else aviso("Registro salvo.");
       setEdicao(null);
