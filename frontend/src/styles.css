@@ -665,3 +665,4 @@ li.sem-marcador { list-style: none; margin-left: -18px; }
 .cel-sit.apagada { opacity: .35; }
 .cel-fora { color: var(--mudo); font-size: .78rem; font-style: italic; }
 .chip-estado.sem-ponto::before { display: none; }
+.subtitulo { font-size: .95rem; margin: 4px 0 6px; }

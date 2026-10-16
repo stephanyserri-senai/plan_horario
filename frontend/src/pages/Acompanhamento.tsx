@@ -88,17 +88,17 @@ function TaxasDeOcupacao({ inicio, fim, amb, inst, ins }: { inicio: string; fim:
   const p = { cenario_id: cenario?.id, inicio, fim };
   const se = useCarregar<any>(() => cenario ? api.get(`/api/consultas/serie${qs(p)}`) : Promise.resolve(null), [cenario?.id, inicio, fim]);
   const rk = useCarregar<any>(() => cenario ? api.get(`/api/consultas/ranking${qs(p)}`) : Promise.resolve(null), [cenario?.id, inicio, fim]);
-  // um ponto por turno (somando as unidades): manhã, tarde, noite, PFP (se houver aula) e sábado por último
+  // um ponto por turno (somando as unidades): manhã, tarde, noite e sábado por último; a PFP conta na manhã ou na tarde
   const porTurno = useMemo(() => {
     const m = new Map<string, { turno: string; ocup: number; disp: number }>();
     for (const t of amb?.por_turno || []) {
-      const nome = String(t.turno).split(" – ")[0].includes("PFP") ? "PFP" : String(t.turno).split(" – ")[0];
+      const nome = String(t.turno).split(" – ")[0];
       const x = m.get(nome) || { turno: nome, ocup: 0, disp: 0 };
       x.ocup += t.horas_ocupadas || 0; x.disp += t.horas_disponiveis || 0;
       m.set(nome, x);
     }
-    const ordem = ["Manhã", "Tarde", "Noite", "PFP", "Sábado"];
-    return [...m.values()].filter((x) => x.disp > 0 && (x.turno !== "PFP" || x.ocup > 0))
+    const ordem = ["Manhã", "Tarde", "Noite", "Sábado"];
+    return [...m.values()].filter((x) => x.disp > 0)
       .sort((a, b) => (ordem.indexOf(a.turno) + 99) % 99 - (ordem.indexOf(b.turno) + 99) % 99)
       .map((x) => ({ turno: x.turno, taxa_ocupacao_pct: Math.round((1000 * x.ocup) / x.disp) / 10 }));
   }, [amb]);
@@ -122,6 +122,36 @@ function TaxasDeOcupacao({ inicio, fim, amb, inst, ins }: { inicio: string; fim:
           </ResponsiveContainer>
         </Card>
       </div>}
+      {rk.dados && <Card titulo="Ocupação por área" extra={<small className="mudo">instrutor conta na área principal; horas dadas em turmas de outra área contam nela</small>}>
+        <div className="grid-2">
+          <div>
+            <h3 className="subtitulo">Instrutores</h3>
+            <ResponsiveContainer width="100%" height={Math.max(180, 30 * rk.dados.areas.length)}>
+              <BarChart data={rk.dados.areas} layout="vertical" margin={{ left: 10, right: 24 }}><CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                <XAxis type="number" unit="%" domain={[0, 100]} /><YAxis type="category" dataKey="area" width={140} tick={{ fontSize: 12 }} /><Tooltip />
+                <Bar dataKey="ocupacao_pct" name="Ocupação da jornada %" fill={COR} /></BarChart>
+            </ResponsiveContainer>
+            <Tabela colunas={[{ chave: "area", rotulo: "Área" },
+              { chave: "instrutores", rotulo: "Instrutores", alinhar: "dir", render: (l: any) => <>{l.instrutores}{l.instrutores_outras_areas > 0 &&
+                <small className="mudo" title="instrutores de outra área com aulas em turmas desta área"> +{l.instrutores_outras_areas} de outras</small>}</> },
+              { chave: "aula_media_semana_h", rotulo: "Aula (h/sem)", alinhar: "dir" }, { chave: "capacidade_semana_h", rotulo: "Jornada (h/sem)", alinhar: "dir" },
+              { chave: "ocupacao_pct", rotulo: "Ocupação", render: (l: any) => <BarraOcupacao pct={l.ocupacao_pct} /> }]}
+              linhas={rk.dados.areas} chave={(l: any) => l.area} />
+          </div>
+          <div>
+            <h3 className="subtitulo">Salas e laboratórios</h3>
+            <ResponsiveContainer width="100%" height={Math.max(180, 30 * (rk.dados.areas_salas || []).length)}>
+              <BarChart data={rk.dados.areas_salas || []} layout="vertical" margin={{ left: 10, right: 24 }}><CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                <XAxis type="number" unit="%" domain={[0, 100]} /><YAxis type="category" dataKey="area" width={140} tick={{ fontSize: 12 }} /><Tooltip />
+                <Bar dataKey="ocupacao_pct" name="Ocupação do horário %" fill="var(--grafico-2)" /></BarChart>
+            </ResponsiveContainer>
+            <Tabela colunas={[{ chave: "area", rotulo: "Área" }, { chave: "salas", rotulo: "Salas", alinhar: "dir" },
+              { chave: "horas_ocupadas", rotulo: "Ocupadas (h)", alinhar: "dir", render: (l: any) => Math.round(l.horas_ocupadas) },
+              { chave: "ocupacao_pct", rotulo: "Ocupação", render: (l: any) => <BarraOcupacao pct={l.ocupacao_pct} /> }]}
+              linhas={rk.dados.areas_salas || []} chave={(l: any) => l.area} />
+          </div>
+        </div>
+      </Card>}
       {rk.dados && <div className="grid-2">
         <Card titulo="Instrutores mais ocupados" extra={<button className="btn-link" onClick={() => nav("/consultas")}>Ranking completo →</button>}>
           <Tabela colunas={[{ chave: "nome", rotulo: "Instrutor", render: (l: any) => <><b>{l.nome}</b><small className="mudo"> {l.area}</small></> },

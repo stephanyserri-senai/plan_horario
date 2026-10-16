@@ -106,6 +106,9 @@ def ocupacao_ambientes(db: Session, cenario_id: int, d0: date, d1: date, unidade
     for p in db.scalars(select(PeriodoHorario).where(PeriodoHorario.ativo.is_(True))):
         if turno_id and p.turno_id != turno_id:
             continue
+        # o horário da PFP (manhã e tarde, turno oculto "I") não soma disponibilidade: as aulas dela contam na manhã ou na tarde
+        if p.turno_id in turnos and turnos[p.turno_id].codigo == "I":
+            continue
         periodos_un[p.unidade_id].append(p)
     aulas = db.execute(
         select(Alocacao, Turma.qtd_alunos, Turma.num_grupos).join(Turma, Turma.id == Alocacao.turma_id)
@@ -159,19 +162,24 @@ def ocupacao_ambientes(db: Session, cenario_id: int, d0: date, d1: date, unidade
         util_cap = []
         for a, tam in por_amb.get(amb.id, []):
  
+            # a aula conta inteira no turno com que mais se sobrepõe (a PFP 08–12 vai para a manhã; 13–17, para a tarde)
+            sobre = defaultdict(float)
             for ini, fim, t in janelas_disp.get(a.data, []):
-                o = _overlap(a.inicio, a.fim, ini, fim)
-                if o:
-                    ocup_min += o
-                    por_turno[t][0] += o
-                    por_dia[a.data.weekday()][0] += o
-                    por_unidade[amb.unidade_id][0] += o
+                sobre[t] += _overlap(a.inicio, a.fim, ini, fim)
+            if sobre and max(sobre.values()) > 0:
+                t = max(sobre, key=sobre.get)
+                o = (a.fim - a.inicio).total_seconds() / 60
+                ocup_min += o
+                por_turno[t][0] += o
+                por_dia[a.data.weekday()][0] += o
+                por_unidade[amb.unidade_id][0] += o
             util_cap.append(100 * tam / amb.capacidade_fisica)
         taxa = 100 * ocup_min / disp_min if disp_min else 0.0
         classif = "sem_disponibilidade" if not disp_min else ("subutilizado" if taxa < lim["subutilizado_pct"] else
                                                                "demanda_excessiva" if taxa > lim["demanda_excessiva_pct"] else "adequado")
         linhas.append({
             "ambiente_id": amb.id, "codigo": amb.codigo, "nome": amb.nome, "unidade_id": amb.unidade_id,
+            "area_id": None if getattr(amb, "todas_areas", False) else amb.area_id,
             "tipo": tipos[amb.tipo_ambiente_id].nome if amb.tipo_ambiente_id in tipos else None,
             "especializado": bool(tipos.get(amb.tipo_ambiente_id) and tipos[amb.tipo_ambiente_id].especializado),
             "situacao": amb.situacao, "capacidade_fisica": amb.capacidade_fisica, "capacidade_operacional": amb.capacidade_operacional,

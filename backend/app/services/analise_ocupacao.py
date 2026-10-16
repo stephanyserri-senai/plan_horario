@@ -195,13 +195,50 @@ def ranking(db: Session, cenario_id: int, d0: date, d1: date, unidades=None, lim
     salas = sorted([{"id": a["ambiente_id"], "codigo": a["codigo"], "nome": a["nome"], "tipo": a["tipo"], "horas_ocupadas": a["horas_ocupadas"],
                      "horas_disponiveis": a["horas_disponiveis"], "ocupacao_pct": a["taxa_ocupacao_pct"], "faixa": faixa(a["taxa_ocupacao_pct"])}
                     for a in amb["ambientes"]], key=lambda x: -x["ocupacao_pct"])
-    por_area = defaultdict(lambda: [0.0, 0.0, 0])
-    for l in linhas:
-        por_area[l["area"] or "Sem área"][0] += l["aula_media_semana_h"]
-        por_area[l["area"] or "Sem área"][1] += l["carga_h"]
-        por_area[l["area"] or "Sem área"][2] += 1
-    areas_rank = sorted([{"area": k, "instrutores": v[2], "ocupacao_pct": round(100 * v[0] / v[1], 1) if v[1] else 0,
+    # Área: o instrutor conta na área principal; as horas que ele dá em turmas de OUTRA área (e a parte correspondente
+    # da jornada) contam nessa outra área. Sem aula fora da principal, ele não entra na conta das outras áreas.
+    from app.services.planejamento import area_da_turma
+    por_area = defaultdict(lambda: [0.0, 0.0, set(), set()])  # horas/sem, capacidade/sem, principais, de outras áreas
+    turmas_area = {}
+    h_area = defaultdict(lambda: defaultdict(float))
+    ids = [i.id for i in insts]
+    if ids:
+        for iid, tid, mins in db.execute(select(Alocacao.instrutor_id, Alocacao.turma_id, Alocacao.minutos_aula).where(
+                Alocacao.cenario_id == cenario_id, Alocacao.status != "cancelada", Alocacao.instrutor_id.in_(ids),
+                Alocacao.data >= d0, Alocacao.data <= d1)):
+            if tid not in turmas_area:
+                t = db.get(Turma, tid)
+                turmas_area[tid] = area_da_turma(db, t) if t else None
+            h_area[iid][turmas_area[tid]] += mins / 60
+    for i in insts:
+        carga = float(i.carga_horaria_contratual or 0)
+        total = sum(h_area[i.id].values())
+        resto = carga
+        for aid, h in h_area[i.id].items():
+            if aid is None or aid == i.area_id:
+                continue
+            fatia = carga * h / total if total else 0
+            nome = areas.get(aid, "Sem área")
+            por_area[nome][0] += h / n
+            por_area[nome][1] += fatia
+            por_area[nome][3].add(i.id)
+            resto -= fatia
+        nome = areas.get(i.area_id) or "Sem área"
+        por_area[nome][0] += sum(h for aid, h in h_area[i.id].items() if aid is None or aid == i.area_id) / n
+        por_area[nome][1] += resto
+        por_area[nome][2].add(i.id)
+    salas_area = defaultdict(lambda: [0.0, 0.0, 0])
+    for a in amb["ambientes"]:
+        nome = areas.get(a.get("area_id")) or "Uso comum (todas as áreas)"
+        salas_area[nome][0] += a["horas_ocupadas"]
+        salas_area[nome][1] += a["horas_disponiveis"]
+        salas_area[nome][2] += 1
+    areas_rank = sorted([{"area": k, "instrutores": len(v[2]), "instrutores_outras_areas": len(v[3] - v[2]),
+                          "aula_media_semana_h": round(v[0], 1), "capacidade_semana_h": round(v[1], 1),
+                          "ocupacao_pct": round(100 * v[0] / v[1], 1) if v[1] else 0,
                           "faixa": faixa(100 * v[0] / v[1] if v[1] else 0)} for k, v in por_area.items()], key=lambda x: -x["ocupacao_pct"])
+    areas_salas = sorted([{"area": k, "salas": v[2], "horas_ocupadas": round(v[0], 1), "horas_disponiveis": round(v[1], 1),
+                           "ocupacao_pct": round(100 * v[0] / v[1], 1) if v[1] else 0} for k, v in salas_area.items()], key=lambda x: -x["ocupacao_pct"])
     turnos = sorted([{"turno": t["turno"], "ocupacao_pct": t["taxa_ocupacao_pct"], "faixa": faixa(t["taxa_ocupacao_pct"])}
                      for t in amb["por_turno"]], key=lambda x: -x["ocupacao_pct"])
     dist = defaultdict(int)
@@ -209,7 +246,7 @@ def ranking(db: Session, cenario_id: int, d0: date, d1: date, unidades=None, lim
         dist[l["faixa"]] += 1
     return {"periodo": {"inicio": d0.isoformat(), "fim": d1.isoformat(), "semanas": n},
             "instrutores_mais": linhas[:limite], "instrutores_menos": [l for l in reversed(linhas)][:limite],
-            "salas_mais": salas[:limite], "salas_menos": list(reversed(salas))[:limite], "areas": areas_rank, "turnos": turnos,
+            "salas_mais": salas[:limite], "salas_menos": list(reversed(salas))[:limite], "areas": areas_rank, "areas_salas": areas_salas, "turnos": turnos,
             "distribuicao_instrutores": dict(dist), "total_instrutores": len(linhas),
             "referencias": {"ideal_pct": OCUPACAO_IDEAL * 100, "teto_pct": OCUPACAO_MAXIMA * 100}}
 
