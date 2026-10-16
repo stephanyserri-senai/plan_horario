@@ -82,7 +82,7 @@ export default function Inicio() {
 
         <section aria-label="Atalhos" className="atalhos">
           {[["/grade", "▤", "Grade horária", "Ver e ajustar as aulas da semana"], ["/cronograma", "▬", "Cronograma (Gantt)", "Prazos e caminho crítico"],
-            ["/acompanhamento", "📊", "Acompanhamento", "Turmas, instrutores e salas"], ["/indicadores", "📈", "Indicadores", "Ocupação por turno, dia e sala"]].map(([to, ic, t, sub]) => (
+            ["/acompanhamento", "📊", "Ocupação e andamento", "Taxas de ocupação, turmas, instrutores e salas"]].map(([to, ic, t, sub]) => (
             <Link key={to} to={to} className="atalho"><span aria-hidden="true">{ic}</span><b>{t}</b><small>{sub}</small></Link>
           ))}
         </section>

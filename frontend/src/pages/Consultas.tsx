@@ -86,7 +86,7 @@ function QuemEstaOnde() {
   );
 }
 
-function Periodo({ inicio, fim, setInicio, setFim }: { inicio: string; fim: string; setInicio: (v: string) => void; setFim: (v: string) => void }) {
+export function Periodo({ inicio, fim, setInicio, setFim }: { inicio: string; fim: string; setInicio: (v: string) => void; setFim: (v: string) => void }) {
   const { cenario } = useApp();
   const hoje = iso(new Date());
   const atalho = (a: string, b: string) => { setInicio(a); setFim(b); };

@@ -91,14 +91,12 @@ export default function Grade() {
   // substituição de instrutor por imprevisto: vale também com o horário aprovado ou publicado
   const podeSubstituir = pode("alocacoes.editar") && cenario && ESTADOS_SUBSTITUICAO.includes(cenario.estado);
 
-  // turnos especiais (sábado e integral das turmas PFP) só aparecem quando há aula neles ou a turma/turno escolhido é deles
+  // o sábado aparece sempre, por último (coluna Sáb e linha Sábado); PFP (manhã e tarde) não tem linhas próprias:
+  // as aulas dela caem nas linhas da manhã e da tarde
   const linhas = useMemo(() => {
-    const comAula = new Set((aulas.dados || []).map((a) => String(a.turno_id)));
-    const turmaAlvo = modo === "turma" && alvo ? (todasOpcoes.find((o: any) => String(o.id) === alvo) as any)?.turno_id : null;
-    // PFP (manhã e tarde) não tem linhas próprias: as aulas dela caem nas linhas da manhã e da tarde
-    return (periodos.dados || []).filter((p) => p.turno_codigo !== "I" && (p.turno_codigo !== "S" || comAula.has(String(p.turno_id))
-      || String(turmaAlvo) === String(p.turno_id) || (modo === "turno" && alvo === String(p.turno_id))));
-  }, [periodos.dados, aulas.dados, modo, alvo, todasOpcoes]);
+    const ps = (periodos.dados || []).filter((p) => p.turno_codigo !== "I");
+    return [...ps.filter((p) => p.turno_codigo !== "S"), ...ps.filter((p) => p.turno_codigo === "S")];
+  }, [periodos.dados]);
   const dias = useMemo(() => {
     const ds = new Set<number>();
     linhas.forEach((p) => p.dias_semana.forEach((d) => ds.add(d)));

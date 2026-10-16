@@ -1,7 +1,9 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { api, dataBR, qs } from "../api";
 import { Abas, Badge, Card, Pagina, Tabela, useCarregar } from "../components/ui";
+import { Periodo } from "./Consultas";
 import { Anel, BarraCH, LegendaCH, Medidor, MiniSemana } from "../components/Visual";
 import { BarraOcupacao, GraficoSerie, QuadroInstrutores } from "../components/Ocupacao";
 import { useApp } from "../contexto";
@@ -11,21 +13,30 @@ const RISCO: Record<string, [string, string]> = {
 };
 const n1 = (v: number) => (Number(v) || 0).toLocaleString("pt-BR", { maximumFractionDigits: 1 });
 
-/** Acompanhamento macro: turmas e suas UCs, instrutores e ocupação, quanto falta por UC, salas. */
-export function PainelAcompanhamento() {
+/** Ocupação e andamento num só lugar: taxas de ocupação (instrutores, salas, turnos, dias), quadro de instrutores
+ * e o andamento da carga horária por turma, instrutor, UC e sala. Um único período vale para tudo. */
+function PainelAcompanhamento() {
   const { cenario } = useApp();
-  const [aba, setAba] = useState("ocupacao");
+  const [aba, setAba] = useState("geral");
   const [busca, setBusca] = useState("");
   const [soPendencias, setSoPendencias] = useState(false);
+  const [inicio, setInicio] = useState("");
+  const [fim, setFim] = useState("");
+  const per = { cenario_id: cenario?.id, inicio, fim };
+  const dep = [cenario?.id, inicio, fim];
   const tu = useCarregar<any>(() => cenario ? api.get(`/api/indicadores/turmas${qs({ cenario_id: cenario.id })}`) : Promise.resolve(null), [cenario?.id]);
-  const ins = useCarregar<any>(() => cenario ? api.get(`/api/indicadores/instrutores${qs({ cenario_id: cenario.id })}`) : Promise.resolve(null), [cenario?.id]);
-  const amb = useCarregar<any>(() => cenario ? api.get(`/api/indicadores/ambientes${qs({ cenario_id: cenario.id })}`) : Promise.resolve(null), [cenario?.id]);
-  if (!cenario) return <p>Selecione um cenário no topo da página.</p>;
+  const ins = useCarregar<any>(() => cenario ? api.get(`/api/indicadores/instrutores${qs(per)}`) : Promise.resolve(null), dep);
+  const amb = useCarregar<any>(() => cenario ? api.get(`/api/indicadores/ambientes${qs(per)}`) : Promise.resolve(null), dep);
+  const inst = useCarregar<any>(() => cenario ? api.get(`/api/indicadores/institucionais${qs(per)}`) : Promise.resolve(null), dep);
+  if (!cenario) return <p>Selecione um semestre no topo da página.</p>;
   const r = tu.dados?.resumo;
   const total = r?.ch_total_h || 0;
   const filtro = (txt: string) => !busca || txt.toLowerCase().includes(busca.toLowerCase());
+  const d = inst.dados;
   return (
     <div className="acompanhamento">
+      <Periodo inicio={inicio} fim={fim} setInicio={setInicio} setFim={setFim} />
+      {d && <p className="sub">Ocupação de {dataBR(d.periodo.inicio)} a {dataBR(d.periodo.fim)}; o andamento da carga horária é do semestre inteiro.</p>}
       {(tu.carregando && !tu.dados) && <p role="status">Calculando…</p>}
       {(tu.erro || ins.erro) && <div className="erro-box">{tu.erro || ins.erro}</div>}
       {r && <div className="aneis">
@@ -37,11 +48,16 @@ export function PainelAcompanhamento() {
           <div className={r.em_risco_alto ? "tom-erro" : "tom-ok"}><b>{r.em_risco_alto}</b> UC(s) com risco alto de não terminar no prazo</div>
           <div className={r.em_risco_medio ? "tom-alerta" : "tom-ok"}><b>{r.em_risco_medio}</b> com risco médio</div>
           <div className={r.sem_instrutor_elegivel ? "tom-erro" : "tom-ok"}><b>{r.sem_instrutor_elegivel}</b> sem nenhum instrutor habilitado</div>
+          {d && <div className={d.turmas_programacao_incompleta ? "tom-alerta" : "tom-ok"}><b>{d.turmas_programacao_incompleta}</b> turma(s) com horário incompleto</div>}
+          {d && <div className={d.bloqueios_ultima_validacao ? "tom-erro" : "tom-ok"}>
+            {d.bloqueios_ultima_validacao == null ? "semestre ainda não validado" : <><b>{d.bloqueios_ultima_validacao}</b> bloqueio(s) na última validação · {d.alertas_pendentes} alerta(s)</>}</div>}
         </div>
       </div>}
-      <Abas abas={[{ id: "ocupacao", rotulo: "Ocupação e quadro de instrutores" }, { id: "turmas", rotulo: "Por turma" }, { id: "instrutores", rotulo: "Por instrutor" }, { id: "ucs", rotulo: "Por unidade curricular" }, { id: "salas", rotulo: "Salas e laboratórios" }]} ativa={aba} mudar={setAba} />
-      {aba === "ocupacao" && <OcupacaoEQuadro />}
-      {aba !== "ocupacao" && <div className="filtros">
+      <Abas abas={[{ id: "geral", rotulo: "📈 Taxas de ocupação" }, { id: "quadro", rotulo: "👥 Quadro de instrutores" }, { id: "turmas", rotulo: "Por turma" },
+        { id: "instrutores", rotulo: "Por instrutor" }, { id: "ucs", rotulo: "Por unidade curricular" }, { id: "salas", rotulo: "Salas e laboratórios" }]} ativa={aba} mudar={setAba} />
+      {aba === "geral" && <TaxasDeOcupacao inicio={inicio} fim={fim} amb={amb.dados} inst={d} ins={ins.dados} />}
+      {aba === "quadro" && <QuadroCard />}
+      {!["geral", "quadro"].includes(aba) && <div className="filtros">
         <input type="search" placeholder="Filtrar por nome ou código…" aria-label="Filtrar" value={busca} onChange={(e) => setBusca(e.target.value)} />
         {aba !== "salas" && <label><input type="checkbox" checked={soPendencias} onChange={(e) => setSoPendencias(e.target.checked)} /> Mostrar só o que precisa de atenção</label>}
         {(aba === "turmas" || aba === "ucs") && <LegendaCH />}
@@ -54,38 +70,95 @@ export function PainelAcompanhamento() {
   );
 }
 
-/** O que o sistema sabe sobre ocupação: série no tempo, maiores ocupações e o quadro de instrutores (precisa contratar?). */
-function OcupacaoEQuadro() {
+function QuadroCard() {
+  const nav = useNavigate();
+  return (
+    <Card titulo="Quadro de instrutores: precisa contratar?" extra={<button className="btn-link" onClick={() => nav("/simulador")}>Simular nova turma →</button>}>
+      <QuadroInstrutores />
+    </Card>
+  );
+}
+
+const COR = "var(--grafico-1)";
+
+/** Taxas de ocupação no período: semana a semana, por turno, por dia da semana, maiores ocupações e ociosidade. */
+function TaxasDeOcupacao({ inicio, fim, amb, inst, ins }: { inicio: string; fim: string; amb: any; inst: any; ins: any }) {
   const { cenario } = useApp();
   const nav = useNavigate();
-  const se = useCarregar<any>(() => cenario ? api.get(`/api/consultas/serie${qs({ cenario_id: cenario.id })}`) : Promise.resolve(null), [cenario?.id]);
-  const rk = useCarregar<any>(() => cenario ? api.get(`/api/consultas/ranking${qs({ cenario_id: cenario.id })}`) : Promise.resolve(null), [cenario?.id]);
+  const p = { cenario_id: cenario?.id, inicio, fim };
+  const se = useCarregar<any>(() => cenario ? api.get(`/api/consultas/serie${qs(p)}`) : Promise.resolve(null), [cenario?.id, inicio, fim]);
+  const rk = useCarregar<any>(() => cenario ? api.get(`/api/consultas/ranking${qs(p)}`) : Promise.resolve(null), [cenario?.id, inicio, fim]);
+  // um ponto por turno (somando as unidades): manhã, tarde, noite, PFP (se houver aula) e sábado por último
+  const porTurno = useMemo(() => {
+    const m = new Map<string, { turno: string; ocup: number; disp: number }>();
+    for (const t of amb?.por_turno || []) {
+      const nome = String(t.turno).split(" – ")[0].includes("PFP") ? "PFP" : String(t.turno).split(" – ")[0];
+      const x = m.get(nome) || { turno: nome, ocup: 0, disp: 0 };
+      x.ocup += t.horas_ocupadas || 0; x.disp += t.horas_disponiveis || 0;
+      m.set(nome, x);
+    }
+    const ordem = ["Manhã", "Tarde", "Noite", "PFP", "Sábado"];
+    return [...m.values()].filter((x) => x.disp > 0 && (x.turno !== "PFP" || x.ocup > 0))
+      .sort((a, b) => (ordem.indexOf(a.turno) + 99) % 99 - (ordem.indexOf(b.turno) + 99) % 99)
+      .map((x) => ({ turno: x.turno, taxa_ocupacao_pct: Math.round((1000 * x.ocup) / x.disp) / 10 }));
+  }, [amb]);
   return (
     <div className="ocupacao-quadro">
-      <Card titulo="Quadro de instrutores: precisa contratar?" extra={<button className="btn-link" onClick={() => nav("/simulador")}>Simular nova turma →</button>}>
-        <QuadroInstrutores />
-      </Card>
-      <Card titulo="Ocupação semana a semana" extra={<button className="btn-link" onClick={() => nav("/consultas")}>Consultar outro intervalo →</button>}>
+      <Card titulo="Ocupação semana a semana" extra={se.dados?.pico && <small className="mudo">semana mais cheia: {se.dados.pico.rotulo} ({se.dados.pico.instrutores_pct}% dos instrutores)</small>}>
         {se.dados ? <GraficoSerie dados={se.dados} /> : <p role="status">Calculando…</p>}
       </Card>
+      {amb && <div className="grid-2">
+        <Card titulo="Salas: ocupação por turno" extra={<small className="mudo">unidades somadas</small>}>
+          <ResponsiveContainer width="100%" height={240}>
+            <BarChart data={porTurno} margin={{ bottom: 8 }}><CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="turno" interval={0} /><YAxis unit="%" domain={[0, 100]} /><Tooltip />
+              <Bar dataKey="taxa_ocupacao_pct" name="Ocupação %" fill={COR} /></BarChart>
+          </ResponsiveContainer>
+        </Card>
+        <Card titulo="Salas: ocupação por dia da semana">
+          <ResponsiveContainer width="100%" height={240}>
+            <BarChart data={amb.por_dia_semana}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="dia" /><YAxis unit="%" domain={[0, 100]} /><Tooltip />
+              <Bar dataKey="taxa_ocupacao_pct" name="Ocupação %" fill={COR} /></BarChart>
+          </ResponsiveContainer>
+        </Card>
+      </div>}
       {rk.dados && <div className="grid-2">
         <Card titulo="Instrutores mais ocupados" extra={<button className="btn-link" onClick={() => nav("/consultas")}>Ranking completo →</button>}>
           <Tabela colunas={[{ chave: "nome", rotulo: "Instrutor", render: (l: any) => <><b>{l.nome}</b><small className="mudo"> {l.area}</small></> },
             { chave: "ocupacao_pct", rotulo: "Ocupação da jornada", render: (l: any) => <BarraOcupacao pct={l.ocupacao_pct} /> },
-            { chave: "pico_pct", rotulo: "Pico", alinhar: "dir", render: (l: any) => `${l.pico_pct}%` }]} linhas={rk.dados.instrutores_mais.slice(0, 6)} chave={(l: any) => l.id} />
+            { chave: "pico_pct", rotulo: "Semana mais cheia", alinhar: "dir", render: (l: any) => `${l.pico_pct}%` }]} linhas={rk.dados.instrutores_mais.slice(0, 8)} chave={(l: any) => l.id} />
+          {ins && ins.resumo.criticos > 0 && <p className="sub">{ins.resumo.criticos} instrutor(es) acima do limite em alguma semana.</p>}
+        </Card>
+        <Card titulo="Instrutores com mais folga">
+          <Tabela colunas={[{ chave: "nome", rotulo: "Instrutor", render: (l: any) => <><b>{l.nome}</b><small className="mudo"> {l.area}</small></> },
+            { chave: "ocupacao_pct", rotulo: "Ocupação da jornada", render: (l: any) => <BarraOcupacao pct={l.ocupacao_pct} /> }]}
+            linhas={rk.dados.instrutores_menos.slice(0, 8)} chave={(l: any) => l.id} />
         </Card>
         <Card titulo="Salas mais ocupadas">
           <Tabela colunas={[{ chave: "codigo", rotulo: "Sala", render: (l: any) => <><b>{l.codigo}</b><small className="mudo"> {l.tipo}</small></> },
-            { chave: "ocupacao_pct", rotulo: "Ocupação", render: (l: any) => <BarraOcupacao pct={l.ocupacao_pct} /> }]} linhas={rk.dados.salas_mais.slice(0, 6)} chave={(l: any) => l.id} />
+            { chave: "ocupacao_pct", rotulo: "Ocupação", render: (l: any) => <BarraOcupacao pct={l.ocupacao_pct} /> }]} linhas={rk.dados.salas_mais.slice(0, 8)} chave={(l: any) => l.id} />
+        </Card>
+        <Card titulo="Salas mais ociosas">
+          <Tabela colunas={[{ chave: "codigo", rotulo: "Sala", render: (l: any) => <><b>{l.codigo}</b><small className="mudo"> {l.tipo}</small></> },
+            { chave: "ocupacao_pct", rotulo: "Ocupação", render: (l: any) => <BarraOcupacao pct={l.ocupacao_pct} /> }]} linhas={rk.dados.salas_menos.slice(0, 8)} chave={(l: any) => l.id} />
         </Card>
       </div>}
+      {inst?.evolucao_versoes?.length >= 2 && <Card titulo="Evolução por versão do semestre">
+        <ResponsiveContainer width="100%" height={220}>
+          <LineChart data={inst.evolucao_versoes.map((v: any) => ({ versao: `v${v.versao}`, ocupacao: v.indicadores?.taxa_ocupacao_ambientes_pct, horas: v.indicadores?.horas_programadas }))}>
+            <CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="versao" /><YAxis /><Tooltip />
+            <Line dataKey="ocupacao" name="Ocupação das salas %" stroke="var(--grafico-1)" /><Line dataKey="horas" name="Horas programadas" stroke="var(--grafico-2)" />
+          </LineChart>
+        </ResponsiveContainer>
+      </Card>}
+      {amb && ins && <p className="sub">{amb.formula}. {ins.formula}.</p>}
     </div>
   );
 }
 
 export default function Acompanhamento() {
   return (
-    <Pagina titulo="Acompanhamento" descricao="Visão geral do andamento: quanto de cada turma e disciplina já tem horário, quanto falta, e como está a carga de cada instrutor e sala.">
+    <Pagina titulo="Ocupação e andamento" descricao="Taxas de ocupação de instrutores e salas (por semana, turno e dia), o quadro de instrutores e o andamento da carga horária de cada turma, instrutor, UC e sala.">
       <PainelAcompanhamento />
     </Pagina>
   );
