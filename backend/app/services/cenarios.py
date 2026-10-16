@@ -49,6 +49,9 @@ def criar(db: Session, ctx, nome: str, unidade_id=None, periodo_inicio=None, per
     db.add(c)
     db.flush()
     auditoria.registrar(db, ctx, "cenario.criar", "cenarios_planejamento", c.id, depois=auditoria.snapshot(c))
+    if tipo == "planejamento" and periodo_inicio:
+        from app.services import modulos  # semestre novo: turmas modulares passam ao próximo módulo (código sobe)
+        c.virada_modulos = modulos.avancar(db, ctx, periodo_inicio, periodo_fim, unidade_id)
     return c
 
 

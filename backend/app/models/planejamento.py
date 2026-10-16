@@ -96,7 +96,7 @@ class ExcecaoAutorizada(Base):
     """Autorização documentada para uma exceção (aula em feriado, carga
     horária excedente etc.). Uma alocação só pode usar a exceção do tipo certo."""
     __tablename__ = "excecoes_autorizadas"
-    __table_args__ = (CheckConstraint("tipo in ('feriado_bloqueio','carga_horaria','regra_academica')", name="excecoes_autorizadas_tipo_check"),)
+    __table_args__ = (CheckConstraint("tipo in ('feriado_bloqueio','carga_horaria','regra_academica','reposicao')", name="excecoes_autorizadas_tipo_check"),)
     id: Mapped[int] = mapped_column(primary_key=True)
     tipo: Mapped[str] = mapped_column(String(30))
     justificativa: Mapped[str] = mapped_column(Text)

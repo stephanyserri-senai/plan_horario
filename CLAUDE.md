@@ -27,6 +27,11 @@ UC transversal/técnica, substituição, solicitações, quadro 5:4...) estão e
   é gerado por `scripts/gerar_semestre_demo_sql.py`.
 - Nunca expor chaves `service_role`, senhas ou segredos no frontend ou no repositório.
 - Toda alocação passa pela validação central (`backend/app/services/validacao.py`).
+- Turmas modulares: `turmas.modulos` (vazio = não modular) e `modulo_atual`; código `TIPO-SIGLA-MÓDULO-NÚMERO` (HTC-AIT-2-34).
+  Ao criar um semestre, `services/modulos.avancar` passa as turmas ao próximo módulo (código sobe) até o último.
+- UC fora do prazo: modular → reposição aos sábados (exceção `reposicao`, que libera dia/turno/disponibilidade só no turno de
+  sábado); não modular → `passar_proximo_semestre` (prazo vai ao fim do próximo semestre). UC com um só habilitado: habilitar
+  outro ou remanejar o habilitado (`resolucoes._remanejar`, ação `passar_uc`). Vários caminhos por caso vão em `opcoes`.
 - Riscos: `services/resolucoes.sugerir` dá uma correção por caso (acao para `services/sugestoes.aplicar`); trocar sala e
   remarcar valem também com o horário publicado (ajuste operacional, como a substituição).
 

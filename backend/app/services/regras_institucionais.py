@@ -171,6 +171,20 @@ def catalogo() -> list[dict]:
           "O curso lista os EPIs exigidos por aluno. Cada turma recebe a lista com quantidade = alunos × por aluno e prazo = início da turma − antecedência; "
           "o controle marca comprado/separado e entregue. Prazo vencido sem entrega, ou a menos de 7 dias, vira aviso no Início e em Riscos.",
           ["cadastro de cursos", "cadastro de turmas", "controle de EPIs", "riscos"], {"dias_aviso": 7})
+    regra("TURMA_MODULAR", "Turmas", "obrigatoria", "Turma modular: código sobe a cada semestre",
+          "No cadastro da turma diz-se se ela é modular (quantos módulos) e o módulo em curso. Modular: o código leva o módulo "
+          "(HTC-AIT-2-34 = turma 34 no 2º módulo); não modular: código no padrão de sempre (HTC-AIT-34). Um módulo por semestre: "
+          "ao criar o semestre seguinte, a turma passa ao próximo módulo (código, módulo e fim), até o último — 3 módulos a partir de 2026/2 vão até 2027/2.",
+          ["cadastro de turmas", "novo semestre"])
+    regra("UC_FORA_DO_PRAZO", "Turmas", "obrigatoria", "UC que não termina no prazo",
+          "Turma modular: o módulo precisa fechar no semestre, então a sugestão é reposição aos sábados (turno de sábado, com o instrutor da UC "
+          "ou um habilitado), por exceção registrada e pela validação central. Turma não modular: as aulas que faltam passam para o próximo "
+          "semestre (o prazo da UC vai para o fim dele).",
+          ["riscos", "sugestões", "validação"])
+    regra("REMANEJAMENTO", "Substituições e solicitações", "preferencia", "Remanejar o único habilitado",
+          "UC que depende de um só instrutor: além de habilitar outro, o sistema sugere liberar o habilitado de outra UC dele, "
+          "passando-a a quem está livre e pode assumi-la naquela turma (área, nível e certificação).",
+          ["riscos", "sugestões", "substituição"])
     # quadro e decisões
     regra("PROPORCAO_5_4", "Quadro e decisões", "aviso", "5 instrutores para 4 turmas",
           f"Referência de {INSTRUTORES_POR_TURMA:g} instrutor por turma. É um aviso, que pesa quando a folga dos instrutores não comporta uma turma nova.",

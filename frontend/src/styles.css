@@ -766,4 +766,5 @@ li.sem-marcador { list-style: none; margin-left: -18px; }
 .sugestao.feita { opacity: .65; }
 .sug-caso, .sug-texto { display: grid; gap: 2px; }
 .sug-botao { justify-self: end; }
+.sug-opcao { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 4px; padding-top: 6px; border-top: 1px dashed var(--borda, #d0d7e2); }
 @media (max-width: 800px) { .sugestao { grid-template-columns: 1fr; } .sug-botao { justify-self: start; } .risco-corpo { padding-left: 16px; } }

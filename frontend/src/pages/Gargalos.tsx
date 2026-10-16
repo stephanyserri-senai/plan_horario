@@ -89,9 +89,9 @@ function Sugestoes({ codigo, cenarioId, mudou }: { codigo: string; cenarioId: nu
   const [estado, setEstado] = useState<Record<string, { ok: boolean; msg: string }>>({});
   const [ocupado, setOcupado] = useState(false);
   const podeAceitar = pode("alocacoes.editar");
-  const aceitar = async (it: any) => {
+  const aceitar = async (it: any, acao: any = it.acao) => {
     try {
-      const r = await api.post("/api/sugestoes/aplicar", { cenario_id: cenarioId, acao: it.acao, gerar: false });
+      const r = await api.post("/api/sugestoes/aplicar", { cenario_id: cenarioId, acao, gerar: false });
       setEstado((e) => ({ ...e, [it.id]: { ok: true, msg: r.mensagem || "Aplicada." } }));
       return true;
     } catch (e: any) {
@@ -122,16 +122,22 @@ function Sugestoes({ codigo, cenarioId, mudou }: { codigo: string; cenarioId: nu
       <ul className="lista-sugestoes">
         {d.itens.map((it: any) => {
           const st = estado[it.id];
+          // mais de uma correção possível (ex.: habilitar outro instrutor ou remanejar o habilitado): cada uma com seu botão
+          const extras = (it.opcoes || []).slice(1);
           return (
             <li key={it.id} className={`sugestao ${st?.ok ? "feita" : ""}`}>
               <div className="sug-caso"><b>{it.caso}</b><small className="mudo">{it.detalhe}</small></div>
               <div className="sug-texto">
-                {it.acao ? <span>💡 {it.sugestao}</span> : <span className="mudo">⚠ {it.motivo_sem}</span>}
+                {it.acao ? <span>💡 {extras.length ? "Opção 1: " : ""}{it.sugestao}</span> : <span className="mudo">⚠ {it.motivo_sem}</span>}
                 {it.alternativas?.length > 0 && <small className="mudo">{it.acao ? "outras opções" : "alternativas"}: {it.alternativas.join(" · ")}</small>}
+                {!st?.ok && extras.map((o: any, k: number) => <div key={k} className="sug-opcao">
+                  <span>💡 Opção {k + 2}: {o.sugestao}</span>
+                  {podeAceitar && <button className="btn" disabled={ocupado} onClick={async () => { if (await aceitar(it, o.acao)) mudou(); }}>✓ Aceitar opção {k + 2}</button>}
+                </div>)}
                 {st && <small className={st.ok ? "ok-txt" : "falta-txt"}>{st.ok ? "✔ " : "✖ "}{st.msg}</small>}
               </div>
               <div className="sug-botao">
-                {it.acao && podeAceitar && !st?.ok && <button className="btn" disabled={ocupado} onClick={async () => { if (await aceitar(it)) mudou(); }}>✓ Aceitar</button>}
+                {it.acao && podeAceitar && !st?.ok && <button className="btn" disabled={ocupado} onClick={async () => { if (await aceitar(it)) mudou(); }}>✓ Aceitar{extras.length ? " opção 1" : ""}</button>}
                 {st?.ok && <Badge tipo="ok">aplicada</Badge>}
               </div>
             </li>

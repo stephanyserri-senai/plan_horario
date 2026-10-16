@@ -419,6 +419,7 @@ def montar(db, ctx, limite_s: float = 120) -> dict:
 
     casos = pendencias(db, ctx, cen, instrutores, unid, area, turno, cursos, cal)
     casos.update(epis_demo(db, cursos))
+    casos.update(modulos_demo(db))
 
     n_aulas = db.scalar(select(func.count()).select_from(Alocacao).where(Alocacao.cenario_id == cen.id))
     return {"cenario_id": cen.id, "aulas": n_aulas, "execucao": ex.id, "substituicao": sub_info, **casos}
@@ -525,3 +526,23 @@ def epis_demo(db, cursos) -> dict:
                 e.providenciado, e.providenciado_em, e.entregue, e.entregue_em = True, quando, True, quando
     db.commit()
     return {"epis_pendentes": sum(1 for _ in db.scalars(select(EpiTurma).where(EpiTurma.entregue.is_(False))))}
+
+
+# turmas modulares do demo: (código atual, módulos do curso, módulo em curso neste semestre)
+MODULARES = [("HTC-ELT-14", 4, 1), ("HTC-MEC-08", 3, 2), ("HTC-MCT-04", 4, 3)]
+
+
+def modulos_demo(db) -> dict:
+    """Algumas turmas técnicas são modulares: o código leva o módulo (HTC-MEC-2-08) e sobe a cada semestre até o último.
+    Aplicado no fim da montagem, porque o resto do demo procura as turmas pelo código sem módulo."""
+    from app.services.modulos import codigo
+    feitas = []
+    for cod, n, atual in MODULARES:
+        t = db.scalar(select(Turma).where(Turma.codigo == cod))
+        if t is None:
+            continue
+        tipo, sigla, numero = cod.split("-")
+        t.modulos, t.modulo_atual, t.codigo = n, atual, codigo(sigla, numero, tipo, atual)
+        feitas.append(t.codigo)
+    db.commit()
+    return {"turmas_modulares": feitas}

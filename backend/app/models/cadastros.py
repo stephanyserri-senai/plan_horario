@@ -365,6 +365,10 @@ class Turma(TimestampMixin, Base):
     prioridade: Mapped[int] = mapped_column(Integer, default=3)
     necessidades_acessibilidade: Mapped[bool] = mapped_column(Boolean, default=False)
     restricoes: Mapped[str | None] = mapped_column(Text)
+    # turma modular: total de módulos (um por semestre) e o módulo em curso; o código leva o módulo (HTC-ELT-2-12).
+    # Vazio = não modular (código sem módulo: HTC-ELT-12).
+    modulos: Mapped[int | None] = mapped_column(Integer)
+    modulo_atual: Mapped[int | None] = mapped_column(Integer)
     situacao: Mapped[str] = mapped_column(String(20), default="planejada")
     # Turmas criadas pelo simulador ficam isoladas da operação real.
     simulacao_id: Mapped[int | None] = mapped_column(ForeignKey("simulacoes_capacidade.id", ondelete="CASCADE"), index=True)

@@ -63,6 +63,10 @@ def serializar(obj, ent: str, ctx: Contexto | None = None) -> dict:
         sess = object_session(obj)
         curso = sess.get(Curso, obj.curso_id) if sess else None
         d["_numero"], d["_tipo_oferta"] = _partes_codigo(curso.codigo if curso else "", obj.codigo or "")
+        if getattr(obj, "modulos", None):
+            from app.services.modulos import previsao, separar_modulo
+            _m, d["_numero"] = separar_modulo(d["_numero"])
+            d["_modulos_previsao"] = previsao(obj)
     try:
         d["_rotulo"] = cfg["label"].format(**{k: ("" if v is None else v) for k, v in d.items()})
     except (KeyError, IndexError):
@@ -227,9 +231,10 @@ def _partes_codigo(sigla: str, codigo: str) -> tuple[str | None, str | None]:
     return None, None
 
 
-def codigo_turma(sigla: str, numero, tipo) -> str:
-    """Tipo de oferta + sigla do curso + número: HTC-ELT-12."""
-    return "-".join(str(x).strip().upper() for x in (tipo, sigla, numero) if x not in (None, ""))
+def codigo_turma(sigla: str, numero, tipo, modulo: int | None = None) -> str:
+    """Tipo de oferta + sigla do curso + (módulo, se modular) + número: HTC-ELT-12 ou HTC-ELT-2-12."""
+    from app.services.modulos import codigo
+    return codigo(sigla, numero, tipo, modulo)
 
 
 def _matriz_padrao(db: Session, curso_id: int, tipo_oferta: str | None = None) -> MatrizCurricular | None:
@@ -278,10 +283,27 @@ def _derivar(db: Session, ent: str, dados: dict, obj=None) -> dict:
                 d["area_id"] = curso.area_id
                 area = db.get(Area, curso.area_id) if curso.area_id else None
                 d["unidade_id"] = area.unidade_id if area else curso.unidade_id
+            # turma modular: módulo em curso (padrão 1) entra no código; não modular mantém o padrão
+            mods = d["modulos"] if "modulos" in d else (obj.modulos if obj else None)
+            mods = int(mods) if mods not in (None, "", 0, "0") else None
+            if "modulos" in d:
+                d["modulos"] = mods
+            if mods and mods < 2:
+                raise EntradaInvalida("Turma modular tem pelo menos 2 módulos (deixe vazio se a turma não for modular).")
+            mod_atual = d.get("modulo_atual") if d.get("modulo_atual") not in (None, "") else (obj.modulo_atual if obj else None)
+            mod_atual = (int(mod_atual) if mod_atual else 1) if mods else None
+            if mods and not 1 <= mod_atual <= mods:
+                raise EntradaInvalida(f"O módulo em curso deve estar entre 1 e {mods}.")
+            if "modulos" in d or "modulo_atual" in d or obj is None:
+                d["modulo_atual"] = mod_atual
             num = d.get("_numero")
+            if num in (None, "") and obj is not None and ("modulos" in d or "modulo_atual" in d):
+                from app.services.modulos import separar_modulo
+                n0, t0 = _partes_codigo(curso.codigo, obj.codigo or "")
+                num, d["_tipo_oferta"] = separar_modulo(n0)[1], d.get("_tipo_oferta") or t0
             if num not in (None, ""):
                 tipo = (d.get("_tipo_oferta") or "").strip().upper() or None
-                novo = codigo_turma(curso.codigo, num, tipo)
+                novo = codigo_turma(curso.codigo, num, tipo, mod_atual)
                 if obj is None or novo != obj.codigo:
                     d["codigo"] = novo
                     if vazio("nome") or (obj is not None and d.get("nome") == obj.nome):
@@ -460,15 +482,22 @@ def listar_ucs_por_area(db: Session, ids: list[int], unidade_id: int | None = No
 
 
 @router.get("/cadastros-apoio/codigo-turma")
-def previa_codigo_turma(curso_id: int, numero: str = "", tipo: str = "", db: Session = Depends(get_db), ctx: Contexto = Depends(get_contexto)):
+def previa_codigo_turma(curso_id: int, numero: str = "", tipo: str = "", modulos: int | None = None, modulo_atual: int | None = None,
+                        data_inicio: date | None = None, db: Session = Depends(get_db), ctx: Contexto = Depends(get_contexto)):
     ctx.exigir("cadastros.ler")
     curso = db.get(Curso, curso_id)
     if curso is None:
         raise NaoEncontrado("Curso não encontrado.")
-    cod = codigo_turma(curso.codigo, numero, tipo) if numero else None
+    mod = (modulo_atual or 1) if modulos and modulos >= 2 else None
+    cod = codigo_turma(curso.codigo, numero, tipo, mod) if numero else None
     existe = bool(cod and db.scalar(select(func.count()).select_from(Turma).where(Turma.codigo == cod)))
     m = _matriz_padrao(db, curso.id)
-    return {"codigo": cod, "existe": existe, "sigla": curso.codigo, "matriz": m.versao if m else None}
+    prev = None
+    if mod:
+        from app.services.modulos import rotulo, semestre
+        s0 = semestre(data_inicio or date.today())
+        prev = {"modulo": mod, "modulos": modulos, "semestre_atual": rotulo(s0), "termina_em": rotulo(s0 + modulos - mod)}
+    return {"codigo": cod, "existe": existe, "sigla": curso.codigo, "matriz": m.versao if m else None, "modular": prev}
 
 
 @router.get("/meta/entidades")

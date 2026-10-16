@@ -28,6 +28,7 @@ from app.models import (
     AlocacaoRecurso,
     Ambiente,
     Bloqueio,
+    PeriodoHorario,
     CompetenciaInstrutor,
     DeslocamentoUnidade,
     DisponibilidadeAmbiente,
@@ -656,6 +657,18 @@ def validar_aula(b: BaseDados, a: AulaProposta, ignorar: set[int] | None = None)
             else:
                 add(BLOQUEIO, "CARGA_HORARIA_EXCEDIDA",
                     f"A UC {uc.codigo}{rotulo} tem {uc.carga_horaria_total} h; realizadas {realizados / 60:.1f} h, programadas {programados / 60:.1f} h. Esta aula excederia em {excedente:.1f} h.")
+
+    # --- reposição aos sábados (exceção 'reposicao'): turma que não termina no prazo ganha aulas no sábado, dentro do
+    # turno de sábado da unidade, combinadas com o instrutor. Só deixam de bloquear o dia/turno da turma e a
+    # disponibilidade do instrutor; todas as outras regras continuam valendo.
+    if excecao_tipo == "reposicao" and dia == 5:
+        per_sab = [p for p in b.db.scalars(select(PeriodoHorario).where(PeriodoHorario.unidade_id == turma.unidade_id, PeriodoHorario.ativo.is_(True)))
+                   if 5 in (p.dias_semana or [])]
+        if per_sab and min(p.hora_inicio for p in per_sab) <= a.inicio.time() and a.fim.time() <= max(p.hora_fim for p in per_sab):
+            relaxa = {"TURMA_FORA_DIAS", "TURMA_FORA_TURNO", "INSTRUTOR_FORA_DISPONIBILIDADE", "INSTRUTOR_SEM_DISPONIBILIDADE"}
+            if any(o.regra in relaxa and o.severidade == BLOQUEIO for o in oc):
+                oc = [o for o in oc if not (o.regra in relaxa and o.severidade == BLOQUEIO)]
+                add(ALERTA, "REPOSICAO_SABADO", f"Reposição aos sábados autorizada pela exceção #{excecao.id}: {excecao.justificativa}")
     return oc
 
 

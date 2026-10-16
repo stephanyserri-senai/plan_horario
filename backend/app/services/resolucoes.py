@@ -152,6 +152,147 @@ def _segundo_instrutor(db: Session, cenario_id: int, turma: Turma, uc: UnidadeCu
             "alternativas": [x[1].nome for x in cand[1:4]]}
 
 
+def _opcoes(*rs: dict) -> dict:
+    """Junta as alternativas de correção de um caso: a primeira com ação vira a principal; as outras ficam como opções."""
+    com = [r for r in rs if r and r.get("acao")]
+    if not com:
+        return {"motivo_sem": " ".join(r["motivo_sem"] for r in rs if r and r.get("motivo_sem")) or "Sem correção automática."}
+    return {"sugestao": com[0]["sugestao"], "acao": com[0]["acao"], "alternativas": com[0].get("alternativas", []),
+            "opcoes": [{"sugestao": r["sugestao"], "acao": r["acao"], "alternativas": r.get("alternativas", [])} for r in com]}
+
+
+def _remanejar(db: Session, cenario_id: int, turma: Turma, uc: UnidadeCurricular, hoje: date) -> dict:
+    """Remanejamento: o instrutor habilitado na UC é liberado de outra UC dele, que passa para quem pode assumi-la
+    naquela turma (livre, da área e com a UC). Assim ele fica com horário para atender esta UC."""
+    from app.services import substituicao
+    habil = list(db.scalars(select(CompetenciaInstrutor.instrutor_id).where(CompetenciaInstrutor.uc_id == uc.id, CompetenciaInstrutor.ativo.is_(True),
+                                                                            CompetenciaInstrutor.nivel != "em_formacao")))
+    for h in habil:
+        outras: dict[int, list[Alocacao]] = {}
+        for a in db.scalars(select(Alocacao).where(Alocacao.cenario_id == cenario_id, Alocacao.instrutor_id == h, Alocacao.status == "programada",
+                                                   Alocacao.data > hoje, Alocacao.uc_id != uc.id).order_by(Alocacao.inicio)):
+            outras.setdefault(a.turma_uc_id, []).append(a)
+        for tuc_id, aulas in sorted(outras.items(), key=lambda x: -len(x[1]))[:3]:
+            try:
+                cand = substituicao.candidatos(db, cenario_id, aulas[:3], max_dias=3)["instrutores"]
+            except ConflitoValidacao:
+                continue
+            c = next((x for x in cand if x["grupo"] == "recomendado"), None)
+            if c is None:
+                continue
+            a0 = aulas[0]
+            t2, uc2, hn = db.get(Turma, a0.turma_id), db.get(UnidadeCurricular, a0.uc_id), db.get(Instrutor, h)
+            return {"sugestao": f"Remanejar: {c['nome']} assume {uc2.codigo} na {t2.codigo} ({len(aulas)} aula(s), no lugar de {hn.nome}), "
+                                f"liberando {hn.nome} para {uc.codigo}",
+                    "acao": {"tipo": "passar_uc", "turma_uc_id": tuc_id, "de_instrutor_id": h, "para_instrutor_id": c["id"], "turma_id": t2.id}}
+    return {"motivo_sem": "Remanejamento: ninguém livre e habilitado para assumir as outras UCs do instrutor habilitado."}
+
+
+def _periodos_sabado(db: Session, unidade_id: int) -> list[PeriodoHorario]:
+    return sorted([p for p in db.scalars(select(PeriodoHorario).where(PeriodoHorario.unidade_id == unidade_id, PeriodoHorario.ativo.is_(True),
+                                                                      PeriodoHorario.excepcional.is_(False))) if 5 in (p.dias_semana or [])],
+                  key=lambda p: p.hora_inicio)
+
+
+def _reposicao_sabado(db: Session, cenario_id: int, turma: Turma, tuc: TurmaUC, uc: UnidadeCurricular, excesso_h: float,
+                      prazo: date, hoje: date) -> dict:
+    """Turma modular que não termina no prazo: aulas de reposição aos sábados (turno de sábado), com o instrutor da UC."""
+    import math
+
+    from app.models import ExcecaoAutorizada
+    from app.services.calendario import Calendarios, combinar
+    from app.services.regras_aula import credito_bloco, regras_aula
+    per = _periodos_sabado(db, turma.unidade_id)
+    if not per:
+        return {"motivo_sem": "A unidade não tem o turno de sábado cadastrado."}
+    h_sab = credito_bloco(regras_aula(db), per) / 60
+    precisa = max(1, math.ceil(excesso_h / h_sab - 1e-9))
+    from app.services.planejamento import ambientes_compativeis, area_da_turma, instrutores_elegiveis, nivel_da_turma
+    ult = db.scalars(select(Alocacao).where(Alocacao.cenario_id == cenario_id, Alocacao.turma_uc_id == tuc.id, Alocacao.status != "cancelada")
+                     .order_by(Alocacao.inicio.desc())).first()
+    # quem dá a reposição: o instrutor atual da UC; sem aulas ainda, os habilitados (área, nível e certificação)
+    insts = [ult.instrutor_id] if ult and ult.instrutor_id else \
+        [i["id"] for i in instrutores_elegiveis(db, uc, turma.unidade_id, hoje, area_da_turma(db, turma), nivel=nivel_da_turma(db, turma))][:5]
+    ambs = ([ult.ambiente_id] if ult and ult.ambiente_id else []) + [a["id"] for a in ambientes_compativeis(db, uc, turma)][:4]
+    if not insts:
+        return {"motivo_sem": "Nenhum instrutor habilitado na UC para dar a reposição."}
+    cal = Calendarios(db)
+    sabados, d = [], hoje + timedelta(days=(5 - hoje.weekday()) % 7 or 7)
+    while d <= prazo:
+        if cal.dia_letivo(turma, d)[0]:
+            sabados.append(d)
+        d += timedelta(days=7)
+    sp = db.begin_nested()
+    from app.models import Usuario
+    # exceção só para simular (desfeita no rollback); o autor real é quem aceitar a sugestão
+    exc = ExcecaoAutorizada(tipo="reposicao", justificativa="Reposição aos sábados (simulação da sugestão)",
+                            autorizado_por_id=db.scalar(select(Usuario.id).order_by(Usuario.id).limit(1)))
+    db.add(exc)
+    db.flush()
+    b = BaseDados(db, cenario_id)
+    mins = credito_bloco(regras_aula(db), per)
+    melhor = (None, None, [])
+    for inst_id in insts:
+        for amb_id in list(dict.fromkeys(ambs)) or [None]:
+            ok = []
+            for d in sabados:
+                if len(ok) >= precisa:
+                    break
+                p = AulaProposta(turma_uc_id=tuc.id, inicio=combinar(d, per[0].hora_inicio), fim=combinar(d, per[-1].hora_fim), minutos_aula=mins,
+                                 grupo=None, instrutor_id=inst_id, ambiente_id=amb_id, excecao_id=exc.id, origem="reposicao")
+                if not possui_bloqueio(validar_aula(b, p)):
+                    ok.append(d)
+            if len(ok) > len(melhor[2]):
+                melhor = (inst_id, amb_id, ok)
+        if len(melhor[2]) >= precisa:
+            break
+    sp.rollback()
+    inst_id, amb_id, datas = melhor
+    if not datas:
+        return {"motivo_sem": f"Nenhum sábado letivo livre até {prazo:%d/%m} para os instrutores habilitados e as salas compatíveis."}
+    inst = db.get(Instrutor, inst_id)
+    falta = "" if len(datas) >= precisa else f" — cobre {len(datas)} de {precisa} sábados necessários"
+    return {"sugestao": f"Reposição aos sábados ({per[0].hora_inicio:%H:%M}–{per[-1].hora_fim:%H:%M}) com {inst.nome}: "
+                        + ", ".join(f"{x:%d/%m}" for x in datas) + f" (+{len(datas) * h_sab:.1f} h){falta}",
+            "acao": {"tipo": "reposicao_sabado", "turma_uc_id": tuc.id, "datas": [x.isoformat() for x in datas], "instrutor_id": inst_id,
+                     "ambiente_id": amb_id}}
+
+
+def fim_proximo_semestre(d: date) -> date:
+    from app.services.modulos import semestre
+    s = semestre(d) + 1
+    return date(s // 2, 6, 30) if s % 2 == 0 else date(s // 2, 12, 20)
+
+
+def _proximo_semestre(turma: Turma, tuc: TurmaUC, uc: UnidadeCurricular, falta_h: float, ref: date) -> dict:
+    """Turma não modular: as aulas que faltam passam para o próximo semestre (a UC continua lá)."""
+    from app.services.modulos import rotulo, semestre
+    fim = fim_proximo_semestre(ref)
+    return {"sugestao": f"Passar as {falta_h:.0f} h que faltam de {uc.codigo} para o próximo semestre ({rotulo(semestre(fim))}); "
+                        f"o prazo da UC vai para {fim:%d/%m/%Y}",
+            "acao": {"tipo": "passar_proximo_semestre", "turma_uc_id": tuc.id}}
+
+
+def _prazo(db: Session, cen: CenarioPlanejamento, t: Turma, uc_codigo: str, falta_h: float, cabe_h: float, prazo: date | None, hoje: date) -> dict:
+    """UC que não termina no prazo: modular → reposição aos sábados; não modular → restante no próximo semestre.
+    Com o semestre em edição, gerar de novo os horários da turma também é opção."""
+    tuc = db.scalar(select(TurmaUC).join(UnidadeCurricular, UnidadeCurricular.id == TurmaUC.uc_id)
+                    .where(TurmaUC.turma_id == t.id, UnidadeCurricular.codigo == uc_codigo))
+    if tuc is None:
+        return {"motivo_sem": "UC não encontrada na turma."}
+    uc = db.get(UnidadeCurricular, tuc.uc_id)
+    prazo = prazo or tuc.data_limite or t.data_fim
+    rs = []
+    if t.modulos:
+        rs.append(_reposicao_sabado(db, cen.id, t, tuc, uc, max(falta_h - cabe_h, 0.1), prazo, hoje))
+    else:
+        rs.append(_proximo_semestre(t, tuc, uc, falta_h, cen.periodo_fim or prazo))
+    if cen.estado in ("em_elaboracao", "em_validacao"):
+        rs.append({"sugestao": f"Gerar de novo os horários da turma {t.codigo} (o gerador prioriza o prazo)",
+                   "acao": {"tipo": "gerar_turma", "turma_id": t.id}})
+    return _opcoes(*rs)
+
+
 def sugerir(db: Session, cenario_id: int, codigo: str, unidades=None, hoje: date | None = None) -> dict:
     """Uma sugestão por caso do risco (até LIMITE casos), com a ação pronta para aceitar."""
     from app.services import riscos
@@ -228,24 +369,21 @@ def sugerir(db: Session, cenario_id: int, codigo: str, unidades=None, hoje: date
                 continue
             it = {"id": f"u{a.turma_uc_id}", "caso": f"{t.codigo} · {uc.codigo} {uc.nome}",
                   "detalhe": "só um instrutor habilitado: " + next(i["habilitados"] for i in risco["itens"] if i["turma"] == t.codigo and i["uc"] == uc.codigo)}
-            it.update(_segundo_instrutor(db, cenario_id, t, uc, hoje))
+            it.update(_opcoes(_segundo_instrutor(db, cenario_id, t, uc, hoje), _remanejar(db, cenario_id, t, uc, hoje)))
             itens.append(it)
     elif codigo == "prazo":
         risco = next(r for r in riscos.analisar(db, cenario_id, unidades, hoje)["riscos"] if r["codigo"] == "prazo")
         total = risco["quantidade"]
-        editavel = cen.estado in ("em_elaboracao", "em_validacao")
         for i in risco["itens"][:LIMITE]:
             t = db.scalar(select(Turma).where(Turma.codigo == i["turma"], Turma.simulacao_id.is_(None)))
             it = {"id": f"p{t.id if t else i['turma']}{i['uc']}", "caso": f"{i['turma']} · {i['uc']}",
                   "detalhe": f"faltam {i['falta_h']} h; cabem {i['cabe_h']} h até {date.fromisoformat(i['prazo']):%d/%m/%Y}" if i.get("prazo") else f"faltam {i['falta_h']} h"}
             if t is None:
                 it["motivo_sem"] = "Turma não encontrada."
-            elif not editavel:
-                it["motivo_sem"] = ("O semestre está publicado: crie uma proposta de alteração (Semestres e aprovação) e gere os horários "
-                                    "da turma nela, ou amplie os dias de aula da UC no cadastro.")
             else:
-                it.update({"sugestao": f"Gerar de novo os horários da turma {t.codigo} (o gerador prioriza o prazo)",
-                           "acao": {"tipo": "gerar_turma", "turma_id": t.id}})
+                it["detalhe"] += " · " + ("turma modular" if t.modulos else "turma não modular")
+                it.update(_prazo(db, cen, t, i["uc"], float(i["falta_h"]), float(i.get("cabe_h") or 0),
+                                 date.fromisoformat(i["prazo"]) if i.get("prazo") else None, hoje))
             itens.append(it)
     elif codigo == "capacidade":
         from app.services import gargalos
@@ -261,18 +399,17 @@ def sugerir(db: Session, cenario_id: int, codigo: str, unidades=None, hoje: date
                                  .join(UnidadeCurricular, UnidadeCurricular.id == TurmaUC.uc_id)
                                  .where(UnidadeCurricular.codigo == cod, Turma.simulacao_id.is_(None), TurmaUC.ativo.is_(True))).first()
                 if tuc:
-                    r = _segundo_instrutor(db, cenario_id, tuc[1], tuc[2], hoje)
-                    it.update({k2: v for k2, v in r.items() if k2 != "alternativas"})
+                    it.update(_opcoes(_segundo_instrutor(db, cenario_id, tuc[1], tuc[2], hoje), _remanejar(db, cenario_id, tuc[1], tuc[2], hoje)))
+                    it["alternativas"] = x.get("alternativas", [])
                 else:
                     it["motivo_sem"] = "UC sem turma ativa."
             elif x["tipo"] == "inviabilidade_calendario" and " – " in x["recurso"]:
-                t = db.scalar(select(Turma).where(Turma.codigo == x["recurso"].split(" – ")[0].strip(), Turma.simulacao_id.is_(None)))
-                if t is not None and editavel:
-                    it.update({"sugestao": f"Gerar de novo os horários da turma {t.codigo} (o gerador prioriza o prazo)",
-                               "acao": {"tipo": "gerar_turma", "turma_id": t.id}})
+                cod_t, cod_uc = [p.strip() for p in x["recurso"].split(" – ", 1)]
+                t = db.scalar(select(Turma).where(Turma.codigo == cod_t, Turma.simulacao_id.is_(None)))
+                if t is None:
+                    it["motivo_sem"] = "Turma não encontrada."
                 else:
-                    it["motivo_sem"] = ("Semestre publicado: amplie os dias de aula da UC ou o prazo no cadastro da turma, ou gere numa proposta de alteração."
-                                        if t is not None else "Turma não encontrada.")
+                    it.update(_prazo(db, cen, t, cod_uc, float(x.get("demanda_h") or 0), float(x.get("oferta_h") or 0), None, hoje))
             else:
                 it["motivo_sem"] = "Sem correção automática: veja as alternativas (o simulador mostra o impacto)."
             itens.append(it)
@@ -337,3 +474,70 @@ def ajustar(db: Session, ctx, cenario_id: int, alocacao_ids: list[int], ambiente
     if not feitas:
         raise ConflitoValidacao("O ajuste não passou na validação: " + " | ".join(falhas[:3]))
     return {"ajustadas": feitas, "falhas": falhas}
+
+
+def reposicao(db: Session, ctx, cenario_id: int, turma_uc_id: int, datas: list[str], instrutor_id: int, ambiente_id: int | None,
+              motivo: str = "") -> dict:
+    """Cria as aulas de reposição aos sábados (exceção 'reposicao'), pela validação central; vale também com o horário publicado."""
+    from app.models import ExcecaoAutorizada
+    from app.services.alocacao import DadosAula, _gravar, travar_recursos
+    from app.services.calendario import combinar
+    from app.services.notificacoes import notificar
+    from app.services.regras_aula import credito_bloco, regras_aula
+    cen = db.get(CenarioPlanejamento, cenario_id)
+    if cen is None or cen.estado not in ESTADOS_AJUSTE or cen.tipo == "simulacao":
+        raise ConflitoValidacao("Não é possível marcar reposição neste semestre.")
+    tuc = db.get(TurmaUC, int(turma_uc_id))
+    if tuc is None:
+        raise NaoEncontrado("Oferta (turma × UC) não encontrada.")
+    turma, uc = db.get(Turma, tuc.turma_id), db.get(UnidadeCurricular, tuc.uc_id)
+    per = _periodos_sabado(db, turma.unidade_id)
+    if not per:
+        raise EntradaInvalida("A unidade não tem o turno de sábado cadastrado.")
+    motivo = motivo or f"Reposição aos sábados para concluir {uc.codigo} no prazo (turma modular)"
+    exc = ExcecaoAutorizada(tipo="reposicao", justificativa=motivo[:500], autorizado_por_id=getattr(ctx, "id", None))
+    db.add(exc)
+    db.flush()
+    b = BaseDados(db, cenario_id)
+    mins = credito_bloco(regras_aula(db), per)
+    feitas, falhas = [], []
+    for ds in datas or []:
+        d = date.fromisoformat(ds)
+        ini, fim = combinar(d, per[0].hora_inicio), combinar(d, per[-1].hora_fim)
+        travar_recursos(db, cenario_id, [("instrutor", instrutor_id), ("ambiente", ambiente_id), ("turma", turma.id)])
+        p = AulaProposta(turma_uc_id=tuc.id, inicio=ini, fim=fim, minutos_aula=mins, grupo=None, instrutor_id=int(instrutor_id),
+                         ambiente_id=int(ambiente_id) if ambiente_id else None, excecao_id=exc.id, origem="reposicao")
+        oc = validar_aula(b, p)
+        if possui_bloqueio(oc):
+            falhas.append(f"{d:%d/%m}: " + "; ".join(o.descricao for o in oc if o.severidade == "bloqueio")[:300])
+            continue
+        a = _gravar(db, cenario_id, p, tuc, DadosAula(turma_uc_id=tuc.id, data=d, fixa=True, origem="reposicao", observacao=motivo[:2000]), ctx)
+        auditoria.registrar(db, ctx, "alocacao.reposicao", "alocacoes", a.id, depois=auditoria.snapshot(a), motivo=motivo)
+        feitas.append(d)
+    if not feitas:
+        db.delete(exc)
+        raise ConflitoValidacao("A reposição não passou na validação: " + " | ".join(falhas[:3]))
+    notificar(db, int(instrutor_id), "aula", f"Reposição aos sábados: {turma.codigo}",
+              f"{uc.codigo} – aulas em " + ", ".join(f"{x:%d/%m}" for x in feitas) + f" ({per[0].hora_inicio:%H:%M}–{per[-1].hora_fim:%H:%M}).", "turmas", ctx)
+    return {"criadas": len(feitas), "falhas": falhas}
+
+
+def proximo_semestre(db: Session, ctx, turma_uc_id: int) -> dict:
+    """Turma não modular: o prazo da UC (e o fim da turma, se preciso) passa para o fim do próximo semestre."""
+    from app.services.modulos import rotulo, semestre
+    tuc = db.get(TurmaUC, int(turma_uc_id))
+    if tuc is None:
+        raise NaoEncontrado("Oferta (turma × UC) não encontrada.")
+    turma = db.get(Turma, tuc.turma_id)
+    if turma.modulos:
+        raise EntradaInvalida("Turma modular: use a reposição (inclusive aos sábados) para concluir a UC no módulo.")
+    ref = max(tuc.data_limite or turma.data_fim, turma.data_fim)
+    fim = fim_proximo_semestre(ref)
+    antes = {"data_limite": str(tuc.data_limite), "turma_data_fim": str(turma.data_fim)}
+    tuc.data_limite = fim
+    if turma.data_fim < fim:
+        turma.data_fim = fim
+    db.flush()
+    auditoria.registrar(db, ctx, "turma_uc.proximo_semestre", "turma_uc", tuc.id, antes=antes,
+                        depois={"data_limite": str(fim), "turma_data_fim": str(turma.data_fim)}, motivo="Restante da UC no próximo semestre")
+    return {"prazo": fim.isoformat(), "semestre": rotulo(semestre(fim))}

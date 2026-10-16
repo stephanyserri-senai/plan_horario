@@ -109,7 +109,7 @@ function Cenarios() {
           {listarSemestres(cenarios).includes(novo._sem) && <p className="aviso-inline">Já existe o semestre {novo._sem}: será criada mais uma versão dele.</p>}
           <div className="rodape-modal"><button className="btn btn-primario" disabled={!/^(20|21)\d{2}$/.test(novo._sem.split("/")[0])} onClick={async () => {
             const { _sem, ...dados } = novo;
-            try { const c = await api.post("/api/cenarios", dados); await recarregarCenarios(); setCenarioId(c.id); setNovo(null); aviso(`Semestre ${_sem} criado e aberto.`); } catch (e) { setErro(e); setNovo(null); }
+            try { const c = await api.post("/api/cenarios", dados); await recarregarCenarios(); setCenarioId(c.id); setNovo(null); aviso(`Semestre ${_sem} criado e aberto.` + (c.virada_modulos?.length ? ` Turmas modulares no próximo módulo: ${c.virada_modulos.map((v: any) => `${v.de} → ${v.para}`).join(", ")}.` : "")); } catch (e) { setErro(e); setNovo(null); }
           }}>Criar</button></div>
         </>}
       </Modal>

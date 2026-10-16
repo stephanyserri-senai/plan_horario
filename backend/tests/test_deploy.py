@@ -88,7 +88,7 @@ def test_api_importa_sem_ortools():
 def test_saude_informa_fila_e_migracao(mundo):
     from app.main import app
     r = TestClient(app).get("/api/saude").json()
-    assert r["status"] == "ok" and r["migracao"] == "0014" and "execucoes_pendentes" in r["fila"]
+    assert r["status"] == "ok" and r["migracao"] == "0015" and "execucoes_pendentes" in r["fila"]
 
 
 # ------------------------------------------------------------------ RLS / Data API do Supabase
@@ -151,7 +151,7 @@ def test_sql_offline_das_migracoes_reproduz_banco_novo():
             assert c.scalar(text("SELECT count(*) FROM usuarios WHERE email = 'admin'")) == 1
             assert c.scalar(text("SELECT count(*) FROM pg_class cl JOIN pg_namespace n ON n.oid = cl.relnamespace "
                                  "WHERE n.nspname = 'public' AND cl.relkind = 'r' AND NOT cl.relrowsecurity")) == 0
-            assert c.scalar(text("SELECT version_num FROM alembic_version")) == "0014"
+            assert c.scalar(text("SELECT version_num FROM alembic_version")) == "0015"
             assert c.scalar(text("SELECT count(*) FROM pg_constraint WHERE conname LIKE 'excl_alocacao_%'")) == 3
             # estrutura fixa da instituição (migração 0003), idêntica a app/core/estrutura.py
             from app.core.estrutura import AREAS, UNIDADES
@@ -490,14 +490,14 @@ def test_scripts_do_sql_editor_funcionam_comando_a_comando():
             os.environ.pop("ALEMBIC_DATABASE_URL", None)
         dsn = url.replace("postgresql+psycopg://", "postgresql://")
         sql_dir = RAIZ / "backend" / "sql"
-        for arq, vezes in (("atualizacao_0003.sql", 1), ("atualizacao_0004.sql", 1), ("atualizacao_0005.sql", 1), ("atualizacao_0006.sql", 1), ("atualizacao_0007.sql", 1), ("atualizacao_0008.sql", 1), ("atualizacao_0009.sql", 1), ("atualizacao_0010.sql", 1), ("atualizacao_0011.sql", 1), ("atualizacao_0012.sql", 1), ("atualizacao_0013.sql", 1), ("atualizacao_0014.sql", 1), ("seed_inicial.sql", 1), ("demo_recarregar.sql", 2)):
+        for arq, vezes in (("atualizacao_0003.sql", 1), ("atualizacao_0004.sql", 1), ("atualizacao_0005.sql", 1), ("atualizacao_0006.sql", 1), ("atualizacao_0007.sql", 1), ("atualizacao_0008.sql", 1), ("atualizacao_0009.sql", 1), ("atualizacao_0010.sql", 1), ("atualizacao_0011.sql", 1), ("atualizacao_0012.sql", 1), ("atualizacao_0013.sql", 1), ("atualizacao_0014.sql", 1), ("atualizacao_0015.sql", 1), ("seed_inicial.sql", 1), ("demo_recarregar.sql", 2)):
             for _ in range(vezes):
                 for cmd in _comandos_sql((sql_dir / arq).read_text(encoding="utf-8")):
                     with psycopg.connect(dsn, autocommit=True) as conn:
                         conn.execute(cmd.encode())
         eng = create_engine(url)
         with eng.connect() as c:
-            assert c.scalar(text("SELECT version_num FROM alembic_version")) == "0014"
+            assert c.scalar(text("SELECT version_num FROM alembic_version")) == "0015"
             assert c.scalar(text("SELECT count(*) FROM areas")) == 11
             assert c.scalar(text("SELECT count(*) FROM turmas WHERE codigo LIKE 'DEMO-%'")) == 3
             assert c.scalar(text("SELECT count(*) FROM turma_uc tu JOIN turmas t ON t.id = tu.turma_id WHERE t.codigo LIKE 'DEMO-%'")) == 12
@@ -574,7 +574,7 @@ def test_sql_do_semestre_de_demonstracao():
             assert aulas(prop, "AND instrutor_id IS NULL") > 0 and aulas(prop, "AND ambiente_id IS NULL") > 0
             assert aulas(pub, "AND instrutor_id IS NULL") == 0
             assert c.scalar(text("SELECT count(*) FROM bloqueios WHERE tipo IN ('afastamento', 'manutencao')")) == 2
-            assert c.scalar(text("SELECT count(*) FROM alocacoes a JOIN turmas t ON t.id = a.turma_id WHERE t.codigo IN ('HTC-ELT-14', 'QUA-NRB-01')")) == 0
+            assert c.scalar(text("SELECT count(*) FROM alocacoes a JOIN turmas t ON t.id = a.turma_id WHERE t.codigo IN ('HTC-ELT-1-14', 'QUA-NRB-01')")) == 0
             assert cont("notificacoes") > 0 and cont("observacoes_instrutor") == 3
             assert aulas(pub, "AND instrutor_titular_id IS NOT NULL") == 1
             assert c.scalar(text("SELECT count(*) FROM usuarios WHERE perfil = 'instrutor' AND instrutor_id IS NOT NULL")) == 4
@@ -588,7 +588,7 @@ def test_sql_do_semestre_de_demonstracao():
             h = {"Authorization": "Bearer " + cli.post("/api/auth/login", json={"email": "admin", "senha": "admin@123"}).json()["token"]}
             cen = next(x for x in cli.get("/api/cenarios", headers=h).json() if x["estado"] == "publicado")
             painel = cli.get(f"/api/painel?cenario_id={cen['id']}", headers=h).json()
-            # só a turma nova (HTC-ELT-14, de propósito sem aulas) fica sem horário
+            # só a turma nova (HTC-ELT-1-14, de propósito sem aulas) fica sem horário
             assert painel["indicadores"]["aulas"] >= 900 and 95 <= painel["indicadores"]["pct_com_horario"] < 100
             val = cli.post(f"/api/cenarios/{cen['id']}/validar", headers=h).json()
             assert val["resumo"]["bloqueios"] > 0  # licença, manutenção e ponto facultativo colocados de propósito

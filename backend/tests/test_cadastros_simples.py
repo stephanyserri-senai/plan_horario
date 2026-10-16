@@ -33,7 +33,7 @@ def test_cadastros_preenchem_campos_repetidos(db, mundo):
     assert uc["duracao_bloco_periodos"] == 4
     # prévia do código
     p = c.get(f"/api/cadastros-apoio/codigo-turma?curso_id={curso['id']}&numero=12&tipo=htc", headers=h).json()
-    assert p == {"codigo": "HTC-ELT-12", "existe": False, "sigla": "ELT", "matriz": "2026.1"}
+    assert p == {"codigo": "HTC-ELT-12", "existe": False, "sigla": "ELT", "matriz": "2026.1", "modular": None}
     # turma: curso + número + tipo; matriz, área, unidade, código e nome automáticos
     r = c.post("/api/cadastros/turmas", json={"curso_id": curso["id"], "_numero": "12", "_tipo_oferta": "HTC", "turno_id": manha.id,
                                               "qtd_alunos": 30, "data_inicio": "2026-08-03", "data_fim": "2026-12-18"}, headers=h)

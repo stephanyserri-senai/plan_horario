@@ -38,6 +38,12 @@ Gerado por `scripts/gerar_regras_md.py` a partir de `backend/app/services/regras
 ## Turmas
 
 - **EPIs do curso em cada turma** (`EPI_TURMA`, aviso): O curso lista os EPIs exigidos por aluno. Cada turma recebe a lista com quantidade = alunos × por aluno e prazo = início da turma − antecedência; o controle marca comprado/separado e entregue. Prazo vencido sem entrega, ou a menos de 7 dias, vira aviso no Início e em Riscos. _Onde: cadastro de cursos, cadastro de turmas, controle de EPIs, riscos._
+- **Turma modular: código sobe a cada semestre** (`TURMA_MODULAR`, obrigatória): No cadastro da turma diz-se se ela é modular (quantos módulos) e o módulo em curso. Modular: o código leva o módulo (HTC-AIT-2-34 = turma 34 no 2º módulo); não modular: código no padrão de sempre (HTC-AIT-34). Um módulo por semestre: ao criar o semestre seguinte, a turma passa ao próximo módulo (código, módulo e fim), até o último — 3 módulos a partir de 2026/2 vão até 2027/2. _Onde: cadastro de turmas, novo semestre._
+- **UC que não termina no prazo** (`UC_FORA_DO_PRAZO`, obrigatória): Turma modular: o módulo precisa fechar no semestre, então a sugestão é reposição aos sábados (turno de sábado, com o instrutor da UC ou um habilitado), por exceção registrada e pela validação central. Turma não modular: as aulas que faltam passam para o próximo semestre (o prazo da UC vai para o fim dele). _Onde: riscos, sugestões, validação._
+
+## Substituições e solicitações
+
+- **Remanejar o único habilitado** (`REMANEJAMENTO`, preferência): UC que depende de um só instrutor: além de habilitar outro, o sistema sugere liberar o habilitado de outra UC dele, passando-a a quem está livre e pode assumi-la naquela turma (área, nível e certificação). _Onde: riscos, sugestões, substituição._
 
 ## Quadro e decisões
 

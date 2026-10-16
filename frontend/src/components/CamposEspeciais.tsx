@@ -102,10 +102,11 @@ export function PreviaCodigoTurma({ valores }: { valores: any }) {
   const [p, setP] = useState<any>(null);
   useEffect(() => {
     if (!valores.curso_id) { setP(null); return; }
-    const t = setTimeout(() => api.get(`/api/cadastros-apoio/codigo-turma${qs({ curso_id: valores.curso_id, numero: valores._numero || "", tipo: valores._tipo_oferta || "" })}`)
+    const t = setTimeout(() => api.get(`/api/cadastros-apoio/codigo-turma${qs({ curso_id: valores.curso_id, numero: valores._numero || "", tipo: valores._tipo_oferta || "",
+      modulos: valores.modulos || "", modulo_atual: valores.modulo_atual || "", data_inicio: valores.data_inicio || "" })}`)
       .then(setP).catch(() => setP(null)), 250);
     return () => clearTimeout(t);
-  }, [valores.curso_id, valores._numero, valores._tipo_oferta]);
+  }, [valores.curso_id, valores._numero, valores._tipo_oferta, valores.modulos, valores.modulo_atual, valores.data_inicio]);
   if (!valores.curso_id) return <p className="previa-codigo mudo">Escolha o curso: a área, a unidade e a matriz vêm dele.</p>;
   if (!p) return null;
   const repetido = p.existe && p.codigo !== valores.codigo;
@@ -113,6 +114,8 @@ export function PreviaCodigoTurma({ valores }: { valores: any }) {
     <p className={`previa-codigo ${repetido ? "tom-erro" : ""}`}>
       {p.codigo ? <>Código da turma: <b>{p.codigo}</b>{repetido && " — já existe uma turma com este código"}</> : <>Sigla do curso: <b>{p.sigla}</b> · digite o número da turma</>}
       {p.matriz ? <small className="mudo"> · matriz {p.matriz}</small> : <small className="tom-erro"> · o curso ainda não tem matriz</small>}
+      {p.modular ? <small> · turma modular: módulo {p.modular.modulo} de {p.modular.modulos} em {p.modular.semestre_atual}; vai até {p.modular.termina_em} (o código sobe a cada semestre)</small>
+        : <small className="mudo"> · não modular (código no padrão de sempre)</small>}
     </p>
   );
 }

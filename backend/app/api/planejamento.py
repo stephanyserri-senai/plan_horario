@@ -54,7 +54,7 @@ def criar_cenario(d: dict = Body(...), ctx: Contexto = Depends(requer("cenarios.
         c = cenarios.criar(db, ctx, d["nome"], d.get("unidade_id"), d.get("periodo_inicio") and date.fromisoformat(d["periodo_inicio"]),
                            d.get("periodo_fim") and date.fromisoformat(d["periodo_fim"]), d.get("descricao"))
     db.commit()
-    return _cenario_dict(c, db)
+    return {**_cenario_dict(c, db), "virada_modulos": getattr(c, "virada_modulos", [])}
 
 
 @router.get("/cenarios/{cid}")

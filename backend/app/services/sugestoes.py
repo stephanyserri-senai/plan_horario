@@ -16,6 +16,8 @@ Ações:
 - trocar_sala {alocacao_ids, ambiente_id} / remarcar {alocacao_ids, data, periodo_inicio_id, num_periodos}: ajustes operacionais
   (valem também com o horário publicado), pela validação central (services/resolucoes.ajustar).
 - gerar_turma {turma_id}: gera de novo os horários da turma (semestre em edição).
+- reposicao_sabado {turma_uc_id, datas, instrutor_id, ambiente_id}: aulas de reposição aos sábados (turma modular).
+- passar_proximo_semestre {turma_uc_id}: o restante da UC vai para o próximo semestre (turma não modular).
 Depois de habilitar, passar ou adiar, se o semestre está em edição, o gerador roda só para a turma (gerar=True).
 """
 from __future__ import annotations
@@ -31,7 +33,8 @@ from app.services import auditoria
 
 PERMISSOES = {"habilitar_instrutor": "cadastros.editar", "passar_uc": "alocacoes.editar", "adiar_uc": "cadastros.editar",
               "alocar_aula": "alocacoes.editar", "substituir": "alocacoes.editar", "trocar_sala": "alocacoes.editar",
-              "remarcar": "alocacoes.editar", "gerar_turma": "otimizacao.executar"}
+              "remarcar": "alocacoes.editar", "gerar_turma": "otimizacao.executar", "reposicao_sabado": "alocacoes.editar",
+              "passar_proximo_semestre": "cadastros.editar"}
 EDITAVEIS = ("em_elaboracao", "em_validacao")
 
 
@@ -129,6 +132,16 @@ def aplicar(db: Session, ctx, cenario_id: int, acao: dict, motivo: str | None = 
                                periodo_inicio_id=acao.get("periodo_inicio_id"), num_periodos=acao.get("num_periodos"),
                                motivo=motivo or ("Sala trocada" if tipo == "trocar_sala" else "Aula remarcada") + ": sugestão aceita na análise de riscos")
         res.update({"mensagem": f"{r['ajustadas']} aula(s) " + ("com a sala trocada." if tipo == "trocar_sala" else "remarcada(s)."), "falhas": r["falhas"][:10]})
+        gerar = False
+    elif tipo == "reposicao_sabado":
+        from app.services import resolucoes
+        r = resolucoes.reposicao(db, ctx, cenario_id, acao["turma_uc_id"], acao.get("datas") or [], acao["instrutor_id"], acao.get("ambiente_id"), motivo or "")
+        res.update({"mensagem": f"{r['criadas']} aula(s) de reposição marcada(s) aos sábados.", "falhas": r["falhas"][:10]})
+        gerar = False
+    elif tipo == "passar_proximo_semestre":
+        from app.services import resolucoes
+        r = resolucoes.proximo_semestre(db, ctx, acao["turma_uc_id"])
+        res["mensagem"] = f"O restante da UC passa para {r['semestre']} (prazo {date.fromisoformat(r['prazo']):%d/%m/%Y})."
         gerar = False
     elif tipo == "gerar_turma":
         db.add(RegistroDecisao(tipo="sugestao", cenario_id=cenario_id, usuario_id=ctx.id, motivo=motivo, dados={"acao": acao, "aceita": True}))

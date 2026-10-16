@@ -329,8 +329,8 @@ def turmas_ucs(db: Session, cenario_id: int, data_referencia: date | None = None
         limite = date.fromisoformat(info["data_limite"])
         aulas = db.scalars(select(Alocacao).where(Alocacao.cenario_id == cenario_id, Alocacao.turma_uc_id == tuc.id,
                                                   Alocacao.status != "cancelada")).all()
-        # capacidade restante estimada: dias letivos da turma até o prazo × encontros/semana
-        inicio_restante = max(data_referencia, max((a.data for a in aulas), default=data_referencia) + timedelta(days=1),
+        # capacidade restante estimada: dias letivos da turma até o prazo × encontros/semana (reposições de sábado não empurram o início)
+        inicio_restante = max(data_referencia, max((a.data for a in aulas if a.origem != "reposicao"), default=data_referencia) + timedelta(days=1),
                               date.fromisoformat(info["data_inicio"]))
         dias_letivos = sum(1 for d in _datas(inicio_restante, limite) if d.weekday() in (turma.dias_possiveis or []) and cal.dia_letivo(turma, d)[0]) if inicio_restante <= limite else 0
         semanas_rest = dias_letivos / max(len(turma.dias_possiveis or [1]), 1)

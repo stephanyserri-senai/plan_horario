@@ -47,7 +47,8 @@ def analisar(db: Session, cenario_id: int, unidades=None, hoje: date | None = No
     # 1) carga que não cabe até o prazo
     tu = indicadores.turmas_ucs(db, cenario_id, hoje, unidades_permitidas=unidades)
     prazo = [{"turma": i["turma_codigo"], "uc": i["uc_codigo"], "falta_h": i["restante_h"], "cabe_h": i["capacidade_restante_estimada_h"],
-              "prazo": i["data_limite"], "risco": i["risco_atraso"]} for i in tu["itens"] if i["risco_atraso"] in ("alto", "medio")]
+              "prazo": i["data_limite"], "risco": i["risco_atraso"]} for i in tu["itens"] if i["risco_atraso"] in ("alto", "medio")
+             and not (i.get("data_limite") and cen.periodo_fim and date.fromisoformat(str(i["data_limite"])[:10]) > cen.periodo_fim)]  # continua no próximo semestre
     riscos.append(_risco("prazo", "UCs que podem não terminar no prazo", "alta" if any(p["risco"] == "alto" for p in prazo) else "media", prazo,
                          "A carga horária que falta é maior (ou quase) do que cabe nos dias letivos até o prazo da UC.",
                          "Abra o risco: o sistema sugere gerar de novo os horários da turma (semestre em edição) ou indica o ajuste no cadastro.", "/cronograma"))
