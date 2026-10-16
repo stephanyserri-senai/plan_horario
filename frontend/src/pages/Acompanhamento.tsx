@@ -126,9 +126,9 @@ function TaxasDeOcupacao({ inicio, fim, amb, inst, ins }: { inicio: string; fim:
         <div className="grid-2">
           <div>
             <h3 className="subtitulo">Instrutores</h3>
-            <ResponsiveContainer width="100%" height={Math.max(180, 30 * rk.dados.areas.length)}>
-              <BarChart data={rk.dados.areas} layout="vertical" margin={{ left: 10, right: 24 }}><CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                <XAxis type="number" unit="%" domain={[0, 100]} /><YAxis type="category" dataKey="area" width={140} tick={{ fontSize: 12 }} /><Tooltip />
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart data={rk.dados.areas} margin={{ top: 8, right: 8 }}><CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="area" interval={0} angle={-35} textAnchor="end" height={90} tick={{ fontSize: 11 }} /><YAxis unit="%" domain={[0, 100]} /><Tooltip />
                 <Bar dataKey="ocupacao_pct" name="Ocupação da jornada %" fill={COR} /></BarChart>
             </ResponsiveContainer>
             <Tabela colunas={[{ chave: "area", rotulo: "Área" },
@@ -140,12 +140,12 @@ function TaxasDeOcupacao({ inicio, fim, amb, inst, ins }: { inicio: string; fim:
           </div>
           <div>
             <h3 className="subtitulo">Salas e laboratórios</h3>
-            <ResponsiveContainer width="100%" height={Math.max(180, 30 * (rk.dados.areas_salas || []).length)}>
-              <BarChart data={rk.dados.areas_salas || []} layout="vertical" margin={{ left: 10, right: 24 }}><CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                <XAxis type="number" unit="%" domain={[0, 100]} /><YAxis type="category" dataKey="area" width={140} tick={{ fontSize: 12 }} /><Tooltip />
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart data={rk.dados.areas_salas || []} margin={{ top: 8, right: 8 }}><CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="area" interval={0} angle={-35} textAnchor="end" height={90} tick={{ fontSize: 11 }} /><YAxis unit="%" domain={[0, 100]} /><Tooltip />
                 <Bar dataKey="ocupacao_pct" name="Ocupação do horário %" fill="var(--grafico-2)" /></BarChart>
             </ResponsiveContainer>
-            <Tabela colunas={[{ chave: "area", rotulo: "Área" }, { chave: "salas", rotulo: "Salas", alinhar: "dir" },
+            <Tabela colunas={[{ chave: "area", rotulo: "Área", render: (l: any) => l.area === "Uso comum" ? <span title="salas que atendem todas as áreas">Uso comum (todas as áreas)</span> : l.area }, { chave: "salas", rotulo: "Salas", alinhar: "dir" },
               { chave: "horas_ocupadas", rotulo: "Ocupadas (h)", alinhar: "dir", render: (l: any) => Math.round(l.horas_ocupadas) },
               { chave: "ocupacao_pct", rotulo: "Ocupação", render: (l: any) => <BarraOcupacao pct={l.ocupacao_pct} /> }]}
               linhas={rk.dados.areas_salas || []} chave={(l: any) => l.area} />

@@ -229,7 +229,7 @@ def ranking(db: Session, cenario_id: int, d0: date, d1: date, unidades=None, lim
         por_area[nome][2].add(i.id)
     salas_area = defaultdict(lambda: [0.0, 0.0, 0])
     for a in amb["ambientes"]:
-        nome = areas.get(a.get("area_id")) or "Uso comum (todas as áreas)"
+        nome = areas.get(a.get("area_id")) or "Uso comum"
         salas_area[nome][0] += a["horas_ocupadas"]
         salas_area[nome][1] += a["horas_disponiveis"]
         salas_area[nome][2] += 1

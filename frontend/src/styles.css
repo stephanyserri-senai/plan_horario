@@ -666,3 +666,8 @@ li.sem-marcador { list-style: none; margin-left: -18px; }
 .cel-fora { color: var(--mudo); font-size: .78rem; font-style: italic; }
 .chip-estado.sem-ponto::before { display: none; }
 .subtitulo { font-size: .95rem; margin: 4px 0 6px; }
+.busca-larga { flex: 1 1 320px; min-width: 260px; font-size: 1rem; padding: 7px 12px; }
+.mini-turnos { display: grid; gap: 3px; }
+.mini-sit { font-size: .74rem; padding: 2px 6px; border-radius: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px; }
+.mini-sit i { font-style: normal; font-weight: 700; opacity: .7; margin-right: 2px; }
+.mini-fora { color: var(--mudo); }

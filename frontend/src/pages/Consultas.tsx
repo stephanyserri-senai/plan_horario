@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { api, dataBR, iso, qs } from "../api";
+import { api, dataBR, DIAS_CURTOS, iso, qs, segundaDe } from "../api";
 import { Abas, Pagina, Tabela, useCarregar } from "../components/ui";
-import { BarraOcupacao, Faixa, GraficoSerie } from "../components/Ocupacao";
+import { BarraOcupacao, Faixa } from "../components/Ocupacao";
 import { useApp } from "../contexto";
 
 const ESTADO: Record<string, [string, string, string]> = {  // classe, rótulo, explicação
@@ -19,23 +19,35 @@ const NOMES_DIA = ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "
 const somaDias = (s: string, n: number) => { const d = new Date(s + "T12:00:00"); d.setDate(d.getDate() + n); return iso(d); };
 
 /** Situação de cada instrutor e sala num dia, turno a turno. */
+const CURTO: Record<string, string> = { livre: "livre", PL: "PL", PJ: "PJ", TR: "TR", bloqueado: "indisp.", nao_letivo: "não letivo" };
+const SIGLA_TURNO: Record<string, string> = { M: "M", T: "V", N: "N", S: "S" };
+
+/** Situação de cada instrutor e sala num dia (turno a turno) ou na semana inteira (dia a dia). */
 function QuemEstaOnde() {
   const { cenario } = useApp();
+  const [modo, setModo] = useState<"dia" | "semana">("dia");
   const [dia, setDia] = useState(iso(new Date()));
   const [turno, setTurno] = useState("");
   const [ver, setVer] = useState<"instrutores" | "salas">("instrutores");
   const [estado, setEstado] = useState("");
   const [busca, setBusca] = useState("");
-  const r = useCarregar<any>(() => cenario && dia ? api.get(`/api/consultas/situacao${qs({ cenario_id: cenario.id, data: dia, turno })}`) : Promise.resolve(null),
-    [cenario?.id, dia, turno]);
-  const d = r.dados;
-  const turnos = (d?.turnos || []).filter((t: any) => t.no_dia);  // só os turnos que acontecem neste dia da semana
+  const seg = iso(segundaDe(new Date(dia + "T12:00:00")));
+  const datas = modo === "dia" ? [dia] : [0, 1, 2, 3, 4, 5].map((n) => somaDias(seg, n));
+  const r = useCarregar<any[]>(() => cenario ? Promise.all(datas.map((data) => api.get(`/api/consultas/situacao${qs({ cenario_id: cenario.id, data, turno })}`)))
+    : Promise.resolve([]), [cenario?.id, datas.join(","), turno]);
+  const dias = r.dados || [];
+  const d = dias[0];
+  const turnosDe = (x: any) => (x?.turnos || []).filter((t: any) => t.no_dia);  // só os turnos que acontecem naquele dia da semana
+  const turnos = turnosDe(d);
   const fora = (d?.turnos || []).filter((t: any) => !t.no_dia);
   const todas = d?.[ver] || [];
-  const conta = (e: string) => todas.reduce((n: number, l: any) => n + turnos.filter((t: any) => l.turnos[t.codigo]?.estado === e).length, 0);
+  const porDia = dias.map((x: any) => Object.fromEntries((x[ver] || []).map((l: any) => [l.id, l])));
+  const celulas = (id: any) => dias.flatMap((x: any, k: number) => turnosDe(x).map((t: any) => porDia[k][id]?.turnos[t.codigo]));
+  const conta = (e: string) => todas.reduce((n: number, l: any) => n + celulas(l.id).filter((c: any) => c?.estado === e).length, 0);
   const linhas = todas.filter((l: any) => (!busca || `${l.nome} ${l.codigo || ""}`.toLowerCase().includes(busca.toLowerCase()))
-    && (!estado || turnos.some((t: any) => l.turnos[t.codigo]?.estado === estado)));
+    && (!estado || celulas(l.id).some((c: any) => c?.estado === estado)));
   const hoje = iso(new Date());
+  const passo = modo === "dia" ? 1 : 7;
   const celula = (c: any) => {
     if (!c || c.estado === "sem_turno") return <span className="mudo">—</span>;
     if (c.estado === "fora_jornada") return <span className="cel-fora">fora da jornada</span>;
@@ -45,13 +57,33 @@ function QuemEstaOnde() {
       {c.estado === "aula" && <small>{c.uc.split(" – ")[0]} · {ver === "instrutores" ? (c.sala || "sem sala") : (c.instrutor || "sem instrutor")} · {c.horario}</small>}
       {c.estado !== "aula" && (c.detalhe || ["PL", "PJ", "TR"].includes(c.estado)) && <small>{c.detalhe || expl}</small>}</div>;
   };
+  // semana: em cada dia, uma linha curta por turno (M, V, N ou S)
+  const celulaDia = (x: any, k: number, id: any) => {
+    const ts = turnosDe(x);
+    if (!ts.length) return <span className="mudo">—</span>;
+    return <div className="mini-turnos">{ts.map((t: any) => {
+      const c = porDia[k][id]?.turnos[t.codigo];
+      if (!c || c.estado === "sem_turno") return null;
+      const [cls, , expl] = ESTADO[c.estado] || ["", c.estado, ""];
+      const titulo = c.estado === "aula" ? `${t.nome}: ${c.turma} · ${c.uc} · ${ver === "instrutores" ? (c.sala || "sem sala") : (c.instrutor || "sem instrutor")} · ${c.horario}`
+        : `${t.nome}: ${c.detalhe || expl || "fora da jornada"}`;
+      return <div key={t.codigo} title={titulo} className={`mini-sit ${c.estado === "fora_jornada" ? "mini-fora" : `cel-sit ${cls}`} ${estado && c.estado !== estado ? "apagada" : ""}`}>
+        <i>{SIGLA_TURNO[t.codigo] || t.codigo}</i> {c.estado === "aula" ? c.turma : c.estado === "fora_jornada" ? "—" : CURTO[c.estado] || c.estado}</div>;
+    })}</div>;
+  };
+  const coluna = { chave: "nome", rotulo: ver === "instrutores" ? "Instrutor" : "Sala", render: (l: any) => <div className="onde-nome"><b>{ver === "salas" ? l.codigo : l.nome}</b>
+    <small className="mudo">{ver === "salas" ? l.nome : l.modalidade}</small></div> };
   return (
     <>
       <div className="onde-barra">
-        <div className="seletor-dia" role="group" aria-label="Dia">
-          <button className="btn" aria-label="Dia anterior" onClick={() => setDia(somaDias(dia, -1))}>◀</button>
+        <div className="segmentado" role="tablist" aria-label="Período">
+          {(["dia", "semana"] as const).map((m) => <button key={m} role="tab" aria-selected={modo === m} className={modo === m ? "ativo" : ""}
+            onClick={() => setModo(m)}>{m === "dia" ? "Um dia" : "Semana"}</button>)}
+        </div>
+        <div className="seletor-dia" role="group" aria-label={modo === "dia" ? "Dia" : "Semana"}>
+          <button className="btn" aria-label={modo === "dia" ? "Dia anterior" : "Semana anterior"} onClick={() => setDia(somaDias(dia, -passo))}>◀</button>
           <input type="date" aria-label="Dia" value={dia} onChange={(e) => e.target.value && setDia(e.target.value)} />
-          <button className="btn" aria-label="Próximo dia" onClick={() => setDia(somaDias(dia, 1))}>▶</button>
+          <button className="btn" aria-label={modo === "dia" ? "Próximo dia" : "Próxima semana"} onClick={() => setDia(somaDias(dia, passo))}>▶</button>
           {dia !== hoje && <button className="btn-link" onClick={() => setDia(hoje)}>hoje</button>}
         </div>
         <div className="segmentado" role="tablist" aria-label="Ver">
@@ -60,25 +92,30 @@ function QuemEstaOnde() {
         </div>
         <select aria-label="Turno" value={turno} onChange={(e) => setTurno(e.target.value)}>
           <option value="">Todos os turnos</option><option value="M">Manhã</option><option value="T">Tarde</option><option value="N">Noite</option><option value="S">Sábado</option></select>
-        <input type="search" placeholder={ver === "instrutores" ? "Buscar instrutor…" : "Buscar sala…"} aria-label="Buscar" value={busca} onChange={(e) => setBusca(e.target.value)} />
+        <input type="search" className="busca-larga" placeholder={ver === "instrutores" ? "Buscar instrutor pelo nome…" : "Buscar sala pelo código ou nome…"} aria-label="Buscar"
+          value={busca} onChange={(e) => setBusca(e.target.value)} />
       </div>
       {d && <>
-        <h3 className="onde-dia">{NOMES_DIA[new Date(d.data + "T12:00:00").getDay()]}, {dataBR(d.data)}
-          {Object.keys(d.nao_letivo).length > 0 && <small className="aviso-nl"> · não letivo: {Object.values(d.nao_letivo).join("; ")}</small>}</h3>
+        <h3 className="onde-dia">{modo === "dia" ? <>{NOMES_DIA[new Date(d.data + "T12:00:00").getDay()]}, {dataBR(d.data)}</>
+          : <>Semana de {dataBR(datas[0])} a {dataBR(datas[datas.length - 1])}</>}
+          {dias.some((x: any) => Object.keys(x.nao_letivo).length > 0) && <small className="aviso-nl"> · não letivo: {dias.filter((x: any) => Object.keys(x.nao_letivo).length)
+            .map((x: any) => `${dataBR(x.data).slice(0, 5)} (${Object.values(x.nao_letivo).join("; ")})`).join(", ")}</small>}</h3>
         <div className="filtro-estados" role="group" aria-label="Filtrar por situação">
           <span className="sub">Mostrar:</span>
           <button className={`chip-estado sem-ponto ${!estado ? "ativo" : ""}`} onClick={() => setEstado("")}>Todos</button>
           {FILTROS[ver].map((e) => <button key={e} title={ESTADO[e][2]} className={`chip-estado ${ESTADO[e][0]} ${estado === e ? "ativo" : ""}`}
             onClick={() => setEstado(estado === e ? "" : e)}>{e === "bloqueado" ? "Indisponível" : ESTADO[e][1]} <b>{conta(e)}</b></button>)}
-          <small className="mudo">números = {ver === "instrutores" ? "instrutor" : "sala"} × turno</small>
+          <small className="mudo">números = {ver === "instrutores" ? "instrutor" : "sala"} × turno{modo === "semana" ? " × dia" : ""}</small>
         </div>
-        {turnos.length === 0 ? <p className="sub">Nenhum turno com aula neste dia{turno ? " (no turno escolhido)" : ""}.</p> :
-          <Tabela colunas={[
-            { chave: "nome", rotulo: ver === "instrutores" ? "Instrutor" : "Sala", render: (l: any) => <div className="onde-nome"><b>{ver === "salas" ? l.codigo : l.nome}</b>
-              <small className="mudo">{ver === "salas" ? l.nome : l.modalidade}</small></div> },
-            ...turnos.map((t: any) => ({ chave: t.codigo, rotulo: t.nome, render: (l: any) => celula(l.turnos[t.codigo]) })),
-          ]} linhas={linhas} chave={(l: any) => l.id} vazio={estado ? `Ninguém “${ESTADO[estado][1].toLowerCase()}” neste dia.` : "Nada encontrado."} />}
-        {fora.length > 0 && <p className="sub">{fora.map((t: any) => t.nome).join(", ")}: sem aula {fora.some((t: any) => t.codigo === "S") ? "de segunda a sexta" : "aos sábados"} — escolha {fora.some((t: any) => t.codigo === "S") ? "um sábado" : "um dia útil"} para ver.</p>}
+        {modo === "semana" ? <>
+          <Tabela colunas={[coluna, ...dias.map((x: any, k: number) => ({ chave: x.data, rotulo: `${DIAS_CURTOS[(k) % 7]} ${dataBR(x.data).slice(0, 5)}`,
+            render: (l: any) => celulaDia(x, k, l.id) }))]} linhas={linhas} chave={(l: any) => l.id}
+            vazio={estado ? `Ninguém “${ESTADO[estado][1].toLowerCase()}” nesta semana.` : "Nada encontrado."} />
+          <p className="sub">M = manhã, V = vespertino (tarde), N = noite, S = sábado. Passe o mouse sobre um turno para ver UC, sala e horário.</p>
+        </> : turnos.length === 0 ? <p className="sub">Nenhum turno com aula neste dia{turno ? " (no turno escolhido)" : ""}.</p> :
+          <Tabela colunas={[coluna, ...turnos.map((t: any) => ({ chave: t.codigo, rotulo: t.nome, render: (l: any) => celula(l.turnos[t.codigo]) }))]}
+            linhas={linhas} chave={(l: any) => l.id} vazio={estado ? `Ninguém “${ESTADO[estado][1].toLowerCase()}” neste dia.` : "Nada encontrado."} />}
+        {modo === "dia" && fora.length > 0 && <p className="sub">{fora.map((t: any) => t.nome).join(", ")}: sem aula {fora.some((t: any) => t.codigo === "S") ? "de segunda a sexta" : "aos sábados"} — escolha {fora.some((t: any) => t.codigo === "S") ? "um sábado" : "um dia útil"} para ver.</p>}
       </>}
       {r.carregando && !d && <p role="status">Consultando…</p>}
       {r.erro && <div className="erro-box">{r.erro}</div>}
@@ -152,42 +189,16 @@ function Ranking() {
   );
 }
 
-/** Ocupação semana a semana em um intervalo (o que já passou e a previsão pela grade gerada). */
-function NoTempo() {
-  const { cenario } = useApp();
-  const [inicio, setInicio] = useState("");
-  const [fim, setFim] = useState("");
-  const r = useCarregar<any>(() => cenario ? api.get(`/api/consultas/serie${qs({ cenario_id: cenario.id, inicio, fim })}`) : Promise.resolve(null), [cenario?.id, inicio, fim]);
-  const d = r.dados;
-  return (
-    <>
-      <Periodo inicio={inicio} fim={fim} setInicio={setInicio} setFim={setFim} />
-      {d && <>
-        <div className="kpis">
-          <div className="kpi"><span>Instrutores · média até hoje</span><b>{d.media_realizada.instrutores_pct ?? "—"}%</b><small>da jornada</small></div>
-          <div className="kpi"><span>Instrutores · previsão</span><b>{d.media_prevista.instrutores_pct ?? "—"}%</b><small>semanas futuras, pela grade</small></div>
-          <div className="kpi"><span>Salas · média até hoje</span><b>{d.media_realizada.salas_pct ?? "—"}%</b></div>
-          <div className="kpi"><span>Salas · previsão</span><b>{d.media_prevista.salas_pct ?? "—"}%</b></div>
-          {d.pico && <div className="kpi"><span>Semana mais cheia (instrutores)</span><b>{d.pico.instrutores_pct}%</b><small>semana de {d.pico.rotulo}</small></div>}
-        </div>
-        <section className="card"><h2>Ocupação por semana</h2><GraficoSerie dados={d} altura={300} /></section>
-      </>}
-      {r.carregando && !d && <p role="status">Calculando…</p>}
-    </>
-  );
-}
-
 export default function Consultas() {
   const { cenario } = useApp();
   const [aba, setAba] = useState("onde");
   if (!cenario) return <Pagina titulo="Consultas"><p>Selecione um semestre no topo da página.</p></Pagina>;
   return (
-    <Pagina titulo="Consultas" descricao="Quem está livre, em aula ou fora num dia; quem está mais (e menos) ocupado; e como a ocupação evolui semana a semana. Segue o semestre e a unidade escolhidos no topo.">
-      <Abas abas={[{ id: "onde", rotulo: "📍 Quem está onde" }, { id: "ranking", rotulo: "🏆 Ranking de ocupação" }, { id: "tempo", rotulo: "📈 Ocupação no tempo" }]}
+    <Pagina titulo="Consultas" descricao="Quem está livre, em aula ou fora num dia ou na semana, e quem está mais (e menos) ocupado. A ocupação semana a semana fica em Ocupação e andamento. Segue o semestre e a unidade escolhidos no topo.">
+      <Abas abas={[{ id: "onde", rotulo: "📍 Quem está onde" }, { id: "ranking", rotulo: "🏆 Ranking de ocupação" }]}
         ativa={aba} mudar={setAba} />
       {aba === "onde" && <QuemEstaOnde />}
       {aba === "ranking" && <Ranking />}
-      {aba === "tempo" && <NoTempo />}
     </Pagina>
   );
 }
