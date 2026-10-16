@@ -64,6 +64,30 @@ USUARIO_TESTE_SENHA = "admin@123"
 USUARIO_TESTE_NOME = "Administrador de TESTE (remover antes da produção)"
 
 
+COORD_TESTE_LOGIN = "coordenacao.teste"
+COORD_TESTE_SENHA = "coord@123"
+COORD_TESTE_NOME = "Coordenação de TESTE (remover antes da produção)"
+
+
+def criar_coordenacao_teste(db) -> Usuario:
+    """Login de coordenação para homologação (mesmas travas do usuário de teste: recusado em produção)."""
+    s = get_settings()
+    if s.producao:
+        raise SystemExit("Recusado: o usuário de teste (senha conhecida) não pode ser criado com PLAN_AMBIENTE=producao.")
+    from app.services import auditoria
+    u = db.scalar(select(Usuario).where(Usuario.email == COORD_TESTE_LOGIN))
+    senha_hash = "!supabase" if s.auth_modo == "supabase" else hash_senha(COORD_TESTE_SENHA)
+    if u is None:
+        u = Usuario(nome=COORD_TESTE_NOME, email=COORD_TESTE_LOGIN, senha_hash=senha_hash, perfil="coordenador", acesso_global=True, ativo=True)
+        db.add(u)
+    elif u.nome == COORD_TESTE_NOME:
+        u.senha_hash, u.perfil, u.ativo = senha_hash, "coordenador", True
+    db.flush()
+    auditoria.registrar(db, "seed", "usuario.teste_criar", "usuarios", u.id, depois={"login": COORD_TESTE_LOGIN, "perfil": "coordenador"}, origem="seed")
+    db.commit()
+    return u
+
+
 def email_usuario_teste() -> str:
     """Modo local: login 'admin'. Modo Supabase: o Supabase Auth exige e-mail;
     use PLAN_USUARIO_TESTE_EMAIL (padrão admin@teste.local) e crie o mesmo
@@ -99,8 +123,13 @@ def remover_usuario_teste(db) -> str:
     from app.services import auditoria
     alvo = [x for x in {USUARIO_TESTE_LOGIN, email_usuario_teste()}]
     u = db.scalar(select(Usuario).where(Usuario.email.in_(alvo), Usuario.nome == USUARIO_TESTE_NOME))
+    coord = db.scalar(select(Usuario).where(Usuario.email == COORD_TESTE_LOGIN, Usuario.nome == COORD_TESTE_NOME))
+    if coord is not None:  # a coordenação de teste sai junto (inativada: pode ter decisões no histórico)
+        coord.ativo, coord.senha_hash = False, "!removido"
+        auditoria.registrar(db, "seed", "usuario.teste_inativar", "usuarios", coord.id, origem="seed")
+        db.commit()
     if u is None:
-        return "Usuário de teste não encontrado."
+        return "Usuário de teste não encontrado." if coord is None else "Coordenação de teste inativada."
     uid = u.id
     try:
         db.delete(u)
@@ -118,7 +147,7 @@ def remover_usuario_teste(db) -> str:
 
 
 def usuario_teste_ativo(db) -> bool:
-    return bool(db.scalar(select(Usuario.id).where(Usuario.nome == USUARIO_TESTE_NOME, Usuario.ativo.is_(True))))
+    return bool(db.scalar(select(Usuario.id).where(Usuario.nome.in_([USUARIO_TESTE_NOME, COORD_TESTE_NOME]), Usuario.ativo.is_(True))))
 
 
 if __name__ == "__main__":
@@ -131,6 +160,8 @@ if __name__ == "__main__":
                 print(remover_usuario_teste(db))
             else:
                 u = criar_usuario_teste(db)
+                criar_coordenacao_teste(db)
+                print(f"Coordenação de teste pronta: login '{COORD_TESTE_LOGIN}', senha '{COORD_TESTE_SENHA}' (perfil coordenador).")
                 if get_settings().auth_modo == "supabase":
                     print(f"Usuário de teste cadastrado na plataforma: {u.email}. Crie o MESMO e-mail no Supabase "
                           f"(Authentication → Users → Add user) com a senha {USUARIO_TESTE_SENHA} e 'Auto Confirm User'.")

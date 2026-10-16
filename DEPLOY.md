@@ -166,7 +166,7 @@ python -m app.seed --usuario-teste          # login "admin", senha "admin@123"
 python -m app.seed --remover-usuario-teste  # remover depois dos testes
 ```
 
-* **Modo local:** o login é `admin` com senha `admin@123`.
+* **Modo local:** o login é `admin` com senha `admin@123`. O mesmo comando cria a coordenação de teste: login `coordenacao.teste`, senha `coord@123` (perfil coordenador).
 * **Modo Supabase:** o Supabase Auth exige e-mail. O comando cadastra `PLAN_USUARIO_TESTE_EMAIL` (padrão `admin@teste.local`). Crie o mesmo e-mail em **Supabase → Authentication → Users → Add user**, com a senha `admin@123` e a opção *Auto Confirm User*.
 * **Proteções:**
   * o comando **recusa** `PLAN_AMBIENTE=producao`;

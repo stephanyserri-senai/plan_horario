@@ -21,11 +21,12 @@
   * um login válido no Supabase **não** dá acesso sozinho: o e-mail precisa estar cadastrado e ativo na plataforma (senão, 403);
   * o cadastro público (sign up) deve ficar desativado no Supabase.
 * **Modo local:** senhas com bcrypt, JWT HS256 com expiração (`PLAN_JWT_EXPIRA_MINUTOS`). Em produção, a API não inicia com `PLAN_JWT_SECRET` fraco (menos de 32 caracteres ou o valor de desenvolvimento).
-* **Usuário de teste** (`admin` / `admin@123`):
-  * criado apenas por comando explícito (`python -m app.seed --usuario-teste`);
+* **Usuários de teste** (`admin` / `admin@123` e a coordenação `coordenacao.teste` / `coord@123`):
+  * criados apenas por comando explícito (`python -m app.seed --usuario-teste`) ou, no Supabase, pelo SQL
+    `backend/sql/coordenacao_teste.sql` (só a coordenação; a senha fica apenas como hash bcrypt);
   * **recusado** com `PLAN_AMBIENTE=producao`;
   * gera alerta nos logs e aparece em `/api/saude` enquanto ativo;
-  * remova com `python -m app.seed --remover-usuario-teste`.
+  * remova com `python -m app.seed --remover-usuario-teste` (a coordenação de teste é inativada junto) ou com o DELETE indicado no SQL.
 
 ## Autorização
 

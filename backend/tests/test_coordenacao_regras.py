@@ -237,3 +237,19 @@ def test_estrutura_curricular_versao_por_oferta(db, mundo):
     r = c.post("/api/cadastros/turmas", json={**base, "_numero": "8", "_tipo_oferta": "HTC"}, headers=h)
     assert r.status_code == 200, r.text
     assert db.get(Turma, r.json()["id"]).matriz_id == m.matriz.id  # sem versão própria: a geral
+
+
+def test_sql_da_coordenacao_de_teste(db, mundo):
+    """backend/sql/coordenacao_teste.sql: roda duas vezes sem duplicar; o login entra como coordenador e pode decidir solicitações."""
+    from sqlalchemy import text
+    sql = (Path(__file__).resolve().parents[1] / "sql" / "coordenacao_teste.sql").read_text(encoding="utf-8")
+    conn = db.connection().connection.driver_connection
+    for _ in range(2):
+        conn.execute(sql.encode())
+    conn.commit()
+    assert db.scalar(text("SELECT count(*) FROM usuarios WHERE email = 'coordenacao.teste' AND perfil = 'coordenador' AND ativo")) == 1
+    c = TestClient(app)
+    h = _login(c, "coordenacao.teste", "coord@123")
+    eu = c.get("/api/auth/me", headers=h)
+    assert eu.status_code == 200 and eu.json()["perfil"] == "coordenador" and "solicitacoes.aprovar" in eu.json()["acoes"]
+    assert c.get("/api/solicitacoes-instrutores", headers=h).status_code == 200
