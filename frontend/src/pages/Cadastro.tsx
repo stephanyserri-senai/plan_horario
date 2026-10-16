@@ -6,6 +6,7 @@ import { useApp } from "../contexto";
 import { invalidarOpcoes, rotuloDe, useOpcoes } from "../hooks";
 import { CompetenciasUCs, JornadaInstrutor, PreviaCodigoTurma } from "../components/CamposEspeciais";
 import ObservacoesInstrutores from "../components/ObservacoesInstrutores";
+import EstruturaCurricular from "./Cursos";
 
 export type CampoMeta = { nome: string; tipo: string; obrigatorio: boolean; somente_leitura: boolean; rotulo: string; ref?: string; opcoes?: any[]; pessoal?: boolean;
   secao?: "principal" | "avancado" | "auto"; ajuda?: string };
@@ -21,8 +22,8 @@ export function useMeta() {
 const RELACIONADOS: Record<string, string[]> = {
   turmas: ["turmas", "turma_ucs"],
   instrutores: ["instrutores", "observacoes", "habilitacoes", "competencias", "disponibilidade_instrutores"],
-  ucs: ["ucs", "uc_recursos", "uc_prerequisitos"],
-  cursos: ["cursos", "matrizes", "ucs", "uc_prerequisitos"],
+  ucs: ["ucs", "uc_recursos"],
+  cursos: ["estrutura", "cursos", "matrizes", "ucs"],
   ambientes: ["ambientes", "tipos_ambiente", "disponibilidade_ambientes", "recursos_ambientes"],
   recursos: ["recursos", "recursos_ambientes"],
   unidades: ["unidades", "areas", "calendarios", "calendario_excecoes", "bloqueios", "horarios_funcionamento", "setores", "deslocamentos"],
@@ -37,7 +38,7 @@ const AJUDA: Record<string, string> = {
   competencias: "Quais unidades curriculares cada instrutor está habilitado a ministrar.",
   disponibilidade_instrutores: "Dias e horários em que cada instrutor pode dar aula. Sem registros, considera-se disponível em todo o horário de funcionamento.",
   ucs: "Disciplinas da matriz: carga horária, quantas aulas por semana e o tipo de sala exigido (ex.: laboratório de informática).",
-  cursos: "Cursos ofertados (a sigla, ex.: ELT, entra no código das turmas: HTC-ELT-12), suas matrizes curriculares e UCs. A unidade do curso é a da área.",
+  cursos: "Escolha a área e o curso: as versões da matriz (uma por tipo de oferta, ex.: AIT ou HTC, quando o currículo muda) e as UCs de cada versão, com classificação e carga horária, ficam no mesmo lugar. A sigla do curso (ex.: ELT) entra no código das turmas: HTC-ELT-12.",
   matrizes: "Versões do currículo de cada curso. Use “Nova versão” para copiar uma matriz existente.",
   ambientes: "Salas, laboratórios e oficinas: capacidade de alunos, tipo e equipamentos. O sistema só coloca a aula em sala compatível.",
   tipos_ambiente: "Categorias de sala (ex.: sala teórica, laboratório de informática) usadas para casar disciplina e sala.",
@@ -376,7 +377,8 @@ function FiltroRef({ c, valor, mudar }: { c: CampoMeta; valor: string; mudar: (v
   );
 }
 
-const ROTULO_ABA: Record<string, string> = { observacoes: "💬 Observações dos instrutores" };
+const ROTULO_ABA: Record<string, string> = { observacoes: "💬 Observações dos instrutores", estrutura: "Por área e curso", cursos: "Lista de cursos",
+  matrizes: "Lista de versões", ucs: "Lista de UCs" };
 
 /** Explica o portal do instrutor e, no login pelo Supabase, convida todos os instrutores com e-mail de uma vez. */
 function AcessosPortal() {
@@ -427,7 +429,7 @@ export default function Cadastro() {
       </div>}
       {aba === "turnos" && <TurnosPadrao aoCriar={() => setVersao((v) => v + 1)} />}
       {ent === "instrutores" && aba === "instrutores" && <AcessosPortal />}
-      {aba === "observacoes" ? <ObservacoesInstrutores /> : <ListaEntidade key={`${aba}-${versao}`} ent={aba} />}
+      {aba === "observacoes" ? <ObservacoesInstrutores /> : aba === "estrutura" ? <EstruturaCurricular /> : <ListaEntidade key={`${aba}-${versao}`} ent={aba} />}
     </Pagina>
   );
 }

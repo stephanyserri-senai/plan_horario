@@ -5,8 +5,10 @@ Padrão da instituição:
   turno, ex.: 4 aulas). A única exceção é o *fechamento de carga horária*: quando
   falta menos que um turno para a UC terminar, a última aula pode ser parcial e
   o restante do turno pode ser usado por outra UC que também esteja fechando.
-- **hora-aula**: cada aula (período) conta 1 hora de carga horária, independente
-  de durar 50 ou 55 minutos.
+- **contagem em minutos reais** (padrão): cada aula vale o tempo que dura (55 min de dia,
+  50 min à noite, 60 min nas turmas PFP); o que falta para a carga da UC vira outra aula.
+  Ex.: UC de 20 h no matutino = 1200 min ÷ 55 = 22 aulas (5 dias de 4 aulas + 2 aulas de fechamento).
+  A opção "hora_aula" (cada aula = 1 h) continua disponível nas configurações, mas não é a regra da instituição.
 """
 from __future__ import annotations
 
@@ -18,7 +20,7 @@ from sqlalchemy.orm import Session
 from app.models import Configuracao, PeriodoHorario
 from app.services.calendario import minutos
 
-PADRAO = {"turno_inteiro": True, "contagem": "hora_aula"}
+PADRAO = {"turno_inteiro": True, "contagem": "relogio"}
 CHAVE = "regras_aula"
 
 
@@ -28,7 +30,7 @@ def regras_aula(db: Session) -> dict:
 
 
 def hora_aula(regras: dict) -> bool:
-    return regras.get("contagem", "hora_aula") == "hora_aula"
+    return regras.get("contagem", "relogio") == "hora_aula"
 
 
 def credito_periodo(regras: dict, p) -> int:
@@ -66,9 +68,46 @@ TURNOS_PADRAO = [
 ]
 # Sábado: turno próprio, 09:00–13:00 (4 aulas, intervalo 10:50–11:10), só aos sábados. Turma de sábado só tem aula presencial no sábado.
 TURNO_SABADO = ("S", "Sábado", [(9 * 60, 55), (9 * 60 + 55, 55), (11 * 60 + 10, 55), (12 * 60 + 5, 55)])
-# Turmas PFP: aula o dia todo, 08:00–12:00 e 13:00–17:00 (8 aulas; almoço 12:00–13:00), de segunda a sexta.
-# O turno inteiro de uma turma PFP é o dia inteiro. Quem dá aula nela trabalha manhã e tarde (jornada MV).
-TURNO_INTEGRAL = ("I", "Integral (PFP)", [(h * 60, 60) for h in (8, 9, 10, 11, 13, 14, 15, 16)])
+# Turmas PFP: aula manhã e tarde, 08:00–12:00 e 13:00–17:00 (4 + 4 aulas; almoço 12:00–13:00), de segunda a sexta.
+# Cada metade é um turno: a manhã (08–12) e a tarde (13–17) podem ter UCs e instrutores diferentes; na grade
+# aparecem nas linhas da manhã e da tarde (o limiar de horário aceita 08:00 e 13:00).
+TURNO_INTEGRAL = ("I", "Manhã e tarde (PFP)", [(h * 60, 60) for h in (8, 9, 10, 11, 13, 14, 15, 16)])
+BLOCOS_PFP = [("08:00", "12:00", "M"), ("13:00", "17:00", "T")]  # cada bloco vale como o turno de mesmo código
+INTERVALO_MAX_MIN = 30  # pausa maior que isso (ex.: almoço) separa dois blocos de aula no mesmo turno
+
+
+def janelas_pfp(codigos_jornada) -> list[tuple[str, str]]:
+    """Janelas extras para dar aula em turma PFP: quem é da manhã dá 08–12; quem é da tarde, 13–17."""
+    cods = set(codigos_jornada)
+    return [(a, b) for a, b, c in BLOCOS_PFP if c in cods]
+
+
+def blocos(periodos: list) -> list[list]:
+    """Períodos do turno agrupados em blocos contínuos (a pausa do almoço da PFP separa manhã e tarde)."""
+    res: list[list] = []
+    for p in periodos:
+        ini = minutos(p.hora_inicio) if hasattr(p, "hora_inicio") else p.ini
+        if res:
+            ult = res[-1][-1]
+            fim_ult = minutos(ult.hora_fim) if hasattr(ult, "hora_fim") else ult.fim
+            if ini - fim_ult > INTERVALO_MAX_MIN:
+                res.append([p])
+                continue
+            res[-1].append(p)
+        else:
+            res.append([p])
+    return res
+
+
+def bloco_da_hora(periodos: list, hora_min: int) -> list:
+    """O bloco do turno em que a aula começa (o turno inteiro dela)."""
+    bs = blocos(periodos)
+    for b in bs:
+        ini = minutos(b[0].hora_inicio) if hasattr(b[0], "hora_inicio") else b[0].ini
+        fim = minutos(b[-1].hora_fim) if hasattr(b[-1], "hora_fim") else b[-1].fim
+        if ini <= hora_min < fim:
+            return b
+    return bs[0] if bs else []
 TURNOS_ESPECIAIS = {"S", "I"}  # não entram na jornada M/V/N do instrutor
 
 

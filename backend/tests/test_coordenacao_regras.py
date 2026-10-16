@@ -151,8 +151,8 @@ def test_aceitar_sugestao_aplica_e_registra(db, mundo):
     assert {"sugestao", "rejeicao"} <= tipos
 
 
-def test_turma_pfp_dia_inteiro(db, mundo):
-    """PFP: tipo de oferta próprio, turno integral 08–12 e 13–17, e o dia inteiro é o 'turno inteiro' da UC."""
+def test_turma_pfp_manha_e_tarde(db, mundo):
+    """PFP: tipo de oferta próprio, manhã 08–12 e tarde 13–17 como turnos separados (UCs diferentes no mesmo dia)."""
     from app.models import Area, DisponibilidadeInstrutor, Turma, TurmaUC
     m = mundo
     integral = Turno(unidade_id=m.unidade.id, codigo="I", nome="Integral (PFP)", hora_inicio=time(8), hora_fim=time(17), ordem=5, ativo=True)
@@ -176,12 +176,64 @@ def test_turma_pfp_dia_inteiro(db, mundo):
     # turno integral sem ser PFP: não
     r2 = c.post("/api/cadastros/turmas", json={**base, "_numero": "2", "_tipo_oferta": "HTC", "turno_id": integral.id}, headers=h)
     assert r2.status_code == 422 and "PFP" in r2.text
-    # uma aula de dia inteiro (8 aulas, 08–17) com instrutor que tem a janela de dia inteiro
+    # manhã (08–12) e tarde (13–17) são turnos separados: UCs e instrutores diferentes no mesmo dia
+    from app.models import Configuracao
+    from app.services.planejamento import periodos_por_encontro
+    db.merge(Configuracao(chave="regras_aula", valor={"turno_inteiro": True, "contagem": "relogio"}))
     t = db.get(Turma, r.json()["id"])
-    db.add(DisponibilidadeInstrutor(instrutor_id=m.i1.id, dia_semana=0, hora_inicio=time(8), hora_fim=time(17)))
+    db.add(DisponibilidadeInstrutor(instrutor_id=m.i1.id, dia_semana=0, hora_inicio=time(8), hora_fim=time(12)))   # da manhã
+    from app.models import CompetenciaInstrutor as _Comp
+    ib = m.i2.id  # outro instrutor, habilitado em B, à tarde
+    if not db.scalar(select(_Comp.id).where(_Comp.uc_id == m.uc_b.id, _Comp.instrutor_id == ib)):
+        db.add(_Comp(instrutor_id=ib, uc_id=m.uc_b.id, nivel="pleno"))
+    db.add(DisponibilidadeInstrutor(instrutor_id=ib, dia_semana=0, hora_inicio=time(13), hora_fim=time(17)))  # da tarde
     db.commit()
-    tuc = db.scalar(select(TurmaUC).where(TurmaUC.turma_id == t.id, TurmaUC.uc_id == m.uc_a.id))
-    p1 = db.scalar(select(PeriodoHorario).where(PeriodoHorario.turno_id == integral.id, PeriodoHorario.ordem == 1))
-    a, _oc = aloc.criar_aula(db, m.ctx, m.cen.id, aloc.DadosAula(turma_uc_id=tuc.id, data=SEG, periodo_inicio_id=p1.id, num_periodos=8,
-                                                                 instrutor_id=m.i1.id, ambiente_id=m.s1.id))
-    assert (a.inicio.hour, a.fim.hour) == (8, 17)
+    assert periodos_por_encontro(db, t, m.uc_a) == 4  # o turno inteiro da PFP é a metade do dia
+    per = {p.ordem: p for p in db.scalars(select(PeriodoHorario).where(PeriodoHorario.turno_id == integral.id))}
+    tuc_a = db.scalar(select(TurmaUC).where(TurmaUC.turma_id == t.id, TurmaUC.uc_id == m.uc_a.id))
+    tuc_b = db.scalar(select(TurmaUC).where(TurmaUC.turma_id == t.id, TurmaUC.uc_id == m.uc_b.id))
+    manha, _ = aloc.criar_aula(db, m.ctx, m.cen.id, aloc.DadosAula(turma_uc_id=tuc_a.id, data=SEG, periodo_inicio_id=per[1].id, num_periodos=4,
+                                                               instrutor_id=m.i1.id, ambiente_id=m.s1.id))
+    tarde, _ = aloc.criar_aula(db, m.ctx, m.cen.id, aloc.DadosAula(turma_uc_id=tuc_b.id, data=SEG, periodo_inicio_id=per[5].id, num_periodos=4,
+                                                               instrutor_id=ib, ambiente_id=m.s1.id))
+    assert (manha.inicio.hour, manha.fim.hour, tarde.inicio.hour, tarde.fim.hour) == (8, 12, 13, 17)
+
+
+def test_estrutura_curricular_versao_por_oferta(db, mundo):
+    """Área → curso → versões (uma por tipo de oferta) → UCs; a turma AIT nasce com a versão AIT da matriz."""
+    from app.models import Area, MatrizCurricular, Turma
+    m = mundo
+    area = Area(codigo="TEC", nome="TESTE CURSOS", unidade_id=m.unidade.id, ativo=True)
+    db.add(area)
+    db.flush()
+    m.curso.area_id = area.id
+    m.matriz.situacao = "vigente"
+    db.commit()
+    c = TestClient(app)
+    h = _login(c, "admin@teste", "senha-forte-1")
+    arv = c.get(f"/api/estrutura-curricular?area_id={area.id}", headers=h).json()
+    assert [a["id"] for a in arv] == [area.id]
+    (curso,) = arv[0]["cursos"]
+    assert curso["id"] == m.curso.id and curso["versoes"][0]["ucs"] >= 2
+    # nova versão só para AIT, copiando as UCs
+    r = c.post(f"/api/cadastros/matrizes/{m.matriz.id}/nova_versao", json={"versao": "AIT-1", "tipo_oferta": "ait"}, headers=h)
+    assert r.status_code == 200, r.text
+    nova = db.get(MatrizCurricular, r.json()["id"])
+    assert nova.tipo_oferta == "AIT"
+    det = c.get(f"/api/estrutura-curricular/versoes/{nova.id}", headers=h).json()
+    orig = c.get(f"/api/estrutura-curricular/versoes/{m.matriz.id}", headers=h).json()
+    assert {u["codigo"] for u in det["ucs"]} == {u["codigo"] for u in orig["ucs"]} >= {m.uc_a.codigo, m.uc_b.codigo}
+    assert all("categoria" in u and "carga_horaria_total" in u for u in det["ucs"])
+    # UC nova direto na versão
+    r = c.post("/api/cadastros/ucs", json={"matriz_id": nova.id, "codigo": "UC-AIT", "nome": "Só na AIT", "categoria": "transversal",
+                                           "carga_horaria_total": 20, "encontros_semanais": 1}, headers=h)
+    assert r.status_code == 200, r.text
+    nova.situacao = "vigente"
+    db.commit()
+    base = {"curso_id": m.curso.id, "qtd_alunos": 20, "data_inicio": "2026-08-03", "data_fim": "2026-12-18", "turno_id": m.manha.id}
+    r = c.post("/api/cadastros/turmas", json={**base, "_numero": "7", "_tipo_oferta": "AIT"}, headers=h)
+    assert r.status_code == 200, r.text
+    assert db.get(Turma, r.json()["id"]).matriz_id == nova.id
+    r = c.post("/api/cadastros/turmas", json={**base, "_numero": "8", "_tipo_oferta": "HTC"}, headers=h)
+    assert r.status_code == 200, r.text
+    assert db.get(Turma, r.json()["id"]).matriz_id == m.matriz.id  # sem versão própria: a geral

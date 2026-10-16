@@ -30,7 +30,7 @@ def eh_pfp(codigo: str | None, tipo_oferta: str | None = None) -> bool:
 
 def erro_turno_pfp(pfp: bool, turno_codigo: str | None) -> str | None:
     if turno_codigo == TURNO_PFP and not pfp:
-        return "O turno integral (08:00–17:00) é só das turmas PFP: escolha o tipo de oferta PFP ou outro turno."
+        return "O horário 'manhã e tarde (PFP)' é só das turmas PFP: escolha o tipo de oferta PFP ou outro turno."
     return None
 
 
@@ -110,10 +110,11 @@ def catalogo() -> list[dict]:
     regra("TURMA_FLEXIVEL", "Turmas e dias", "obrigatoria", "Exceção: aperfeiçoamento e empresas",
           "Só atendimentos específicos de aperfeiçoamento e turmas para empresas podem ter menos dias por semana (o treinamento costuma ser curto).",
           ["cadastro de turmas", "importação"], {"tipos_de_oferta": sorted(OFERTAS_FLEXIVEIS)})
-    regra("TURMA_PFP", "Turmas e dias", "obrigatoria", "Turma PFP (dia inteiro)",
-          "Turma PFP tem aula o dia todo: 08:00–12:00 e 13:00–17:00 (8 aulas; almoço 12:00–13:00), no turno integral. Cada dia de aula é um dia inteiro "
-          "da mesma UC. Só instrutores que trabalham manhã e tarde (jornada MV) podem assumir.",
-          ["cadastro de turmas", "importação", "gerador", "validação", "grade"], {"turno": "I", "horario": "08:00–12:00 e 13:00–17:00"})
+    regra("TURMA_PFP", "Turmas e dias", "obrigatoria", "Turma PFP (manhã e tarde)",
+          "Turma PFP tem aula de manhã e de tarde: 08:00–12:00 e 13:00–17:00 (almoço 12:00–13:00). Cada metade é um turno inteiro: "
+          "a manhã e a tarde podem ter UCs e instrutores diferentes. Na grade, as aulas aparecem nas linhas da manhã e da tarde "
+          "(o limiar de horário aceita o início às 08:00 e às 13:00). Quem é da manhã dá o bloco 08–12; quem é da tarde, o 13–17.",
+          ["cadastro de turmas", "importação", "gerador", "validação", "grade"], {"manha": "08:00–12:00", "tarde": "13:00–17:00"})
     regra("TURMA_EAD", "Turmas e dias", "obrigatoria", "Dia EAD (turma 80-20)",
           "O dia EAD (normalmente a sexta) não tem aula presencial: sai dos dias de aula, aparece na grade com a etiqueta EAD e a validação bloqueia aula nele.",
           ["cadastro", "gerador", "validação", "grade", "exportações"])
@@ -122,7 +123,9 @@ def catalogo() -> list[dict]:
     regra("TURNO_INTEIRO", "Aulas e turnos", "obrigatoria", "Turno inteiro",
           f"Cada UC ocupa o turno inteiro do dia ({HORAS_POR_TURNO} aulas). Aula parcial só no fechamento da carga horária.",
           ["gerador", "validação"], {"aulas_por_turno": HORAS_POR_TURNO})
-    regra("HORA_AULA", "Aulas e turnos", "obrigatoria", "Hora-aula", "Cada aula conta 1 hora de carga horária, dure 50 ou 55 minutos.",
+    regra("CONTAGEM_MINUTOS", "Aulas e turnos", "obrigatoria", "Carga horária em minutos reais",
+          "Cada aula vale o tempo que dura: 55 min de dia, 50 min à noite (60 min nas turmas PFP). O que falta para a carga da UC vira outra aula: "
+          "uma UC de 20 h no matutino tem 22 aulas (1200 min ÷ 55); no noturno, 24 aulas (1200 ÷ 50).",
           ["carga horária", "relatórios"])
     regra("DIVISAO_3_2", "Aulas e turnos", "preferencia", "Divisão 3 + 2",
           "Na semana, a turma pode ter duas UCs: uma com 3 dias e outra com 2, conforme a carga a cumprir, as horas da UC e o instrutor disponível. É uma opção, não obrigação.",
@@ -138,7 +141,7 @@ def catalogo() -> list[dict]:
           "40 h semanais = dois turnos por dia (MV ou VN); 20 h = um turno (M, V ou N). Sábado (09:00–13:00) é marcado à parte, por dia.",
           ["cadastro", "portal", "gerador"])
     regra("MODALIDADE", "Instrutores", "obrigatoria", "Mensalista e horista",
-          "Mensalista tem as horas garantidas (aula, PL ou PJ); horista não (turno sem aula pode ser dispensa). A modalidade não depende do turno.",
+          "Mensalista tem as horas garantidas (aula, PL, PJ ou TR); horista não (turno sem aula pode ser dispensa). A modalidade não depende do turno.",
           ["cadastro", "agenda do instrutor"])
     regra("NIVEL", "Instrutores", "obrigatoria", "Nível básico ou técnico",
           f"Instrutor BÁSICO só dá aula em aprendizagem industrial básica e qualificações ({', '.join(sorted(OFERTAS_BASICAS))}); TÉCNICO, em todas as modalidades "
@@ -154,6 +157,10 @@ def catalogo() -> list[dict]:
     regra("CERTIFICACAO", "Instrutores", "obrigatoria", "Certificação exigida", "UC que exige certificação (ex.: NR-10) só com instrutor certificado e dentro da validade.",
           ["gerador", "validação"])
     # substituição e solicitações
+    regra("PL_PJ_TR", "Instrutores", "obrigatoria", "PL, PJ e TR na agenda",
+          "Turno sem aula do instrutor pode ser PL (planejamento), PJ (projeto/outra atividade) ou TR (treinamento: liberado das aulas). "
+          "O gerador não coloca aula nesses turnos; em PL/PJ o instrutor está na escola e pode substituir, em TR não.",
+          ["agenda do instrutor", "gerador", "validação", "substituição"])
     regra("SUBST_PRESENCA", "Substituições e solicitações", "obrigatoria", "Quem pode substituir",
           f"Instrutor em PL ou PJ pode assumir no mesmo dia (já está na escola); com turno vazio, só se a substituição for planejada com pelo menos {ANTECEDENCIA_DIAS} dia de antecedência.",
           ["substituição"], {"antecedencia_dias": ANTECEDENCIA_DIAS})

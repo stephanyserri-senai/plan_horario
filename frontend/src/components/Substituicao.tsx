@@ -63,6 +63,7 @@ export default function Substituicao({ cenarioId, publicado, aula, fechar }: { c
         o botão Conferir mostra quais aulas não podem ser trocadas. A aula fica fixa e pode ser desfeita depois.</p>
       <ul className="sub-regras">
         <li><b>📍 Em PL ou PJ</b> no horário: está na escola e pode assumir <b>até no mesmo dia</b>. O PL/PJ daquele turno vira a aula.</li>
+        <li><b>🎓 Em TR (treinamento)</b>: está liberado das aulas e não entra como substituto naquele turno.</li>
         <li><b>🏠 Turno vazio</b>: pode ser acionado, desde que a substituição seja planejada com <b>pelo menos 1 dia de antecedência</b>.</li>
       </ul>
       {publicado && <p className="aviso-inline">⚠ Este horário já está <b>publicado</b>: a troca vale imediatamente e os instrutores recebem um aviso no portal.</p>}

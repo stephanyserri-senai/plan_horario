@@ -95,8 +95,9 @@ export default function Grade() {
   const linhas = useMemo(() => {
     const comAula = new Set((aulas.dados || []).map((a) => String(a.turno_id)));
     const turmaAlvo = modo === "turma" && alvo ? (todasOpcoes.find((o: any) => String(o.id) === alvo) as any)?.turno_id : null;
-    return (periodos.dados || []).filter((p) => !["S", "I"].includes(p.turno_codigo || "") || comAula.has(String(p.turno_id))
-      || String(turmaAlvo) === String(p.turno_id) || (modo === "turno" && alvo === String(p.turno_id)));
+    // PFP (manhã e tarde) não tem linhas próprias: as aulas dela caem nas linhas da manhã e da tarde
+    return (periodos.dados || []).filter((p) => p.turno_codigo !== "I" && (p.turno_codigo !== "S" || comAula.has(String(p.turno_id))
+      || String(turmaAlvo) === String(p.turno_id) || (modo === "turno" && alvo === String(p.turno_id))));
   }, [periodos.dados, aulas.dados, modo, alvo, todasOpcoes]);
   const dias = useMemo(() => {
     const ds = new Set<number>();
@@ -106,7 +107,7 @@ export default function Grade() {
   const porCelula = useMemo(() => {
     const m: Record<string, Aula[]> = {};
     (aulas.dados || []).forEach((a) => {
-      const p = linhas.find((x) => x.inicio === a.inicio) || linhas.find((x) => x.inicio <= a.inicio && a.inicio < x.fim);
+      const p = periodoDaAula(linhas, a);
       const k = `${a.data}|${p?.id ?? "fora"}`;
       (m[k] = m[k] || []).push(a);
     });
@@ -122,7 +123,7 @@ export default function Grade() {
         if (!lista.length || coberta.has(`${data}|${i}`)) return;
         const fimMax = lista.reduce((m, a) => (a.fim > m ? a.fim : m), "");
         let n = 1;
-        while (i + n < linhas.length && linhas[i + n].turno_id === p.turno_id && linhas[i + n].fim <= fimMax && !(porCelula[`${data}|${linhas[i + n].id}`] || []).length) {
+        while (i + n < linhas.length && linhas[i + n].turno_id === p.turno_id && linhas[i + n].inicio < fimMax && !(porCelula[`${data}|${linhas[i + n].id}`] || []).length) {
           coberta.add(`${data}|${i + n}`); n++;
         }
         span[`${data}|${i}`] = n;
@@ -165,7 +166,7 @@ export default function Grade() {
   const porTurnoDia = useMemo(() => {
     const m: Record<string, Aula[]> = {};
     (aulas.dados || []).forEach((a) => {
-      const p = linhas.find((x) => x.inicio === a.inicio) || linhas.find((x) => x.inicio <= a.inicio && a.inicio < x.fim);
+      const p = periodoDaAula(linhas, a);
       const k = `${a.data}|${p?.turno_id ?? "fora"}`;
       (m[k] = m[k] || []).push(a);
     });
@@ -180,7 +181,7 @@ export default function Grade() {
       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setAulaSel(a); } }}
       title={`${a.turma} · ${a.uc} ${a.uc_nome} · ${a.instrutor || "sem instrutor"}${a.instrutor_titular ? ` (substituindo ${a.instrutor_titular})` : ""} · ${a.ambiente || "sem ambiente"}`}>
       <b>{a.turma}{a.grupo ? ` G${a.grupo}` : ""}</b> {a.uc}<br />
-      <small>{horario(a)} · {a.instrutor_titular && <span title={`substituindo ${a.instrutor_titular}`}>🔁 </span>}{a.instrutor || <i>sem instrutor</i>} · {a.ambiente || <i>sem sala</i>}</small>
+      <small>{a.inicio}–{a.fim} · {a.instrutor_titular && <span title={`substituindo ${a.instrutor_titular}`}>🔁 </span>}{a.instrutor || <i>sem instrutor</i>} · {a.ambiente || <i>sem sala</i>}</small>
       {a.fixa && <span className="tag-fixa" aria-label="aula fixa"> 📌</span>}
     </div>
   );
@@ -192,9 +193,6 @@ export default function Grade() {
   } : {};
   const continuacao = (data: string, p: Periodo) => (aulas.dados || []).some((a) => a.data === data && a.inicio < p.inicio && a.fim > p.inicio
     && (a.turno_id == null || String(a.turno_id) === String(p.turno_id)));
-  // turma PFP: o dia inteiro tem almoço no meio (08–12 e 13–17)
-  const horario = (a: Aula) => a.inicio < "12:00" && a.fim > "13:00" && linhas.some((p) => p.turno_codigo === "I" && String(p.turno_id) === String(a.turno_id))
-    ? `${a.inicio}–12:00 · 13:00–${a.fim}` : `${a.inicio}–${a.fim}`;
   const livre = (data: string, p: Periodo) => (livres.dados || []).some((l) => l.data === data && l.periodo_id === p.id);
 
   const mover = async (aulaId: number, data: string, p: Periodo) => {
@@ -332,6 +330,13 @@ export default function Grade() {
       </Modal>
     </Pagina>
   );
+}
+
+/** Linha da grade em que a aula começa. O limiar aceita até 45 min antes do 1º horário do turno, para as turmas PFP
+ *  (manhã 08:00–12:00 cai na manhã; tarde 13:00–17:00 cai na tarde). */
+function periodoDaAula(linhas: Periodo[], a: { inicio: string }) {
+  return linhas.find((x) => x.inicio === a.inicio) || linhas.find((x) => x.inicio <= a.inicio && a.inicio < x.fim)
+    || linhas.find((x) => x.inicio > a.inicio && minutos(x.inicio) - minutos(a.inicio) <= 45);
 }
 
 function minutos(h: string) {

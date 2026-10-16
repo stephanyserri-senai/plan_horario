@@ -232,10 +232,14 @@ def codigo_turma(sigla: str, numero, tipo) -> str:
     return "-".join(str(x).strip().upper() for x in (tipo, sigla, numero) if x not in (None, ""))
 
 
-def _matriz_padrao(db: Session, curso_id: int) -> MatrizCurricular | None:
+def _matriz_padrao(db: Session, curso_id: int, tipo_oferta: str | None = None) -> MatrizCurricular | None:
+    """Versão da matriz para a turma: a vigente do tipo de oferta (ex.: HTC), senão a vigente geral, senão a mais recente."""
     ms = db.scalars(select(MatrizCurricular).where(MatrizCurricular.curso_id == curso_id, MatrizCurricular.ativo.is_(True))
                     .order_by(MatrizCurricular.id.desc())).all()
-    return next((m for m in ms if m.situacao == "vigente"), ms[0] if ms else None)
+    tipo = (tipo_oferta or "").strip().upper() or None
+    return (next((m for m in ms if m.situacao == "vigente" and tipo and m.tipo_oferta == tipo), None)
+            or next((m for m in ms if m.situacao == "vigente" and not m.tipo_oferta), None)
+            or next((m for m in ms if m.situacao == "vigente"), None) or (ms[0] if ms else None))
 
 
 def _derivar(db: Session, ent: str, dados: dict, obj=None) -> dict:
@@ -266,7 +270,7 @@ def _derivar(db: Session, ent: str, dados: dict, obj=None) -> dict:
         if curso:
             trocou_curso = obj is None or ("curso_id" in d and int(d["curso_id"]) != obj.curso_id)
             if vazio("matriz_id") and trocou_curso:
-                m = _matriz_padrao(db, curso.id)
+                m = _matriz_padrao(db, curso.id, d.get("_tipo_oferta"))
                 if m is None:
                     raise ConflitoValidacao(f"O curso {curso.codigo} ainda não tem matriz curricular. Cadastre a matriz e as UCs antes da turma.")
                 d["matriz_id"] = m.id
@@ -284,8 +288,8 @@ def _derivar(db: Session, ent: str, dados: dict, obj=None) -> dict:
                         from app.api.registro import TIPOS_OFERTA
                         rot = next((t["rotulo"].split(" – ", 1)[1] for t in TIPOS_OFERTA if t["valor"] == tipo), tipo)
                         turno = db.get(Turno, int(d.get("turno_id") or (obj.turno_id if obj else 0) or 0)) if (d.get("turno_id") or (obj and obj.turno_id)) else None
-                        if tipo == "PFP":  # turma de dia inteiro: o turno já é o integral
-                            rot, turno = "PFP (dia inteiro)", None
+                        if tipo == "PFP":  # turma de manhã e tarde (08–12 e 13–17)
+                            rot, turno = "PFP (manhã e tarde)", None
                         d["nome"] = f"{curso.nome} {num}" + (f" – {rot}" if rot else "") + (f" ({turno.nome})" if turno else "")
         if "dias_ead" in d or "dias_possiveis" in d:
             from app.services.planejamento import dias_com_ead
@@ -299,10 +303,10 @@ def _derivar(db: Session, ent: str, dados: dict, obj=None) -> dict:
             from app.services.regras_institucionais import TURNO_PFP, eh_pfp, erro_turno_pfp
             pfp = eh_pfp(d.get("codigo") or (obj.codigo if obj else None), d.get("_tipo_oferta"))
             un_t = d.get("unidade_id") or (obj.unidade_id if obj else None)
-            if pfp and un_t:  # turma PFP: turno integral (08–12 e 13–17)
+            if pfp and un_t:  # turma PFP: manhã 08–12 e tarde 13–17
                 integral = db.scalar(select(Turno).where(Turno.unidade_id == int(un_t), Turno.codigo == TURNO_PFP))
                 if integral is None:
-                    raise EntradaInvalida("A unidade ainda não tem o turno integral das turmas PFP (aplique a atualização 0011).")
+                    raise EntradaInvalida("A unidade ainda não tem o horário das turmas PFP (aplique as atualizações 0011 e 0012).")
                 d["turno_id"] = integral.id
             tid = d.get("turno_id") if "turno_id" in d else (obj.turno_id if obj else None)
             turno = db.get(Turno, int(tid)) if tid not in (None, "") else None
@@ -351,7 +355,9 @@ def _dados_instrutor(db: Session | None, inst) -> dict:
     turnos = [t for t in db.scalars(select(Turno).where(Turno.unidade_id == inst.unidade_id, Turno.ativo.is_(True))) if t.codigo not in TURNOS_ESPECIAIS]
     t_ids = [t.id for t in turnos if any(x.dia_semana < 5 and x.hora_inicio <= t.hora_inicio and x.hora_fim >= t.hora_fim for x in disp)]
     janelas = {(t.hora_inicio, t.hora_fim) for t in turnos}
-    integral = {(t.hora_inicio, t.hora_fim) for t in db.scalars(select(Turno).where(Turno.unidade_id == inst.unidade_id, Turno.codigo == "I"))}
+    from datetime import time as _t
+    from app.services.regras_aula import BLOCOS_PFP
+    integral = {(_t.fromisoformat(a), _t.fromisoformat(b)) for a, b, _c in BLOCOS_PFP} | {(_t(8), _t(17))}  # janelas das turmas PFP
     cod = {t.id: t.codigo for t in turnos}
     return {"ucs_competencia": [{"uc_id": c.uc_id, "nivel": c.nivel} for c in comps],
             "jornada": jornada_dos_codigos(cod[i] for i in t_ids) if t_ids else None,
@@ -405,10 +411,12 @@ def _gravar_instrutor(db: Session, inst, dados: dict):
                     continue  # sábado: turno próprio (abaixo)
                 db.add(DisponibilidadeInstrutor(instrutor_id=inst.id, dia_semana=dia, hora_inicio=t.hora_inicio, hora_fim=t.hora_fim))
         cods = {db.get(Turno, int(x)).codigo for x in dados["disp_turnos"]}
-        if {"M", "T"} <= cods and "I" in turnos_un:  # manhã e tarde: também pode dar aula de dia inteiro (turmas PFP, 08:00–17:00)
-            pfp = turnos_un["I"]
-            for dia in [x for x in dias if x < 5]:
-                db.add(DisponibilidadeInstrutor(instrutor_id=inst.id, dia_semana=dia, hora_inicio=pfp.hora_inicio, hora_fim=pfp.hora_fim))
+        if "I" in turnos_un:  # turmas PFP: quem é da manhã dá 08–12; quem é da tarde, 13–17
+            from datetime import time as _t
+            from app.services.regras_aula import janelas_pfp
+            for a, b in janelas_pfp(cods):
+                for dia in [x for x in dias if x < 5]:
+                    db.add(DisponibilidadeInstrutor(instrutor_id=inst.id, dia_semana=dia, hora_inicio=_t.fromisoformat(a), hora_fim=_t.fromisoformat(b)))
         if 5 in dias and "S" in turnos_un:  # dá aula aos sábados: 09:00–13:00
             sab = turnos_un["S"]
             db.add(DisponibilidadeInstrutor(instrutor_id=inst.id, dia_semana=5, hora_inicio=sab.hora_inicio, hora_fim=sab.hora_fim))
@@ -798,6 +806,56 @@ def duplicar_turma(id_: int, dados: dict = Body(...), db: Session = Depends(get_
     return serializar(nova, "turmas", ctx)
 
 
+# ============================================================================ estrutura curricular (área → curso → versão → UCs)
+@router.get("/estrutura-curricular")
+def estrutura_curricular(area_id: int | None = None, db: Session = Depends(get_db), ctx: Contexto = Depends(get_contexto)):
+    """Áreas com os cursos e as versões da matriz de cada curso (para navegar sem listas soltas)."""
+    from app.models import Area, Turma
+    ctx.exigir("cadastros.ler")
+    q = select(Area).where(Area.ativo.is_(True)).order_by(Area.nome)
+    if ctx.unidades is not None:
+        q = q.where(Area.unidade_id.in_(ctx.unidades))
+    areas = db.scalars(q).all()
+    cursos = db.scalars(select(Curso).where(Curso.ativo.is_(True)).order_by(Curso.nome)).all()
+    matrizes = db.scalars(select(MatrizCurricular).where(MatrizCurricular.ativo.is_(True)).order_by(MatrizCurricular.id)).all()
+    ucs = db.execute(select(UnidadeCurricular.matriz_id, func.count(), func.sum(UnidadeCurricular.carga_horaria_total))
+                     .where(UnidadeCurricular.ativo.is_(True)).group_by(UnidadeCurricular.matriz_id)).all()
+    por_matriz = {m: (n, int(ch or 0)) for m, n, ch in ucs}
+    turmas = dict(db.execute(select(Turma.matriz_id, func.count()).where(Turma.ativo.is_(True), Turma.simulacao_id.is_(None))
+                             .group_by(Turma.matriz_id)).all())
+    res = []
+    for a in areas:
+        if area_id and a.id != area_id:
+            continue
+        cs = []
+        for c in [c for c in cursos if c.area_id == a.id]:
+            vs = [{"id": m.id, "versao": m.versao, "tipo_oferta": m.tipo_oferta, "situacao": m.situacao,
+                   "vigencia_inicio": m.vigencia_inicio.isoformat() if m.vigencia_inicio else None,
+                   "ucs": por_matriz.get(m.id, (0, 0))[0], "ch_total": por_matriz.get(m.id, (0, 0))[1], "turmas": turmas.get(m.id, 0)}
+                  for m in matrizes if m.curso_id == c.id]
+            cs.append({"id": c.id, "codigo": c.codigo, "nome": c.nome, "tipo": c.tipo, "modalidade": c.modalidade,
+                       "carga_horaria_total": c.carga_horaria_total, "versoes": vs})
+        res.append({"id": a.id, "codigo": a.codigo, "nome": a.nome, "unidade_id": a.unidade_id, "cursos": cs})
+    return res
+
+
+@router.get("/estrutura-curricular/versoes/{mid}")
+def ucs_da_versao(mid: int, db: Session = Depends(get_db), ctx: Contexto = Depends(get_contexto)):
+    """UCs de uma versão da matriz, com classificação, carga horária, dias de aula, salas e certificação."""
+    from app.models import Turma
+    ctx.exigir("cadastros.ler")
+    m = db.get(MatrizCurricular, mid)
+    if m is None:
+        raise NaoEncontrado("Versão da matriz não encontrada.")
+    ucs = db.scalars(select(UnidadeCurricular).where(UnidadeCurricular.matriz_id == mid, UnidadeCurricular.ativo.is_(True))
+                     .order_by(UnidadeCurricular.sequencia, UnidadeCurricular.codigo)).all()
+    em_uso = db.scalar(select(func.count()).select_from(Turma).where(Turma.matriz_id == mid, Turma.simulacao_id.is_(None)))
+    return {"versao": serializar(m, "matrizes", ctx), "em_uso_por_turmas": em_uso,
+            "ucs": [{"id": u.id, "codigo": u.codigo, "nome": u.nome, "categoria": u.categoria, "carga_horaria_total": u.carga_horaria_total,
+                     "encontros_semanais": u.encontros_semanais, "sequencia": u.sequencia, "certificacao_exigida": u.certificacao_exigida,
+                     "tipos_ambiente_ids": [t.id for t in u.tipos_ambiente], "tipos_ambiente": [t.nome for t in u.tipos_ambiente]} for u in ucs]}
+
+
 @router.post("/cadastros/matrizes/{id_}/nova_versao")
 def nova_versao_matriz(id_: int, dados: dict = Body(...), db: Session = Depends(get_db), ctx: Contexto = Depends(get_contexto)):
     """Cria nova versão copiando UCs, tipos de ambiente, equipamentos,
@@ -806,7 +864,9 @@ def nova_versao_matriz(id_: int, dados: dict = Body(...), db: Session = Depends(
     m = db.get(MatrizCurricular, id_)
     if m is None:
         raise NaoEncontrado("Matriz não encontrada.")
-    nova = MatrizCurricular(curso_id=m.curso_id, versao=dados["versao"], vigencia_inicio=dados.get("vigencia_inicio"), situacao="rascunho", matriz_origem_id=m.id)
+    tipo = (dados.get("tipo_oferta", m.tipo_oferta) or "").strip().upper() or None
+    nova = MatrizCurricular(curso_id=m.curso_id, versao=dados["versao"], vigencia_inicio=dados.get("vigencia_inicio"), situacao="rascunho",
+                            tipo_oferta=tipo, matriz_origem_id=m.id)
     try:
         db.add(nova)
         db.flush()

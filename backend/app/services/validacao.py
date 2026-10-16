@@ -420,6 +420,9 @@ def validar_aula(b: BaseDados, a: AulaProposta, ignorar: set[int] | None = None)
     # --- turno inteiro: a UC ocupa todas as aulas do turno no dia, salvo no fechamento da carga horária
     regras = b.regras()
     per_turno = b.periodos_turno(turma.turno_id, dia) if regras.get("turno_inteiro") else []
+    if per_turno:  # turno inteiro = o bloco contínuo em que a aula começa (PFP: manhã 08–12 ou tarde 13–17)
+        from app.services.regras_aula import bloco_da_hora
+        per_turno = bloco_da_hora(per_turno, a.inicio.hour * 60 + a.inicio.minute)
     if per_turno:
         from app.services.regras_aula import credito_bloco, periodos_para_fechar
         ini_t, fim_t = combinar(d, per_turno[0].hora_inicio), combinar(d, per_turno[-1].hora_fim)

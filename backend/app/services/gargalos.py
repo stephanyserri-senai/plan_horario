@@ -325,7 +325,7 @@ def analisar(db: Session, cenario_id: int | None, d0: date, d1: date, unidade_id
         pico = 0.0
         for p in pontos or [d0]:
             pico = max(pico, sum(d.horas_semana for d in por_tuc.values() if (d.data_inicio or d0) <= p <= (d.data_limite or d1)))
-        if pico > horas_turma + 0.01:
+        if pico > horas_turma + 0.1:  # folga para o arredondamento das horas por encontro (2 casas)
             gargalos.append({
                 "tipo": "conflito_distribuicao", "recurso": f"Turma {dems[0].turma_codigo}", "turno": None,
                 "descricao": f"A turma {dems[0].turma_codigo} precisa de {pico:.1f} h semanais simultâneas, mas seu turno e dias permitidos oferecem {horas_turma:.1f} h.",

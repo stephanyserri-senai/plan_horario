@@ -195,6 +195,8 @@ class MatrizCurricular(TimestampMixin, Base):
     versao: Mapped[str] = mapped_column(String(30))
     vigencia_inicio: Mapped[date | None] = mapped_column(Date)
     situacao: Mapped[str] = mapped_column(String(20), default="rascunho")  # rascunho|vigente|encerrada
+    # versão personalizada para um tipo de oferta (ex.: HTC, AIT); vazio = vale para todas
+    tipo_oferta: Mapped[str | None] = mapped_column(String(10))
     matriz_origem_id: Mapped[int | None] = mapped_column(ForeignKey("matrizes_curriculares.id"))
     ativo: Mapped[bool] = mapped_column(Boolean, default=True)
 

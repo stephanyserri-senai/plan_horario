@@ -61,7 +61,10 @@ def test_cadastros_preenchem_campos_repetidos(db, mundo):
     i = r.json()
     assert i["unidade_id"] == bm.id and i["ucs_competencia"] == [{"uc_id": uc["id"], "nivel": "pleno"}]
     assert i["disp_turnos"] == [manha.id] and i["disp_dias"] == [0, 2, 4] and i["jornada"] == "M"
-    assert len(db.scalars(select(DisponibilidadeInstrutor).where(DisponibilidadeInstrutor.instrutor_id == i["id"])).all()) == 3
+    janelas = {(d.dia_semana, d.hora_inicio.strftime("%H:%M"), d.hora_fim.strftime("%H:%M"))
+               for d in db.scalars(select(DisponibilidadeInstrutor).where(DisponibilidadeInstrutor.instrutor_id == i["id"]))}
+    # o turno da manhã nos 3 dias e, por ser da manhã, a metade 08–12 das turmas PFP
+    assert {(d, h) for d, h, _ in janelas} == {(d, h) for d in (0, 2, 4) for h in (manha.hora_inicio.strftime("%H:%M"), "08:00")}
     # desmarcar a UC inativa a competência (sem apagar histórico)
     r = c.put(f"/api/cadastros/instrutores/{i['id']}", json={"ucs_competencia": []}, headers=h)
     assert r.status_code == 200 and r.json()["ucs_competencia"] == []

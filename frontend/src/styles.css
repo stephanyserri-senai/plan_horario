@@ -65,6 +65,7 @@ main { padding: 20px; }
 .kpi-ok { border-left-color: var(--ok); } .kpi-alerta { border-left-color: var(--alerta); } .kpi-erro { border-left-color: var(--erro); }
 .kpi-rotulo { color: var(--mudo); font-size: .85rem; } .kpi-valor { font-size: 1.5rem; font-weight: 700; } .kpi-det { font-size: .8rem; color: var(--mudo); }
 .badge { display: inline-flex; gap: 3px; align-items: center; padding: 1px 8px; border-radius: 999px; font-size: .78rem; font-weight: 600; margin-right: 4px; white-space: nowrap; }
+.badge-neutro { background: var(--fundo); color: var(--texto); border: 1px solid var(--borda); }
 .badge-ok { background: var(--ok-bg); color: var(--ok); } .badge-alerta { background: var(--alerta-bg); color: var(--alerta); }
 .badge-bloqueio { background: var(--erro-bg); color: var(--erro); } .badge-info, .badge-preferencia, .badge-recomendacao { background: var(--info-bg); color: var(--info); }
 .estado { padding: 2px 8px; border-radius: 6px; font-size: .8rem; font-weight: 600; background: var(--info-bg); color: var(--info); }
@@ -515,6 +516,7 @@ button.chip-status { cursor: pointer; } .chip-status.alerta { background: #fff3d
 .seg-aula { background: var(--ch-programada); }
 .seg-pl { background: #7b5ea7; }
 .seg-pj { background: #c2662d; }
+.seg-tr { background: #2a8a7a; }
 .seg-vazio { background: var(--ch-falta); border: 1px solid var(--borda); }
 .resumo-carga { display: flex; gap: 14px; flex-wrap: wrap; list-style: none; padding: 0; margin: 0 0 8px; font-size: .88rem; }
 .resumo-carga i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 4px; vertical-align: -1px; }
@@ -527,6 +529,7 @@ button.chip-status { cursor: pointer; } .chip-status.alerta { background: #fff3d
 .agenda-tabela .ag-aula { background: color-mix(in srgb, var(--ch-programada) 14%, var(--superficie)); }
 .agenda-tabela .ag-PL { background: color-mix(in srgb, #7b5ea7 16%, var(--superficie)); }
 .agenda-tabela .ag-PJ { background: color-mix(in srgb, #c2662d 14%, var(--superficie)); }
+.agenda-tabela .ag-TR { background: color-mix(in srgb, #2a8a7a 16%, var(--superficie)); }
 .agenda-tabela .ag-indisponivel, .agenda-tabela .ag-nao_letivo { background: var(--fundo); color: var(--mudo); }
 .portal-reserva { background: color-mix(in srgb, #7b5ea7 14%, var(--superficie)); border-radius: 6px; padding: 4px 6px; font-size: .8rem; margin-top: 4px; }
 .sub-regras { margin: 4px 0 10px; padding-left: 18px; font-size: .88rem; color: var(--mudo); }
@@ -563,6 +566,7 @@ button.chip-status { cursor: pointer; } .chip-status.alerta { background: #fff3d
 .cel-sit { border-radius: 6px; padding: 4px 6px; font-size: .8rem; line-height: 1.25; }
 .cel-sit small { display: block; color: var(--mudo); }
 .cel-sit.ag-aula { background: color-mix(in srgb, var(--ch-programada) 16%, var(--superficie)); }
+.cel-sit.ag-TR { background: color-mix(in srgb, #2a8a7a 16%, var(--superficie)); }
 .cel-sit.ag-PL, .cel-sit.ag-PJ { background: color-mix(in srgb, #7b5ea7 16%, var(--superficie)); }
 .cel-sit.ag-livre { background: var(--ok-bg); }
 .cel-sit.ag-bloq { background: var(--erro-bg); }
@@ -609,3 +613,28 @@ button.chip-status { cursor: pointer; } .chip-status.alerta { background: #fff3d
 .sugestao-feito { color: var(--ok); font-weight: 600; white-space: nowrap; }
 .sugestao-botoes { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
 li.sem-marcador { list-style: none; margin-left: -18px; }
+.lista-ok { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.gargalo-item { border-left: 3px solid var(--borda); padding: 4px 0 4px 10px; margin: 8px 0; }
+
+/* Cursos, matrizes e UCs: área → curso → versão → UCs */
+.cursos-layout { display: grid; grid-template-columns: minmax(240px, 300px) 1fr; gap: 16px; align-items: start; }
+.cursos-lista { display: grid; gap: 10px; background: var(--superficie); border: 1px solid var(--borda); border-radius: 10px; padding: 12px; max-height: 78vh; overflow: auto; }
+.cursos-lista .filtros { display: grid; gap: 6px; margin: 0; }
+.cursos-area h4 { margin: 6px 0 4px; font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; color: var(--mudo); }
+.cursos-area ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.cursos-area button { width: 100%; text-align: left; background: none; border: 1px solid transparent; border-radius: 8px; padding: 6px 8px; cursor: pointer; color: inherit; font: inherit; }
+.cursos-area button small { display: block; }
+.cursos-area button:hover { background: var(--fundo); }
+.cursos-area button.ativo { background: var(--info-bg); border-color: var(--info); }
+.cursos-detalhe { min-width: 0; display: grid; gap: 12px; }
+.cursos-cab { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.cursos-cab h3 { margin: 2px 0; }
+.versoes { display: flex; flex-wrap: wrap; gap: 8px; }
+.versao { display: grid; gap: 2px; text-align: left; min-width: 170px; padding: 8px 12px; border: 1px solid var(--borda); border-radius: 10px; background: var(--superficie); cursor: pointer; color: inherit; font: inherit; }
+.versao span { font-size: .85rem; }
+.versao.ativa { border-color: var(--info); box-shadow: 0 0 0 2px var(--info-bg); }
+.versao-nova { border-style: dashed; color: var(--info); }
+.versao-nova small { color: var(--mudo); }
+.cursos-barra { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.vazio-painel { border: 1px dashed var(--borda); border-radius: 10px; padding: 24px; text-align: center; }
+@media (max-width: 800px) { .cursos-layout { grid-template-columns: 1fr; } .cursos-lista { max-height: none; } }

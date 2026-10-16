@@ -43,7 +43,7 @@ MODELOS: dict[str, dict] = {
             ("Versão da matriz", False, "Versão do currículo (padrão: 1). Para mudar a carga de UCs já usadas por turmas, crie uma versão nova.", None, 14, "2026.1", "2026.1"),
             ("Código da UC", True, "Código da unidade curricular (único dentro da matriz).", None, 14, "FEL", "CMD"),
             ("Nome da UC", True, "Nome da unidade curricular.", None, 34, "Fundamentos de Eletricidade", "Comandos Elétricos"),
-            ("Carga horária da UC (h)", True, "Em hora-aula: cada dia de aula tem 4 aulas (um turno inteiro).", None, 12, 40, 60),
+            ("Carga horária da UC (h)", True, "Em horas. Cada aula vale 55 min (50 à noite) e cada dia de aula tem 4 aulas; o que falta vira outra aula (20 h no matutino = 22 aulas).", None, 12, 40, 60),
             ("Dias de aula por semana", False, "Quantos dias de aula por semana a UC ocupa (cada dia é um turno inteiro; padrão: 1).", None, 12, 2, 1),
             ("Tipo de sala exigido", False, "Um ou mais, separados por ';'. Se não existir, o tipo é criado.", "tipos_sala", 30, "Sala de aula", "Laboratório de comandos elétricos"),
             ("Ordem na matriz", False, "Ordem sugerida da UC no curso (1, 2, 3...).", None, 10, 1, 2),

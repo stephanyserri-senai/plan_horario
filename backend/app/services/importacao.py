@@ -515,11 +515,9 @@ def _preparar_levantamento(db, r, v, E, A):
                     E.append("a unidade não tem os turnos desta jornada cadastrados")
                     continue
                 disp += [[dd, turno.hora_inicio.strftime("%H:%M"), turno.hora_fim.strftime("%H:%M")] for dd in dias]
-            if j == "MV" and uid:  # manhã e tarde: também pode dar aula de dia inteiro (turmas PFP, 08:00–17:00)
-                tid = r.turno(uid, "I")
-                pfp = db.get(Turno, tid) if tid else None
-                if pfp:
-                    disp += [[dd, pfp.hora_inicio.strftime("%H:%M"), pfp.hora_fim.strftime("%H:%M")] for dd in dias if dd < 5]
+            if uid and r.turno(uid, "I"):  # turmas PFP: quem é da manhã dá 08–12; quem é da tarde, 13–17
+                from app.services.regras_aula import janelas_pfp
+                disp += [[dd, a, b] for a, b in janelas_pfp(JORNADAS[j]) for dd in dias if dd < 5]
     else:
         A.append("turnos de trabalho não informados: cadastre depois (M, V, N, MV ou VN)")
     comps = []

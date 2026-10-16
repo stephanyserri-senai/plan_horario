@@ -28,9 +28,10 @@ CONFIGS = {
     "limiares_ocupacao": ({"subutilizado_pct": 30.0, "demanda_excessiva_pct": 85.0, "instrutor_critico_pct": 90.0},
                           "Limiares para classificar ambientes subutilizados/sobrecarregados e instrutores críticos."),
     "geral": ({"nome_instituicao": "", "fuso_horario": "America/Sao_Paulo"}, "Parâmetros gerais da instituição."),
-    "regras_aula": ({"turno_inteiro": True, "contagem": "hora_aula"},
+    "regras_aula": ({"turno_inteiro": True, "contagem": "relogio"},
                     "Composição das aulas: com 'turno inteiro', cada UC ocupa todas as aulas do turno no dia; aula parcial só no fechamento "
-                    "da carga horária (dividindo o turno com outra UC que também esteja fechando). 'hora_aula': cada aula conta 1 h de carga horária."),
+                    "da carga horária (dividindo o turno com outra UC que também esteja fechando). Contagem em minutos reais: cada aula vale "
+                    "55 min (50 min à noite); o que falta vira outra aula — UC de 20 h no matutino = 22 aulas."),
 }
 
 

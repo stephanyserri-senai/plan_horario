@@ -602,7 +602,8 @@ def listar_config(ctx: Contexto = Depends(get_contexto), db: Session = Depends(g
 
 
 DESCRICAO_REGRAS = ("Composição das aulas: com 'turno inteiro', cada UC ocupa todas as aulas do turno no dia; aula parcial só no fechamento "
-                    "da carga horária (dividindo o turno com outra UC que também esteja fechando). 'hora_aula': cada aula conta 1 h de carga horária.")
+                    "da carga horária (dividindo o turno com outra UC que também esteja fechando). Contagem em minutos reais: cada aula vale 55 min "
+                    "(50 min à noite); o que falta vira outra aula — UC de 20 h no matutino = 22 aulas.")
 
 
 @router.put("/configuracoes/{chave}")
@@ -687,3 +688,11 @@ def regras_do_sistema(ctx: Contexto = Depends(requer("cadastros.ler")), db: Sess
     from app.services import regras_institucionais as ri
     decisoes = {t: n for t, n in db.execute(select(RegistroDecisao.tipo, func.count()).group_by(RegistroDecisao.tipo))}
     return {"regras": ri.catalogo(), "conformidade": ri.conformidade(db, ctx.unidades), "decisoes_registradas": decisoes}
+
+
+# ============================================================================ riscos ao desenvolvimento
+@router.get("/riscos")
+def riscos_do_semestre(cenario_id: int, ctx: Contexto = Depends(requer("indicadores.ler")), db: Session = Depends(get_db)):
+    """Tudo o que pode atrapalhar as turmas daqui para a frente, com gravidade e o que fazer."""
+    from app.services import riscos
+    return riscos.analisar(db, cenario_id, ctx.unidades)

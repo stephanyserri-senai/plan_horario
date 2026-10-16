@@ -31,12 +31,15 @@ from app.services.areas import recurso_atende
 from app.services.calendario import minutos
 
 
-def minutos_por_periodo(db: Session, unidade_id: int) -> float:
-    """Carga horária (minutos) que uma aula/período vale na unidade: 60 em hora-aula; senão, a duração média."""
+def minutos_por_periodo(db: Session, unidade_id: int, turno_id: int | None = None) -> float:
+    """Carga horária (minutos) que uma aula/período vale: 60 em hora-aula; senão, a duração média das aulas do turno
+    (55 min de dia, 50 à noite) ou, sem turno, da unidade."""
     from app.services.regras_aula import hora_aula, regras_aula
     if hora_aula(regras_aula(db)):
         return 60.0
-    ps = db.scalars(select(PeriodoHorario).where(PeriodoHorario.unidade_id == unidade_id, PeriodoHorario.ativo.is_(True))).all()
+    q = select(PeriodoHorario).where(PeriodoHorario.unidade_id == unidade_id, PeriodoHorario.ativo.is_(True), PeriodoHorario.excepcional.is_(False))
+    ps = db.scalars(q.where(PeriodoHorario.turno_id == turno_id)).all() if turno_id else []
+    ps = ps or db.scalars(q).all()
     if not ps:
         return 50.0
     return sum(minutos(p.hora_fim) - minutos(p.hora_inicio) for p in ps) / len(ps)
@@ -44,9 +47,10 @@ def minutos_por_periodo(db: Session, unidade_id: int) -> float:
 
 def periodos_por_encontro(db: Session, turma: Turma, uc: UnidadeCurricular) -> int:
     """Aulas por encontro: o turno inteiro quando a regra está ativa; senão, a duração do bloco da UC."""
-    from app.services.regras_aula import periodos_do_turno, regras_aula
+    from app.services.regras_aula import blocos, periodos_do_turno, regras_aula
     if regras_aula(db).get("turno_inteiro") and turma.turno_id:
-        n = max((len(periodos_do_turno(db, turma.turno_id, d)) for d in (turma.dias_possiveis or [0])), default=0)
+        # o turno inteiro é o bloco contínuo de aulas (na PFP, a manhã 08–12 ou a tarde 13–17)
+        n = max((len(b) for d in (turma.dias_possiveis or [0]) for b in blocos(periodos_do_turno(db, turma.turno_id, d))), default=0)
         if n:
             return n
     return uc.duracao_bloco_periodos
@@ -213,7 +217,7 @@ def situacao_carga_horaria(db: Session, cenario_id: int | None, tuc: TurmaUC) ->
                     programada_min += m
     total_h = uc.carga_horaria_total
     restante_h = max(total_h - (realizada_min + programada_min) / 60, 0)
-    mpp = minutos_por_periodo(db, turma.unidade_id)
+    mpp = minutos_por_periodo(db, turma.unidade_id, turma.turno_id)
     horas_encontro = periodos_por_encontro(db, turma, uc) * mpp / 60
     encontros_necessarios = math.ceil(restante_h / horas_encontro - 1e-9) if horas_encontro else 0
     prereqs = db.scalars(select(UnidadeCurricular.codigo).join(UCPrerequisito, UCPrerequisito.prerequisito_id == UnidadeCurricular.id)

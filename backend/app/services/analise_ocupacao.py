@@ -104,9 +104,9 @@ def situacao_no_dia(db: Session, cenario_id: int, dia: date, turno_codigo: str |
             na_jornada = any(x.hora_inicio <= t.hora_inicio and x.hora_fim >= t.hora_fim for x in disp[i.id])
             if da:
                 cel[t.codigo] = {"estado": "aula", **desc_aula(da[0])}
-            elif any(b.tipo in ("planejamento", "projeto") for b in bs):
-                b = next(b for b in bs if b.tipo in ("planejamento", "projeto"))
-                cel[t.codigo] = {"estado": "PL" if b.tipo == "planejamento" else "PJ", "detalhe": b.motivo}
+            elif any(b.tipo in ("planejamento", "projeto", "treinamento") for b in bs):
+                b = next(b for b in bs if b.tipo in ("planejamento", "projeto", "treinamento"))
+                cel[t.codigo] = {"estado": {"planejamento": "PL", "projeto": "PJ", "treinamento": "TR"}[b.tipo], "detalhe": b.motivo}
             elif bs:
                 cel[t.codigo] = {"estado": "bloqueado", "detalhe": f"{bs[0].tipo}: {bs[0].motivo or ''}".strip(": ")}
             elif not letivo[i.unidade_id][0]:
@@ -141,7 +141,7 @@ def situacao_no_dia(db: Session, cenario_id: int, dia: date, turno_codigo: str |
         "nao_letivo": {str(u): m for u, (ok, m) in letivo.items() if not ok},
         "instrutores": linhas_i, "salas": linhas_a,
         "resumo": {"instrutores_livres": contagem(linhas_i, "livre"), "instrutores_em_aula": contagem(linhas_i, "aula"),
-                   "instrutores_pl_pj": contagem(linhas_i, "PL") + contagem(linhas_i, "PJ"), "instrutores_bloqueados": contagem(linhas_i, "bloqueado"),
+                   "instrutores_pl_pj": contagem(linhas_i, "PL") + contagem(linhas_i, "PJ"), "instrutores_tr": contagem(linhas_i, "TR"), "instrutores_bloqueados": contagem(linhas_i, "bloqueado"),
                    "salas_livres": contagem(linhas_a, "livre"), "salas_ocupadas": contagem(linhas_a, "aula"), "salas_bloqueadas": contagem(linhas_a, "bloqueado")},
     }
 

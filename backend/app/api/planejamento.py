@@ -433,7 +433,7 @@ def _instrutor_acessivel(db, ctx, instrutor_id: int) -> Instrutor:
 @router.get("/grade/agenda-instrutor")
 def agenda_instrutor(cenario_id: int, instrutor_id: int, semana: date, ctx: Contexto = Depends(requer("alocacoes.ler")),
                      db: Session = Depends(get_db)):
-    """Semana do instrutor turno a turno: aula, PL (planejamento), PJ (projeto/outra atividade), vazio — e o saldo da carga."""
+    """Semana do instrutor turno a turno: aula, PL (planejamento), PJ (projeto/outra atividade), TR (treinamento), vazio — e o saldo da carga."""
     from app.services import agenda_instrutor as ag
     _instrutor_acessivel(db, ctx, instrutor_id)
     return ag.semana(db, cenario_id, instrutor_id, semana)
@@ -441,7 +441,7 @@ def agenda_instrutor(cenario_id: int, instrutor_id: int, semana: date, ctx: Cont
 
 @router.post("/instrutores/{iid}/agenda")
 def marcar_agenda_instrutor(iid: int, d: dict = Body(...), ctx: Contexto = Depends(requer("alocacoes.editar")), db: Session = Depends(get_db)):
-    """Marca um turno sem aula como PL ou PJ (ou volta a vazio), numa data ou toda semana até `repetir_ate`."""
+    """Marca um turno sem aula como PL, PJ ou TR (ou volta a vazio), numa data ou toda semana até `repetir_ate`."""
     from app.services import agenda_instrutor as ag
     _instrutor_acessivel(db, ctx, iid)
     try:

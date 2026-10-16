@@ -65,7 +65,8 @@ function Limiares() {
           Cada UC ocupa o turno inteiro (todas as aulas do turno no dia); aula parcial só no fechamento da carga horária</label>
         <Campo rotulo="Contagem da carga horária"><select value={vals.regras_aula?.contagem ?? c.valor.contagem}
           onChange={(e) => setVals({ ...vals, regras_aula: { ...(vals.regras_aula || {}), contagem: e.target.value } })}>
-          <option value="hora_aula">Hora-aula: cada aula conta 1 h (recomendado)</option><option value="relogio">Minutos reais de aula</option></select></Campo>
+          <option value="relogio">Minutos reais: cada aula vale 55 min (50 à noite); o que falta vira outra aula (regra da instituição)</option>
+          <option value="hora_aula">Hora-aula: cada aula conta 1 h (não usar)</option></select></Campo>
         <p className="sub">Atenção: mudar a contagem não recalcula aulas já gravadas; gere novamente os horários afetados.</p>
         {pode("configuracoes.editar") && <button className="btn btn-primario" onClick={async () => { await api.put(`/api/configuracoes/${c.chave}`, { valor: vals[c.chave] || {} }); aviso("Configuração salva."); cfg.recarregar(); }}>Salvar</button>}
       </Card>

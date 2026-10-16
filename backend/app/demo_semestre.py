@@ -55,7 +55,8 @@ AMBIENTES = [
     ("PORTO", "PT-LCRI", "Estúdio Criativo", "CRI", ["ECONOMIA-CRIATIVA"], 28, 26, "Bloco Porto"),
 ]
 
-# sigla, nome, área, tipo de curso, UCs: (código, nome, CH em hora-aula, dias por semana, tipos de sala aceitos, certificação)
+# sigla, nome, área, tipo de curso, UCs: (código, nome, CH em horas, dias por semana, tipos de sala aceitos, certificação)
+# (cada aula vale o tempo real: 55 min de dia, 50 min à noite; o que falta vira outra aula)
 CURSOS = [
     ("ELT", "Técnico em Eletrotécnica", "ENERGIAS", "técnico", [
         ("ELT-IEP", "Instalações Elétricas Prediais", 80, 2, ["CMD"], None),
@@ -115,10 +116,10 @@ CURSOS = [
     # turma de sábado (09:00–13:00): uma UC transversal por vez, um dia por semana
     ("INF", "Informática Básica (sábado)", "DDS-TI", "qualificação", [
         ("INF-BAS", "Informática Básica e Pacote Office", 56, 1, ["INFO"], None)]),
-    # turma PFP: aula o dia todo (08–12 e 13–17); cada dia de aula é um dia inteiro da UC (8 h)
+    # turma PFP: aula manhã e tarde (08–12 e 13–17); cada metade é um turno de 4 h e pode ter UC e instrutor diferentes
     ("OPL", "Operador de Logística (PFP)", "LOGISTICA", "qualificação", [
-        ("OPL-ARM", "Armazenagem e Movimentação de Materiais", 48, 1, ["SALA"], None),
-        ("OPL-EXP", "Expedição e Inventário", 48, 1, ["SALA"], None)]),
+        ("OPL-ARM", "Armazenagem e Movimentação de Materiais", 96, 5, ["SALA"], None),
+        ("OPL-EXP", "Expedição e Inventário", 96, 5, ["SALA"], None)]),
     ("ADM", "Assistente Administrativo", "GESTAO", "qualificação", [
         ("ADM-ROT", "Rotinas Administrativas", 48, 1, ["SALA"], None),
         ("ADM-PLA", "Planilhas Eletrônicas", 48, 1, ["INFO"], None),
@@ -143,7 +144,7 @@ TURMAS = [
     # Wagner Prado: 5 manhãs + 4 tardes = 9 de 10 turnos (teto de 90%)
     ("QUA-ELI-01", "ELI", "Eletricista Instalador 01 – Qualificação", "M", 24, None, {}),
     ("QUA-INF-01", "INF", "Informática Básica 01 – Qualificação aos sábados", "S", 20, [5], {}),
-    ("PFP-OPL-01", "OPL", "Operador de Logística 01 – PFP (dia inteiro)", "I", 20, None, {}),
+    ("PFP-OPL-01", "OPL", "Operador de Logística 01 – PFP (manhã e tarde)", "I", 20, None, {}),
     ("EMP-MNT-01", "MNT", "Manutenção Elétrica 01 – Turma para empresa", "T", 18, [0, 1, 2, 3], {}),
 ]
 CH_SEM_AJUSTE = {"ELI", "MNT", "NRB", "OPL"}  # carga já calculada para ocupar o semestre
@@ -205,6 +206,14 @@ LOGINS_PORTAL = {"BM-1002": "juliana.prates", "BM-1001": "marcos.vieira", "PT-20
 SENHA_PORTAL = "portal@2026"
 
 
+def em_minutos_reais(ch: int, sigla: str) -> int:
+    """Carga (h) que cabe no mesmo número de aulas com a contagem em minutos: cada aula vale 55 min de dia e 50 à noite
+    (a PFP tem aulas de 60 min). Ex.: 56 aulas de dia = 56 × 55 min = 51 h."""
+    turnos = {t[3] for t in TURMAS if t[1] == sigla}
+    minutos = 60 if turnos == {"I"} else 50 if "N" in turnos else 55
+    return ch * minutos // 60
+
+
 def carga_no_semestre(ch: int, enc: int) -> int:
     """Carga que ocupa o semestre até dezembro (com folga): ~14 semanas de encontros, em múltiplos de 4 aulas."""
     if enc >= 2:
@@ -245,7 +254,8 @@ def montar(db, ctx, limite_s: float = 120) -> dict:
     ucs, cursos = {}, {}
     for sigla, nome, ar, tipo, lista in CURSOS:
         u_cod = area[ar].unidade_id
-        ajuste = (lambda ch, enc: ch) if sigla in CH_SEM_AJUSTE else carga_no_semestre
+        base = (lambda ch, enc: ch) if sigla in CH_SEM_AJUSTE else carga_no_semestre
+        ajuste = lambda ch, enc, _b=base, _s=sigla: em_minutos_reais(_b(ch, enc), _s)  # noqa: E731
         c = Curso(codigo=sigla, nome=nome, area_id=area[ar].id, unidade_id=u_cod, modalidade="presencial", tipo=tipo,
                   carga_horaria_total=sum(ajuste(x[2], x[3]) for x in lista) * (4 if tipo == "técnico" else 1))
         db.add(c)
@@ -288,10 +298,11 @@ def montar(db, ctx, limite_s: float = 120) -> dict:
             t = turno[(u.id, tc)]
             for d in range(5):
                 db.add(DisponibilidadeInstrutor(instrutor_id=i.id, dia_semana=d, hora_inicio=t.hora_inicio, hora_fim=t.hora_fim))
-        if turnos_i == "MV":  # manhã e tarde: pode dar aula de dia inteiro (turmas PFP, 08:00–17:00)
-            pfp = turno[(u.id, "I")]
+        from datetime import time as _t
+        from app.services.regras_aula import janelas_pfp
+        for a, b in janelas_pfp(JORNADAS[turnos_i]):  # turmas PFP: manhã 08–12, tarde 13–17
             for d in range(5):
-                db.add(DisponibilidadeInstrutor(instrutor_id=i.id, dia_semana=d, hora_inicio=pfp.hora_inicio, hora_fim=pfp.hora_fim))
+                db.add(DisponibilidadeInstrutor(instrutor_id=i.id, dia_semana=d, hora_inicio=_t.fromisoformat(a), hora_fim=_t.fromisoformat(b)))
         if mat in SABADO:
             sab = turno[(u.id, "S")]
             db.add(DisponibilidadeInstrutor(instrutor_id=i.id, dia_semana=5, hora_inicio=sab.hora_inicio, hora_fim=sab.hora_fim))

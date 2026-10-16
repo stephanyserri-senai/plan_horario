@@ -1,4 +1,4 @@
-"""Agenda semanal do instrutor: aulas, planejamento (PL), projeto/outra atividade (PJ) e turnos vazios.
+"""Agenda semanal do instrutor: aulas, planejamento (PL), projeto/outra atividade (PJ), treinamento (TR) e turnos vazios.
 
 Modalidades:
 - MENSALISTA: 40 h ou 20 h garantidas. Cada turno da jornada é aula, PL ou PJ; turno vazio = "sem atribuição".
@@ -19,7 +19,8 @@ from app.models import Alocacao, Bloqueio, DisponibilidadeInstrutor, Instrutor, 
 from app.services import auditoria
 from app.services.regras_aula import HORAS_POR_TURNO
 
-TIPOS = {"PL": ("planejamento", "Planejamento"), "PJ": ("projeto", "Projeto / outra atividade")}
+# PL e PJ: o instrutor está na escola (pode assumir substituição). TR: liberado das aulas para treinamento (não está disponível).
+TIPOS = {"PL": ("planejamento", "Planejamento"), "PJ": ("projeto", "Projeto / outra atividade"), "TR": ("treinamento", "Treinamento")}
 TIPO_PARA_SIGLA = {v[0]: k for k, v in TIPOS.items()}
 DIAS = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"]
 
@@ -89,14 +90,14 @@ def semana(db: Session, cenario_id: int, instrutor_id: int, inicio: date) -> dic
                 resumo["vazio_turnos"] += 1
             celulas.append(cel)
     carga = float(inst.carga_horaria_contratual)
-    ocupadas = resumo["aula_h"] + resumo["pl_h"] + resumo["pj_h"]
+    ocupadas = resumo["aula_h"] + resumo["pl_h"] + resumo["pj_h"] + resumo["tr_h"]
     mensalista = inst.modalidade == "mensalista"
     return {
         "instrutor": {"id": inst.id, "nome": inst.nome, "modalidade": inst.modalidade, "carga_semanal_h": carga},
         "semana": seg.isoformat(), "dias": [{"dia": di, "data": (seg + timedelta(days=di)).isoformat(), "rotulo": DIAS[di]} for di in dias],
         "turnos": [{"id": t.id, "nome": t.nome, "horario": f"{t.hora_inicio:%H:%M}–{t.hora_fim:%H:%M}"} for t in turnos],
         "celulas": celulas,
-        "resumo": {"aula_h": round(resumo["aula_h"], 1), "pl_h": resumo["pl_h"], "pj_h": resumo["pj_h"], "ocupadas_h": round(ocupadas, 1),
+        "resumo": {"aula_h": round(resumo["aula_h"], 1), "pl_h": resumo["pl_h"], "pj_h": resumo["pj_h"], "tr_h": resumo["tr_h"], "ocupadas_h": round(ocupadas, 1),
                    "vazios": int(resumo["vazio_turnos"]),
                    # mensalista: turno vazio é hora paga sem destino; horista: é dispensa
                    "sem_atribuicao_h": int(resumo["vazio_turnos"]) * HORAS_POR_TURNO if mensalista else 0,
@@ -107,7 +108,7 @@ def semana(db: Session, cenario_id: int, instrutor_id: int, inicio: date) -> dic
 
 def marcar(db: Session, ctx, cenario_id: int, instrutor_id: int, data: date, turno_id: int, sigla: str | None,
            repetir_ate: date | None = None, descricao: str | None = None) -> dict:
-    """Marca o turno como PL ou PJ (ou deixa vazio, com sigla None) na data e, se pedido, toda semana até `repetir_ate`."""
+    """Marca o turno como PL, PJ ou TR (ou deixa vazio, com sigla None) na data e, se pedido, toda semana até `repetir_ate`."""
     from app.services.calendario import Calendarios
     from app.services.notificacoes import notificar
     inst = db.get(Instrutor, instrutor_id)
@@ -117,7 +118,7 @@ def marcar(db: Session, ctx, cenario_id: int, instrutor_id: int, data: date, tur
     if t.unidade_id != inst.unidade_id:
         raise EntradaInvalida("O turno é de outra unidade.")
     if sigla not in (None, "", *TIPOS):
-        raise EntradaInvalida("Use PL (planejamento), PJ (projeto/outra atividade) ou vazio.")
+        raise EntradaInvalida("Use PL (planejamento), PJ (projeto/outra atividade), TR (treinamento) ou vazio.")
     if repetir_ate and repetir_ate < data:
         raise EntradaInvalida("A data final da repetição é anterior ao dia escolhido.")
     cal = Calendarios(db)

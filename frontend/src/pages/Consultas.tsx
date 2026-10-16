@@ -5,7 +5,7 @@ import { BarraOcupacao, Faixa, GraficoSerie } from "../components/Ocupacao";
 import { useApp } from "../contexto";
 
 const ESTADO: Record<string, [string, string]> = {
-  aula: ["ag-aula", "em aula"], PL: ["ag-PL", "PL · planejamento"], PJ: ["ag-PJ", "PJ · projeto"], livre: ["ag-livre", "livre"],
+  aula: ["ag-aula", "em aula"], PL: ["ag-PL", "PL · planejamento"], PJ: ["ag-PJ", "PJ · projeto"], TR: ["ag-TR", "TR · treinamento"], livre: ["ag-livre", "livre"],
   bloqueado: ["ag-bloq", "bloqueado"], fora_jornada: ["ag-fora", "fora da jornada"], nao_letivo: ["ag-fora", "não letivo"],
 };
 
@@ -38,7 +38,7 @@ function QuemEstaOnde() {
         <select aria-label="Ver" value={ver} onChange={(e) => setVer(e.target.value)}><option value="instrutores">Instrutores</option><option value="salas">Salas e laboratórios</option></select>
         <select aria-label="Situação" value={estado} onChange={(e) => setEstado(e.target.value)}>
           <option value="">Qualquer situação</option>
-          {(ver === "instrutores" ? ["livre", "aula", "PL", "PJ", "bloqueado", "fora_jornada"] : ["livre", "aula", "bloqueado"]).map((e) => <option key={e} value={e}>{ESTADO[e][1]}</option>)}
+          {(ver === "instrutores" ? ["livre", "aula", "PL", "PJ", "TR", "bloqueado", "fora_jornada"] : ["livre", "aula", "bloqueado"]).map((e) => <option key={e} value={e}>{ESTADO[e][1]}</option>)}
         </select>
         <input type="search" placeholder="Buscar nome…" aria-label="Buscar" value={busca} onChange={(e) => setBusca(e.target.value)} />
       </div>
@@ -49,6 +49,7 @@ function QuemEstaOnde() {
             <div className="kpi kpi-ok"><span>Instrutores livres (turnos)</span><b>{d.resumo.instrutores_livres}</b><small>na jornada e sem aula</small></div>
             <div className="kpi"><span>Em aula</span><b>{d.resumo.instrutores_em_aula}</b></div>
             <div className="kpi"><span>Em PL / PJ</span><b>{d.resumo.instrutores_pl_pj}</b><small>estão na escola: podem substituir</small></div>
+            <div className="kpi"><span>Em treinamento (TR)</span><b>{d.resumo.instrutores_tr ?? 0}</b><small>liberados das aulas: não substituem</small></div>
             <div className={`kpi ${d.resumo.instrutores_bloqueados ? "kpi-alerta" : ""}`}><span>Bloqueados</span><b>{d.resumo.instrutores_bloqueados}</b><small>licença, afastamento…</small></div>
           </> : <>
             <div className="kpi kpi-ok"><span>Salas livres (turnos)</span><b>{d.resumo.salas_livres}</b></div>

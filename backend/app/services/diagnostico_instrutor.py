@@ -73,7 +73,20 @@ class _Agenda:
 def _livres(db, ag: _Agenda, inst: Instrutor, seg: date, turno: Turno, dias: list[int]) -> list[int]:
     disp = db.scalars(select(DisponibilidadeInstrutor).where(DisponibilidadeInstrutor.instrutor_id == inst.id)).all()
     ocupados = ag.na_semana(inst.id, seg) | ag.bloqueados[inst.id]
-    cobre = [t.id for t in ag.turnos_da_aula(turno.hora_inicio, turno.hora_fim, 5 if turno.codigo == "S" else 0)] or [turno.id]  # PFP: manhã e tarde
+    if turno.codigo == "I":  # PFP: o dia tem dois blocos (manhã 08–12, tarde 13–17); basta um deles livre
+        from datetime import time as _t
+        from app.services.regras_aula import BLOCOS_PFP
+        por_cod = {t.codigo: t.id for t in ag.turnos}
+        livres = []
+        for k in dias:
+            for a, b, cod in BLOCOS_PFP:
+                ini, fim = _t.fromisoformat(a), _t.fromisoformat(b)
+                if any(x.dia_semana == k and x.hora_inicio <= ini and x.hora_fim >= fim for x in disp) \
+                        and (seg + timedelta(days=k), por_cod.get(cod)) not in ocupados:
+                    livres.append(k)
+                    break
+        return livres
+    cobre = [t.id for t in ag.turnos_da_aula(turno.hora_inicio, turno.hora_fim, 5 if turno.codigo == "S" else 0)] or [turno.id]
     return [k for k in dias if any(x.dia_semana == k and x.hora_inicio <= turno.hora_inicio and x.hora_fim >= turno.hora_fim for x in disp)
             and not any((seg + timedelta(days=k), t) in ocupados for t in cobre)]
 

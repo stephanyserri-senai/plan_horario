@@ -96,3 +96,18 @@ def test_turnos_padrao_e_configuracao_visivel(db, mt):
     assert c.post(f"/api/unidades/{nova.id}/turnos-padrao", headers=h).status_code == 422
     cfg = {x["chave"]: x for x in c.get("/api/configuracoes", headers=h).json()}
     assert cfg["regras_aula"]["valor"]["turno_inteiro"] is True
+
+
+def test_contagem_em_minutos_cada_aula_vale_o_que_dura():
+    """UC de 20 h: 1200 min ÷ 55 = 21,8 → 22 aulas no matutino; ÷ 50 = 24 no noturno. O que falta vira outra aula."""
+    import math
+    from types import SimpleNamespace as NS
+    from app.services.regras_aula import PADRAO, credito_periodo, periodos_para_fechar
+    assert PADRAO["contagem"] == "relogio"
+    manha, noite = NS(ini=450, fim=505), NS(ini=1110, fim=1160)
+    assert credito_periodo(PADRAO, manha) == 55 and credito_periodo(PADRAO, noite) == 50
+    assert math.ceil(1200 / credito_periodo(PADRAO, manha)) == 22
+    assert math.ceil(1200 / credito_periodo(PADRAO, noite)) == 24
+    # restam 10 min: ainda é uma aula inteira
+    assert periodos_para_fechar(PADRAO, 10, [manha] * 4) == 1
+    assert periodos_para_fechar({"contagem": "hora_aula"}, 1200, [manha] * 4) == 4

@@ -39,7 +39,7 @@ const MENU: { grupo: string; itens: Item[] }[] = [
     { para: "/geracao", rotulo: "Gerar horários", icone: "⚙", acao: "alocacoes.ler" },
     { para: "/planejamento", rotulo: "Semestres e aprovação", icone: "☰", acao: "alocacoes.ler" },
     { para: "/simulador", rotulo: "Simular nova turma", icone: "◇", acao: "simulacao.executar" },
-    { para: "/gargalos", rotulo: "Capacidade e gargalos", icone: "⚠", acao: "indicadores.ler" },
+    { para: "/gargalos", rotulo: "Riscos e gargalos", icone: "⚠", acao: "indicadores.ler" },
     { para: "/indicadores", rotulo: "Indicadores", icone: "📈", acao: "indicadores.ler" },
     { para: "/relatorios", rotulo: "Relatórios", icone: "⎙", acao: "exportacao.executar" },
     { para: "/solicitacoes", rotulo: "Solicitações dos instrutores", icone: "📝", acao: "solicitacoes.aprovar" },

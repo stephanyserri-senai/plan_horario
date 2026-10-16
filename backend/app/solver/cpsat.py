@@ -62,6 +62,8 @@ def _opcoes(at: AtividadeS, grade: dict[tuple[int, int], list]) -> list[_Opcao]:
             seq = [s for s in slots_turno if dia in s.dias]
             for i in range(len(seq) - at.num_periodos + 1):
                 bloco = seq[i:i + at.num_periodos]
+                if any(b.ini - a.fim > 30 for a, b in zip(bloco, bloco[1:])):
+                    continue  # não atravessa a pausa do almoço (PFP: manhã 08–12 e tarde 13–17 são blocos separados)
                 res.append(_Opcao(len(res), dia, bloco, bloco[0].ini, bloco[-1].fim,
                                   sum(s.credito if s.credito is not None else s.fim - s.ini for s in bloco), t, at.unidade_id,
                                   any(s.excepcional for s in bloco)))

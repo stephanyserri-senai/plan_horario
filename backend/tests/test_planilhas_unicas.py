@@ -76,8 +76,8 @@ def test_modelos_e_importacao_em_planilha_unica(db, mundo):
     importar(db, m.ctx, "levantamento_instrutores", lev)
     paulo = db.scalar(select(Instrutor).where(Instrutor.matricula == "M-100"))
     disp = db.scalars(select(DisponibilidadeInstrutor).where(DisponibilidadeInstrutor.instrutor_id == paulo.id)).all()
-    assert len(disp) == 12 and {d.dia_semana for d in disp} == {0, 1, 2, 3}  # (manhã + tarde + dia inteiro PFP) × 4 dias
-    assert {d.hora_inicio.strftime("%H:%M") for d in disp} == {"07:30", "13:30", "08:00"}
+    assert len(disp) == 16 and {d.dia_semana for d in disp} == {0, 1, 2, 3}  # (manhã + tarde + PFP 08–12 e 13–17) × 4 dias
+    assert {d.hora_inicio.strftime("%H:%M") for d in disp} == {"07:30", "13:30", "08:00", "13:00"}
     assert db.scalar(select(func.count()).select_from(CompetenciaInstrutor).where(CompetenciaInstrutor.instrutor_id == paulo.id)) == 2
     assert db.scalars(select(HabilitacaoInstrutor).where(HabilitacaoInstrutor.instrutor_id == paulo.id)).first().nome == "NR-12"
     assert paulo.areas_competencia.startswith("Técnico em mecânica") and paulo.modalidade == "horista"

@@ -75,7 +75,7 @@ def simular_agregada(db: Session, p: dict, cenario_base_id: int) -> dict:
         raise EntradaInvalida("A matriz selecionada não possui UCs.")
     janelas = _distribuir_ucs(ucs, d0, d1, p.get("ucs_sequenciais", True))
     fake = _turma_ficticia(p)
-    mpp = minutos_por_periodo(db, p["unidade_id"])
+    mpp = minutos_por_periodo(db, p["unidade_id"], p.get("turno_id"))
     extras = []
     for n in range(int(p["quantidade_turmas"])):
         for uc in ucs:
@@ -144,7 +144,7 @@ def carga_semanal_simulada(db: Session, p: dict) -> list[tuple[date, date, float
     ucs = _ucs_da_oferta(db, p)
     janelas = _distribuir_ucs(ucs, d0, d1, p.get("ucs_sequenciais", True))
     fake = _turma_ficticia(p)
-    mpp = minutos_por_periodo(db, p["unidade_id"])
+    mpp = minutos_por_periodo(db, p["unidade_id"], p.get("turno_id"))
     res = []
     for uc in ucs:
         grupos = fake.num_grupos if (uc.divide_grupos and fake.num_grupos > 1) else 1
