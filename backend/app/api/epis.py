@@ -56,6 +56,35 @@ def controle(turma_id: int | None = None, curso_id: int | None = None, situacao:
     return epis.listar(db, ctx.unidades, turma_id=turma_id, curso_id=curso_id, situacao_filtro=situacao)
 
 
+def _turma(db: Session, ctx: Contexto, turma_id) -> Turma:
+    t = db.get(Turma, int(turma_id)) if turma_id else None
+    if t is None or t.simulacao_id is not None or (ctx.unidades is not None and t.unidade_id not in ctx.unidades):
+        raise NaoEncontrado("Turma não encontrada.")
+    return t
+
+
+@router.post("/epis-turmas")
+def incluir_na_turma(dados: dict = Body(...), db: Session = Depends(get_db), ctx: Contexto = Depends(get_contexto)):
+    """Inclusão manual de um EPI numa turma (além dos que vêm do curso)."""
+    ctx.exigir("cadastros.editar")
+    t = _turma(db, ctx, dados.get("turma_id"))
+    e = epis.incluir_avulso(db, ctx, t, dados)
+    db.commit()
+    return next((i for i in epis.listar(db, ctx.unidades, turma_id=t.id)["itens"] if i["id"] == e.id), None)
+
+
+@router.delete("/epis-turmas/{eid}")
+def excluir_da_turma(eid: int, db: Session = Depends(get_db), ctx: Contexto = Depends(get_contexto)):
+    ctx.exigir("cadastros.editar")
+    e = db.get(EpiTurma, eid)
+    if e is None:
+        raise NaoEncontrado("EPI da turma não encontrado.")
+    _turma(db, ctx, e.turma_id)
+    epis.excluir(db, ctx, eid)
+    db.commit()
+    return {"ok": True}
+
+
 @router.put("/epis-turmas/{eid}")
 def marcar(eid: int, dados: dict = Body(...), db: Session = Depends(get_db), ctx: Contexto = Depends(get_contexto)):
     ctx.exigir("cadastros.editar")

@@ -140,7 +140,7 @@ def listar(db: Session, unidades=None, turma_id: int | None = None, curso_id: in
                       "prazo": e.prazo.isoformat() if e.prazo else None, "dias_para_prazo": (e.prazo - hoje).days if e.prazo else None,
                       "providenciado": e.providenciado, "providenciado_em": e.providenciado_em.isoformat() if e.providenciado_em else None,
                       "entregue": e.entregue, "entregue_em": e.entregue_em.isoformat() if e.entregue_em else None,
-                      "observacao": e.observacao, "situacao": s, "situacao_rotulo": SITUACOES[s]})
+                      "observacao": e.observacao, "situacao": s, "situacao_rotulo": SITUACOES[s], "avulso": e.epi_curso_id is None})
     return {"itens": itens, "resumo": resumo, "hoje": hoje.isoformat(), "dias_aviso": DIAS_AVISO}
 
 
@@ -178,6 +178,39 @@ def marcar(db: Session, ctx, eid: int, dados: dict) -> EpiTurma:
     auditoria.registrar(db, ctx, "epi.turma.marcar", "epis_turma", e.id, antes={k: str(v) for k, v in antes.items()},
                         depois={k: str(getattr(e, k)) for k in antes})
     return e
+
+
+def incluir_avulso(db: Session, ctx, turma: Turma, dados: dict) -> EpiTurma:
+    """EPI incluído à mão numa turma (fora da lista do curso): ex.: necessidade específica de uma turma."""
+    nome = (dados.get("nome") or "").strip()
+    if not nome:
+        raise EntradaInvalida("Informe o EPI.")
+    try:
+        qtd = int(dados.get("quantidade") if dados.get("quantidade") not in (None, "") else (turma.qtd_alunos or 0))
+        prazo = date.fromisoformat(str(dados["prazo"])) if dados.get("prazo") else (turma.data_inicio - timedelta(days=15) if turma.data_inicio else None)
+    except (TypeError, ValueError):
+        raise EntradaInvalida("Quantidade ou prazo inválido.")
+    if qtd < 0:
+        raise EntradaInvalida("A quantidade não pode ser negativa.")
+    e = EpiTurma(turma_id=turma.id, epi_curso_id=None, nome=nome[:150], quantidade=qtd, prazo=prazo,
+                 observacao=(dados.get("observacao") or "").strip()[:1000] or None, atualizado_por_id=getattr(ctx, "id", None))
+    db.add(e)
+    db.flush()
+    auditoria.registrar(db, ctx, "epi.turma.incluir", "epis_turma", e.id, depois={"turma": turma.codigo, "nome": e.nome, "quantidade": qtd, "prazo": str(prazo)})
+    return e
+
+
+def excluir(db: Session, ctx, eid: int) -> None:
+    """Exclui um EPI da turma. Os que vêm da lista do curso voltariam na próxima atualização da turma:
+    para esses, retire o EPI do curso (ou mantenha e marque)."""
+    e = db.get(EpiTurma, eid)
+    if e is None:
+        raise NaoEncontrado("EPI da turma não encontrado.")
+    if e.epi_curso_id is not None:
+        raise EntradaInvalida("Este EPI vem da lista do curso: para tirá-lo, retire-o do curso (Cursos, matrizes e UCs).")
+    auditoria.registrar(db, ctx, "epi.turma.excluir", "epis_turma", e.id, antes={"nome": e.nome, "quantidade": e.quantidade})
+    db.delete(e)
+    db.flush()
 
 
 def avisos(db: Session, unidades=None, hoje: date | None = None) -> dict:

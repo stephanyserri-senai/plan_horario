@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { api, dataBR, qs } from "../api";
 import { Badge, Tabela, useCarregar } from "./ui";
 import { useApp } from "../contexto";
+import { useOpcoes } from "../hooks";
 
 const SIT: Record<string, [string, string]> = {
   atrasado: ["bloqueio", "Prazo vencido"], proximo: ["alerta", "Vence em breve"], pendente: ["info", "A providenciar"],
@@ -66,6 +67,22 @@ export function ControleEpis({ turmaId, situacaoInicial = "" }: { turmaId?: numb
   const [busca, setBusca] = useState("");
   const r = useCarregar<any>(() => api.get(`/api/epis-turmas${qs({ turma_id: turmaId || "" })}`), [turmaId]);
   const editavel = pode("cadastros.editar");
+  const [novo, setNovo] = useState<any | null>(null);
+  const turmas = useOpcoes(!turmaId && novo ? "turmas" : null) as any[];
+  const incluir = async () => {
+    try {
+      const item = await api.post("/api/epis-turmas", { ...novo, turma_id: turmaId || novo.turma_id });
+      r.setDados({ ...r.dados, itens: [...r.dados.itens, item] });
+      aviso(`EPI incluído na turma ${item.turma}.`);
+      setNovo({ ...novo, nome: "", quantidade: "", observacao: "" });
+    } catch (e: any) { aviso(e.message, "erro"); }
+  };
+  const excluir = async (i: any) => {
+    if (!confirm(`Excluir "${i.nome}" da turma ${i.turma}?`)) return;
+    try { await api.del(`/api/epis-turmas/${i.id}`); r.setDados({ ...r.dados, itens: r.dados.itens.filter((x: any) => x.id !== i.id) }); }
+    catch (e: any) { aviso(e.message, "erro"); }
+  };
+  const nomesConhecidos = [...new Set((r.dados?.itens || []).map((i: any) => i.nome))] as string[];
   const marcar = async (i: any, dados: any) => {
     try {
       const novo = await api.put(`/api/epis-turmas/${i.id}`, dados);
@@ -84,15 +101,34 @@ export function ControleEpis({ turmaId, situacaoInicial = "" }: { turmaId?: numb
           <button key={s} className={`chip-estado ${s === "atrasado" ? "ag-bloq" : s === "proximo" ? "ag-PJ" : s === "entregue" ? "ag-livre" : s === "abertos" ? "sem-ponto" : "ag-aula"} ${situacao === s ? "ativo" : ""}`}
             onClick={() => setSituacao(situacao === s ? "" : s)}>{s === "abertos" ? "Não entregues" : SIT[s][1]} <b>{contagem(s)}</b></button>))}
         {!turmaId && <input type="search" className="busca-larga" placeholder="Buscar turma, EPI ou curso…" aria-label="Buscar" value={busca} onChange={(e) => setBusca(e.target.value)} />}
+        {editavel && !novo && <button className="btn btn-primario" onClick={() => setNovo({ turma_id: "", nome: "", quantidade: "", prazo: "", observacao: "" })}>+ Incluir EPI</button>}
       </div>
+      {editavel && novo && <div className="epi-manual" role="group" aria-label="Incluir EPI na turma">
+        <b>Incluir EPI {turmaId ? "nesta turma" : "numa turma"}</b>
+        <div className="epi-manual-campos">
+          {!turmaId && <label>Turma<select value={novo.turma_id} onChange={(e) => setNovo({ ...novo, turma_id: e.target.value })}>
+            <option value="">— escolha —</option>{turmas.map((t: any) => <option key={t.id} value={t.id}>{t.rotulo}</option>)}</select></label>}
+          <label className="epi-nome">EPI<input list="epis-conhecidos" value={novo.nome} placeholder="ex.: protetor facial" onChange={(e) => setNovo({ ...novo, nome: e.target.value })} />
+            <datalist id="epis-conhecidos">{nomesConhecidos.map((n) => <option key={n} value={n} />)}</datalist></label>
+          <label>Quantidade<input type="number" min={0} className="num-curto" value={novo.quantidade} placeholder="1/aluno" onChange={(e) => setNovo({ ...novo, quantidade: e.target.value })} /></label>
+          <label>Prazo<input type="date" value={novo.prazo} onChange={(e) => setNovo({ ...novo, prazo: e.target.value })} /></label>
+          <label className="epi-nome">Observação<input value={novo.observacao} placeholder="opcional" onChange={(e) => setNovo({ ...novo, observacao: e.target.value })} /></label>
+        </div>
+        <small className="mudo">Sem quantidade, vale 1 por aluno; sem prazo, 15 dias antes do início da turma. Para que todas as turmas do curso recebam o EPI, cadastre-o no curso.</small>
+        <div className="acoes-linha">
+          <button className="btn" onClick={() => setNovo(null)}>Fechar</button>
+          <button className="btn btn-primario" disabled={!novo.nome.trim() || (!turmaId && !novo.turma_id)} onClick={incluir}>Incluir</button>
+        </div>
+      </div>}
       {r.erro && <div className="erro-box">{r.erro}</div>}
       {r.carregando && !d && <p role="status">Carregando…</p>}
       {d && <Tabela chave={(i: any) => i.id} linhas={itens}
-        vazio={d.itens.length ? "Nada nesta situação." : "Nenhum EPI para controlar. Cadastre os EPIs no curso (Cadastros → Cursos, matrizes e UCs)."}
+        vazio={d.itens.length ? "Nada nesta situação." : "Nenhum EPI para controlar. Use “+ Incluir EPI” ou cadastre os EPIs no curso (Cadastros → Cursos, matrizes e UCs)."}
         colunas={[
           ...(turmaId ? [] : [{ chave: "turma", rotulo: "Turma", render: (i: any) => <><Link to={`/grade?turma=${i.turma_id}`}><b>{i.turma}</b></Link>
             <small className="mudo"> {i.alunos} aluno(s) · início {dataBR(i.inicio_turma)}</small></> }]),
-          { chave: "nome", rotulo: "EPI", render: (i: any) => <b>{i.nome}</b> },
+          { chave: "nome", rotulo: "EPI", render: (i: any) => <><b>{i.nome}</b>{i.avulso && <> <span className="chip chip-neutro" title="incluído à mão nesta turma (não vem do curso)">avulso</span>
+            {editavel && <button className="btn-link" onClick={() => excluir(i)}>excluir</button>}</>}</> },
           { chave: "quantidade", rotulo: "Qtd.", alinhar: "dir" as const },
           { chave: "prazo", rotulo: "Prazo", render: (i: any) => editavel && !i.entregue
             ? <input type="date" value={i.prazo || ""} aria-label={`Prazo de ${i.nome}`} onChange={(e) => marcar(i, { prazo: e.target.value })} />

@@ -59,3 +59,23 @@ def test_epis_do_curso_viram_controle_da_turma(db, mundo):
     assert c.put(f"/api/epis-curso/{eid}", json={"ativo": False}, headers=h).status_code == 200
     db.expire_all()
     assert len(db.scalars(select(EpiTurma)).all()) == 1  # só fica o que já foi entregue
+
+
+def test_epi_incluido_manualmente_na_turma(db, mundo):
+    m = mundo
+    c = TestClient(app)
+    h = _h(c)
+    r = c.post("/api/epis-turmas", json={"turma_id": m.t1.id, "nome": "Protetor facial", "quantidade": 5, "prazo": "2026-08-01"}, headers=h)
+    assert r.status_code == 200, r.text
+    assert r.json()["avulso"] and r.json()["quantidade"] == 5 and r.json()["prazo"] == "2026-08-01"
+    # sem quantidade nem prazo: um por aluno, 15 dias antes do início
+    r2 = c.post("/api/epis-turmas", json={"turma_id": m.t1.id, "nome": "Máscara PFF2"}, headers=h).json()
+    assert r2["quantidade"] == 30 and r2["prazo"] == "2026-07-19"
+    assert c.post("/api/epis-turmas", json={"turma_id": m.t1.id, "nome": " "}, headers=h).status_code == 422
+    assert c.post("/api/epis-turmas", json={"turma_id": 999999, "nome": "X"}, headers=h).status_code == 404
+    # a atualização da turma não apaga o avulso
+    assert c.put(f"/api/cadastros/turmas/{m.t1.id}", json={"qtd_alunos": 28}, headers=h).status_code == 200
+    nomes = {i["nome"] for i in c.get(f"/api/epis-turmas?turma_id={m.t1.id}", headers=h).json()["itens"]}
+    assert {"Protetor facial", "Máscara PFF2"} <= nomes
+    assert c.delete(f"/api/epis-turmas/{r.json()['id']}", headers=h).status_code == 200
+    assert "Protetor facial" not in {i["nome"] for i in c.get(f"/api/epis-turmas?turma_id={m.t1.id}", headers=h).json()["itens"]}
