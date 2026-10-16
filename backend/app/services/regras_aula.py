@@ -66,6 +66,10 @@ TURNOS_PADRAO = [
 ]
 # Sábado: turno próprio, 09:00–13:00 (4 aulas, intervalo 10:50–11:10), só aos sábados. Turma de sábado só tem aula presencial no sábado.
 TURNO_SABADO = ("S", "Sábado", [(9 * 60, 55), (9 * 60 + 55, 55), (11 * 60 + 10, 55), (12 * 60 + 5, 55)])
+# Turmas PFP: aula o dia todo, 08:00–12:00 e 13:00–17:00 (8 aulas; almoço 12:00–13:00), de segunda a sexta.
+# O turno inteiro de uma turma PFP é o dia inteiro. Quem dá aula nela trabalha manhã e tarde (jornada MV).
+TURNO_INTEGRAL = ("I", "Integral (PFP)", [(h * 60, 60) for h in (8, 9, 10, 11, 13, 14, 15, 16)])
+TURNOS_ESPECIAIS = {"S", "I"}  # não entram na jornada M/V/N do instrutor
 
 
 HORAS_POR_TURNO = 4  # cada turno = 4 aulas

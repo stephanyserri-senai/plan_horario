@@ -284,6 +284,8 @@ def _derivar(db: Session, ent: str, dados: dict, obj=None) -> dict:
                         from app.api.registro import TIPOS_OFERTA
                         rot = next((t["rotulo"].split(" – ", 1)[1] for t in TIPOS_OFERTA if t["valor"] == tipo), tipo)
                         turno = db.get(Turno, int(d.get("turno_id") or (obj.turno_id if obj else 0) or 0)) if (d.get("turno_id") or (obj and obj.turno_id)) else None
+                        if tipo == "PFP":  # turma de dia inteiro: o turno já é o integral
+                            rot, turno = "PFP (dia inteiro)", None
                         d["nome"] = f"{curso.nome} {num}" + (f" – {rot}" if rot else "") + (f" ({turno.nome})" if turno else "")
         if "dias_ead" in d or "dias_possiveis" in d:
             from app.services.planejamento import dias_com_ead
@@ -292,10 +294,21 @@ def _derivar(db: Session, ent: str, dados: dict, obj=None) -> dict:
             d["dias_possiveis"] = dias_com_ead(d["dias_possiveis"] if "dias_possiveis" in d else (obj.dias_possiveis if obj else [0, 1, 2, 3, 4]),
                                                d["dias_ead"], obj.dias_ead if obj and "dias_ead" in d else None)
         # padrão de dias (regras institucionais): 5 presenciais | 4 + 1 EAD | só sábado; aperfeiçoamento/empresa pode ter menos
-        if obj is None or any(k in d for k in ("dias_possiveis", "dias_ead", "turno_id", "curso_id", "_tipo_oferta", "codigo")):
+        if obj is None or any(k in d for k in ("dias_possiveis", "dias_ead", "turno_id", "curso_id", "_tipo_oferta", "codigo", "_numero")):
             from app.services.regras_institucionais import TURNO_SABADO, erro_padrao_dias, oferta_flexivel
+            from app.services.regras_institucionais import TURNO_PFP, eh_pfp, erro_turno_pfp
+            pfp = eh_pfp(d.get("codigo") or (obj.codigo if obj else None), d.get("_tipo_oferta"))
+            un_t = d.get("unidade_id") or (obj.unidade_id if obj else None)
+            if pfp and un_t:  # turma PFP: turno integral (08–12 e 13–17)
+                integral = db.scalar(select(Turno).where(Turno.unidade_id == int(un_t), Turno.codigo == TURNO_PFP))
+                if integral is None:
+                    raise EntradaInvalida("A unidade ainda não tem o turno integral das turmas PFP (aplique a atualização 0011).")
+                d["turno_id"] = integral.id
             tid = d.get("turno_id") if "turno_id" in d else (obj.turno_id if obj else None)
             turno = db.get(Turno, int(tid)) if tid not in (None, "") else None
+            erro_pfp = erro_turno_pfp(pfp, turno.codigo if turno else None)
+            if erro_pfp:
+                raise EntradaInvalida(erro_pfp)
             if turno is not None and turno.codigo == TURNO_SABADO:
                 d["dias_possiveis"], d["dias_ead"] = [5], []  # turma de sábado: só o sábado é presencial
             dias = d["dias_possiveis"] if "dias_possiveis" in d else (obj.dias_possiveis if obj else [0, 1, 2, 3, 4])
@@ -334,14 +347,16 @@ def _dados_instrutor(db: Session | None, inst) -> dict:
     comps = db.scalars(select(CompetenciaInstrutor).where(CompetenciaInstrutor.instrutor_id == inst.id, CompetenciaInstrutor.ativo.is_(True))).all()
     disp = db.scalars(select(DisponibilidadeInstrutor).where(DisponibilidadeInstrutor.instrutor_id == inst.id)).all()
     # jornada = turnos de segunda a sexta (M, V, N); o sábado (turno S, 09:00–13:00) é marcado à parte pelo dia
-    turnos = [t for t in db.scalars(select(Turno).where(Turno.unidade_id == inst.unidade_id, Turno.ativo.is_(True))) if t.codigo != "S"]
+    from app.services.regras_aula import TURNOS_ESPECIAIS
+    turnos = [t for t in db.scalars(select(Turno).where(Turno.unidade_id == inst.unidade_id, Turno.ativo.is_(True))) if t.codigo not in TURNOS_ESPECIAIS]
     t_ids = [t.id for t in turnos if any(x.dia_semana < 5 and x.hora_inicio <= t.hora_inicio and x.hora_fim >= t.hora_fim for x in disp)]
     janelas = {(t.hora_inicio, t.hora_fim) for t in turnos}
+    integral = {(t.hora_inicio, t.hora_fim) for t in db.scalars(select(Turno).where(Turno.unidade_id == inst.unidade_id, Turno.codigo == "I"))}
     cod = {t.id: t.codigo for t in turnos}
     return {"ucs_competencia": [{"uc_id": c.uc_id, "nivel": c.nivel} for c in comps],
             "jornada": jornada_dos_codigos(cod[i] for i in t_ids) if t_ids else None,
             "disp_turnos": t_ids, "disp_dias": sorted({x.dia_semana for x in disp}),
-            "disp_personalizada": any((x.hora_inicio, x.hora_fim) not in janelas for x in disp if x.dia_semana < 5)}
+            "disp_personalizada": any((x.hora_inicio, x.hora_fim) not in janelas | integral for x in disp if x.dia_semana < 5)}
 
 
 def _gravar_instrutor(db: Session, inst, dados: dict):
@@ -389,6 +404,11 @@ def _gravar_instrutor(db: Session, inst, dados: dict):
                 if dia == 5 and "S" in turnos_un:
                     continue  # sábado: turno próprio (abaixo)
                 db.add(DisponibilidadeInstrutor(instrutor_id=inst.id, dia_semana=dia, hora_inicio=t.hora_inicio, hora_fim=t.hora_fim))
+        cods = {db.get(Turno, int(x)).codigo for x in dados["disp_turnos"]}
+        if {"M", "T"} <= cods and "I" in turnos_un:  # manhã e tarde: também pode dar aula de dia inteiro (turmas PFP, 08:00–17:00)
+            pfp = turnos_un["I"]
+            for dia in [x for x in dias if x < 5]:
+                db.add(DisponibilidadeInstrutor(instrutor_id=inst.id, dia_semana=dia, hora_inicio=pfp.hora_inicio, hora_fim=pfp.hora_fim))
         if 5 in dias and "S" in turnos_un:  # dá aula aos sábados: 09:00–13:00
             sab = turnos_un["S"]
             db.add(DisponibilidadeInstrutor(instrutor_id=inst.id, dia_semana=5, hora_inicio=sab.hora_inicio, hora_fim=sab.hora_fim))

@@ -58,3 +58,9 @@ echo "Gerado backend/sql/atualizacao_0009.sql"
   ALEMBIC_DATABASE_URL="postgresql+psycopg://usuario:senha@host/banco" python -m alembic upgrade 0009:0010 --sql
 } > sql/atualizacao_0010.sql
 echo "Gerado backend/sql/atualizacao_0010.sql"
+{
+  echo "-- Atualização 0010 -> 0011: turmas PFP — turno INTEGRAL (08:00–12:00 e 13:00–17:00, 8 aulas) em cada unidade;"
+  echo "-- instrutores com manhã e tarde (MV) passam a poder dar aula de dia inteiro. Não destrutiva. Cole no SQL Editor do Supabase e clique em Run."
+  ALEMBIC_DATABASE_URL="postgresql+psycopg://usuario:senha@host/banco" python -m alembic upgrade 0010:0011 --sql
+} > sql/atualizacao_0011.sql
+echo "Gerado backend/sql/atualizacao_0011.sql"

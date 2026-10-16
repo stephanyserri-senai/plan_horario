@@ -115,6 +115,10 @@ CURSOS = [
     # turma de sábado (09:00–13:00): uma UC transversal por vez, um dia por semana
     ("INF", "Informática Básica (sábado)", "DDS-TI", "qualificação", [
         ("INF-BAS", "Informática Básica e Pacote Office", 56, 1, ["INFO"], None)]),
+    # turma PFP: aula o dia todo (08–12 e 13–17); cada dia de aula é um dia inteiro da UC (8 h)
+    ("OPL", "Operador de Logística (PFP)", "LOGISTICA", "qualificação", [
+        ("OPL-ARM", "Armazenagem e Movimentação de Materiais", 48, 1, ["SALA"], None),
+        ("OPL-EXP", "Expedição e Inventário", 48, 1, ["SALA"], None)]),
     ("ADM", "Assistente Administrativo", "GESTAO", "qualificação", [
         ("ADM-ROT", "Rotinas Administrativas", 48, 1, ["SALA"], None),
         ("ADM-PLA", "Planilhas Eletrônicas", 48, 1, ["INFO"], None),
@@ -139,9 +143,10 @@ TURMAS = [
     # Wagner Prado: 5 manhãs + 4 tardes = 9 de 10 turnos (teto de 90%)
     ("QUA-ELI-01", "ELI", "Eletricista Instalador 01 – Qualificação", "M", 24, None, {}),
     ("QUA-INF-01", "INF", "Informática Básica 01 – Qualificação aos sábados", "S", 20, [5], {}),
+    ("PFP-OPL-01", "OPL", "Operador de Logística 01 – PFP (dia inteiro)", "I", 20, None, {}),
     ("EMP-MNT-01", "MNT", "Manutenção Elétrica 01 – Turma para empresa", "T", 18, [0, 1, 2, 3], {}),
 ]
-CH_SEM_AJUSTE = {"ELI", "MNT", "NRB"}  # carga já calculada para ocupar o semestre
+CH_SEM_AJUSTE = {"ELI", "MNT", "NRB", "OPL"}  # carga já calculada para ocupar o semestre
 
 # matrícula, nome, unidade, área principal, outras áreas, turnos de trabalho (M/V/N; 40 h = MV ou VN), UCs (pleno), certificações, formação
 INSTRUTORES = [
@@ -162,9 +167,9 @@ INSTRUTORES = [
     ("BM-1015", "Renata Alves", "BEIRA-MAR", "MECATRONICA", ["ENERGIAS"], "VN", ["MCT-MIC", "MCT-EPN", "MCT-CAD"], [], "Tecnóloga em mecatrônica; Arduino e ESP32"),
     ("BM-1016", "Leandro Costa", "BEIRA-MAR", "INSTRUMENTACAO", [], "N", ["INS-MCV", "INS-MCT", "INS-CAL"], [], "Técnico em instrumentação; calibração RBC"),
     ("BM-1017", "Vanessa Martins", "BEIRA-MAR", "INSTRUMENTACAO", ["AUTOMACAO"], "VN", ["INS-CAL", "AUT-INB", "INS-MCT"], [], "Eng. química; controle de processos"),
-    ("PT-2001", "Aline Ferreira", "PORTO", "LOGISTICA", [], "MV", ["LOG-GAR", "LOG-TRD", "LOG-CUS"], [], "Administradora; gestão de centros de distribuição"),
+    ("PT-2001", "Aline Ferreira", "PORTO", "LOGISTICA", [], "MV", ["LOG-GAR", "LOG-TRD", "LOG-CUS", "OPL-ARM"], [], "Administradora; gestão de centros de distribuição"),
     ("PT-2002", "Bruno Cardoso", "PORTO", "LOGISTICA", ["PORTOS"], "VN", ["LOG-WMS", "LOG-GAR", "POR-GCT"], [], "Tecnólogo em logística; WMS e TMS"),
-    ("PT-2003", "Débora Ramos", "PORTO", "LOGISTICA", ["GESTAO"], "MV", ["LOG-TRD", "LOG-CUS", "ADM-ATC", "LOG-WMS"], [], "Economista; custos e transportes"),
+    ("PT-2003", "Débora Ramos", "PORTO", "LOGISTICA", ["GESTAO"], "MV", ["LOG-TRD", "LOG-CUS", "ADM-ATC", "LOG-WMS", "OPL-EXP"], [], "Economista; custos e transportes"),
     ("PT-2004", "Eduardo Salles", "PORTO", "PORTOS", [], "N", ["POR-OPP", "POR-GCT", "POR-SEG"], ["NR-29", "NR-35"], "Oficial de náutica; operações em terminal de contêineres"),
     ("PT-2005", "Flávia Moura", "PORTO", "PORTOS", ["LOGISTICA"], "N", ["POR-LPA", "POR-SEG", "POR-OPP", "LOG-TRD"], ["NR-29"], "Advogada; comércio exterior e aduana"),
     ("PT-2006", "Igor Batista", "PORTO", "DDS-TI", [], "V", ["DDS-LOP", "DDS-BDD"], [], "Desenvolvedor back-end; Python e PostgreSQL"),
@@ -190,6 +195,8 @@ TRANSVERSAIS = {"INF-BAS", "ADM-ATC"}
 SABADO = {"PT-2007", "PT-2011"}
 # competências marcadas como "em partes" pelo instrutor (dá parte da UC)
 EM_PARTES = {("BM-1009", "AUT-PNE"), ("PT-2003", "LOG-WMS")}
+# turmas que começam depois do início do semestre
+INICIO_ESPECIAL = {"PFP-OPL-01": date(ANO, 10, 19)}
 # turmas 80-20: a sexta é de atividades a distância (EAD), sem aula presencial
 EAD_SEXTA = {"HTC-LOG-21", "HTC-DDS-09"}
 
@@ -281,6 +288,10 @@ def montar(db, ctx, limite_s: float = 120) -> dict:
             t = turno[(u.id, tc)]
             for d in range(5):
                 db.add(DisponibilidadeInstrutor(instrutor_id=i.id, dia_semana=d, hora_inicio=t.hora_inicio, hora_fim=t.hora_fim))
+        if turnos_i == "MV":  # manhã e tarde: pode dar aula de dia inteiro (turmas PFP, 08:00–17:00)
+            pfp = turno[(u.id, "I")]
+            for d in range(5):
+                db.add(DisponibilidadeInstrutor(instrutor_id=i.id, dia_semana=d, hora_inicio=pfp.hora_inicio, hora_fim=pfp.hora_fim))
         if mat in SABADO:
             sab = turno[(u.id, "S")]
             db.add(DisponibilidadeInstrutor(instrutor_id=i.id, dia_semana=5, hora_inicio=sab.hora_inicio, hora_fim=sab.hora_fim))
@@ -290,7 +301,7 @@ def montar(db, ctx, limite_s: float = 120) -> dict:
         u_id = area[[x for x in CURSOS if x[0] == sigla][0][2]].unidade_id
         un_cod = next(k for k, v in unid.items() if v.id == u_id)
         t = Turma(codigo=cod, nome=nome, curso_id=c.id, matriz_id=m.id, unidade_id=u_id, area_id=c.area_id, calendario_id=cal[un_cod].id,
-                  turno_id=turno[(u_id, tc)].id, qtd_alunos=alunos, data_inicio=INICIO, data_fim=FIM,
+                  turno_id=turno[(u_id, tc)].id, qtd_alunos=alunos, data_inicio=INICIO_ESPECIAL.get(cod, INICIO), data_fim=FIM,
                   dias_possiveis=[0, 1, 2, 3] if cod in EAD_SEXTA else (dias or [0, 1, 2, 3, 4]), dias_ead=[4] if cod in EAD_SEXTA else [],
                   num_grupos=1, situacao="em_andamento")
         db.add(t)

@@ -25,9 +25,13 @@ DIAS = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"]
 
 
 def _turnos_da_jornada(db: Session, inst: Instrutor) -> list[Turno]:
-    turnos = db.scalars(select(Turno).where(Turno.unidade_id == inst.unidade_id, Turno.ativo.is_(True)).order_by(Turno.hora_inicio)).all()
+    # o turno integral (PFP) não é linha da agenda: a aula de dia inteiro aparece na manhã e na tarde
+    turnos = [t for t in db.scalars(select(Turno).where(Turno.unidade_id == inst.unidade_id, Turno.ativo.is_(True)).order_by(Turno.hora_inicio))
+              if t.codigo != "I"]
     disp = db.scalars(select(DisponibilidadeInstrutor).where(DisponibilidadeInstrutor.instrutor_id == inst.id)).all()
-    da_jornada = [t for t in turnos if any(d.hora_inicio <= t.hora_inicio and d.hora_fim >= t.hora_fim for d in disp)]
+    # sábado (turno S) só com janela no sábado; os demais turnos pelas janelas de segunda a sexta
+    da_jornada = [t for t in turnos if any(((d.dia_semana == 5) == (t.codigo == "S")) and d.hora_inicio <= t.hora_inicio and d.hora_fim >= t.hora_fim
+                                           for d in disp)]
     return da_jornada or list(turnos)
 
 
@@ -62,6 +66,8 @@ def semana(db: Session, cenario_id: int, instrutor_id: int, inicio: date) -> dic
         d = seg + timedelta(days=di)
         letivo, motivo = cal.dia_letivo_unidade(inst.unidade_id, d)
         for t in turnos:
+            if (t.codigo == "S") != (di == 5):
+                continue  # turno de sábado só no sábado; os da semana, só de segunda a sexta
             ini, fim = _janela(d, t)
             da = [a for a in aulas if a.inicio < fim and a.fim > ini]
             bs = [b for b in bloqs if b.inicio < fim and b.fim > ini]

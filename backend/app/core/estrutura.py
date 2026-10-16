@@ -49,7 +49,7 @@ def garantir_estrutura_fixa(db) -> dict:
     from sqlalchemy import func, select
 
     from app.models import Area, PeriodoHorario, Turno, Unidade
-    from app.services.regras_aula import TURNO_SABADO, TURNOS_PADRAO
+    from app.services.regras_aula import TURNO_INTEGRAL, TURNO_SABADO, TURNOS_PADRAO
     criados = {"unidades": 0, "areas": 0, "turnos": 0}
     unidades = {}
     for cod, nome in UNIDADES:
@@ -70,10 +70,13 @@ def garantir_estrutura_fixa(db) -> dict:
             if not db.scalar(select(Turno).where(Turno.unidade_id == u.id, Turno.codigo == TURNO_SABADO[0])):
                 _criar_turno(db, u, len(TURNOS_PADRAO) + 1, *TURNO_SABADO, [5])  # turno de sábado (migração 0010)
                 criados["turnos"] += 1
+            if not db.scalar(select(Turno).where(Turno.unidade_id == u.id, Turno.codigo == TURNO_INTEGRAL[0])):
+                _criar_turno(db, u, len(TURNOS_PADRAO) + 2, *TURNO_INTEGRAL, [0, 1, 2, 3, 4])  # turmas PFP (migração 0011)
+                criados["turnos"] += 1
             continue
-        for ordem, (cod, nome, aulas) in enumerate([*TURNOS_PADRAO, TURNO_SABADO], 1):
-            if cod == TURNO_SABADO[0]:
-                _criar_turno(db, u, ordem, cod, nome, aulas, [5])
+        for ordem, (cod, nome, aulas) in enumerate([*TURNOS_PADRAO, TURNO_SABADO, TURNO_INTEGRAL], 1):
+            if cod in (TURNO_SABADO[0], TURNO_INTEGRAL[0]):
+                _criar_turno(db, u, ordem, cod, nome, aulas, [5] if cod == TURNO_SABADO[0] else [0, 1, 2, 3, 4])
                 criados["turnos"] += 1
                 continue
             t = Turno(unidade_id=u.id, codigo=cod, nome=nome, hora_inicio=hm(aulas[0][0]), hora_fim=hm(aulas[-1][0] + aulas[-1][1]), ordem=ordem, ativo=True)

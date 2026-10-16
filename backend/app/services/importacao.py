@@ -515,6 +515,11 @@ def _preparar_levantamento(db, r, v, E, A):
                     E.append("a unidade não tem os turnos desta jornada cadastrados")
                     continue
                 disp += [[dd, turno.hora_inicio.strftime("%H:%M"), turno.hora_fim.strftime("%H:%M")] for dd in dias]
+            if j == "MV" and uid:  # manhã e tarde: também pode dar aula de dia inteiro (turmas PFP, 08:00–17:00)
+                tid = r.turno(uid, "I")
+                pfp = db.get(Turno, tid) if tid else None
+                if pfp:
+                    disp += [[dd, pfp.hora_inicio.strftime("%H:%M"), pfp.hora_fim.strftime("%H:%M")] for dd in dias if dd < 5]
     else:
         A.append("turnos de trabalho não informados: cadastre depois (M, V, N, MV ou VN)")
     comps = []
@@ -587,8 +592,12 @@ def _preparar(db: Session, r: Resolvedor, tipo: str, v: dict) -> tuple[dict | No
         if v["turno_codigo"] and uid:
             d["turno_id"] = r.turno(uid, v["turno_codigo"]) or E.append(f"turno '{v['turno_codigo']}' não cadastrado na unidade")
         from app.models import Turno as _Turno
-        from app.services.regras_institucionais import TURNO_SABADO, erro_padrao_dias, oferta_flexivel
+        from app.services.regras_institucionais import TURNO_PFP, TURNO_SABADO, eh_pfp, erro_padrao_dias, erro_turno_pfp, oferta_flexivel
+        if eh_pfp(v["codigo"]) and uid:  # turma PFP: turno integral (08–12 e 13–17)
+            d["turno_id"] = r.turno(uid, TURNO_PFP) or E.append("a unidade não tem o turno integral das turmas PFP (atualização 0011)")
         tn = db.get(_Turno, d["turno_id"]) if d.get("turno_id") else None
+        if (erro_pfp := erro_turno_pfp(eh_pfp(v["codigo"]), tn.codigo if tn else None)):
+            E.append(erro_pfp)
         if tn is not None and tn.codigo == TURNO_SABADO:
             d["dias_possiveis"], d["dias_ead"] = [5], []
         erro = erro_padrao_dias(d.get("dias_possiveis") or [0, 1, 2, 3, 4], d.get("dias_ead") or [], tn.codigo if tn else None,

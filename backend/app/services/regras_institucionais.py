@@ -20,6 +20,18 @@ SABADO = 5
 TURNO_SABADO = "S"
 # ofertas que podem ter menos dias por semana: aperfeiçoamento e atendimentos específicos para empresas
 OFERTAS_FLEXIVEIS = {"APE", "EMP"}
+# turmas PFP: aula o dia todo (08:00–12:00 e 13:00–17:00), no turno integral
+OFERTA_PFP, TURNO_PFP = "PFP", "I"
+
+
+def eh_pfp(codigo: str | None, tipo_oferta: str | None = None) -> bool:
+    return (tipo_oferta or "").strip().upper() == OFERTA_PFP or (codigo or "").split("-")[0].strip().upper() == OFERTA_PFP
+
+
+def erro_turno_pfp(pfp: bool, turno_codigo: str | None) -> str | None:
+    if turno_codigo == TURNO_PFP and not pfp:
+        return "O turno integral (08:00–17:00) é só das turmas PFP: escolha o tipo de oferta PFP ou outro turno."
+    return None
 
 
 # ----------------------------------------------------------------------------- padrão de dias da turma
@@ -98,6 +110,10 @@ def catalogo() -> list[dict]:
     regra("TURMA_FLEXIVEL", "Turmas e dias", "obrigatoria", "Exceção: aperfeiçoamento e empresas",
           "Só atendimentos específicos de aperfeiçoamento e turmas para empresas podem ter menos dias por semana (o treinamento costuma ser curto).",
           ["cadastro de turmas", "importação"], {"tipos_de_oferta": sorted(OFERTAS_FLEXIVEIS)})
+    regra("TURMA_PFP", "Turmas e dias", "obrigatoria", "Turma PFP (dia inteiro)",
+          "Turma PFP tem aula o dia todo: 08:00–12:00 e 13:00–17:00 (8 aulas; almoço 12:00–13:00), no turno integral. Cada dia de aula é um dia inteiro "
+          "da mesma UC. Só instrutores que trabalham manhã e tarde (jornada MV) podem assumir.",
+          ["cadastro de turmas", "importação", "gerador", "validação", "grade"], {"turno": "I", "horario": "08:00–12:00 e 13:00–17:00"})
     regra("TURMA_EAD", "Turmas e dias", "obrigatoria", "Dia EAD (turma 80-20)",
           "O dia EAD (normalmente a sexta) não tem aula presencial: sai dos dias de aula, aparece na grade com a etiqueta EAD e a validação bloqueia aula nele.",
           ["cadastro", "gerador", "validação", "grade", "exportações"])

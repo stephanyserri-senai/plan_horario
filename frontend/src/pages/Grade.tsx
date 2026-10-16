@@ -9,10 +9,10 @@ import AgendaInstrutor from "../components/AgendaInstrutor";
 import { useOpcoes } from "../hooks";
 import { Diferenca } from "./Cadastro";
 
-type Aula = { unidade_id?: number; id: number; versao: number; data: string; inicio: string; fim: string; turma_id: number; turma: string; turma_uc_id: number; uc: string;
+type Aula = { turno_id?: number; unidade_id?: number; id: number; versao: number; data: string; inicio: string; fim: string; turma_id: number; turma: string; turma_uc_id: number; uc: string;
   uc_nome: string; grupo: number | null; instrutor_id: number | null; instrutor: string | null; instrutor_titular?: string | null; instrutor_titular_id?: number | null; ambiente_id: number | null; ambiente: string | null;
   fixa: boolean; origem: string; observacao: string | null; status: string; minutos_aula: number };
-type Periodo = { id: number; turno_id: number; turno: string; ordem: number; inicio: string; fim: string; dias_semana: number[]; excepcional: boolean };
+type Periodo = { id: number; turno_id: number; turno: string; turno_codigo?: string; ordem: number; inicio: string; fim: string; dias_semana: number[]; excepcional: boolean };
 
 const MODOS = [{ id: "turma", rotulo: "Por turma" }, { id: "instrutor", rotulo: "Por instrutor" }, { id: "ambiente", rotulo: "Por ambiente" },
   { id: "turno", rotulo: "Por turno" }, { id: "curso", rotulo: "Por curso" }];
@@ -91,12 +91,18 @@ export default function Grade() {
   // substituição de instrutor por imprevisto: vale também com o horário aprovado ou publicado
   const podeSubstituir = pode("alocacoes.editar") && cenario && ESTADOS_SUBSTITUICAO.includes(cenario.estado);
 
+  // turnos especiais (sábado e integral das turmas PFP) só aparecem quando há aula neles ou a turma/turno escolhido é deles
+  const linhas = useMemo(() => {
+    const comAula = new Set((aulas.dados || []).map((a) => String(a.turno_id)));
+    const turmaAlvo = modo === "turma" && alvo ? (todasOpcoes.find((o: any) => String(o.id) === alvo) as any)?.turno_id : null;
+    return (periodos.dados || []).filter((p) => !["S", "I"].includes(p.turno_codigo || "") || comAula.has(String(p.turno_id))
+      || String(turmaAlvo) === String(p.turno_id) || (modo === "turno" && alvo === String(p.turno_id)));
+  }, [periodos.dados, aulas.dados, modo, alvo, todasOpcoes]);
   const dias = useMemo(() => {
     const ds = new Set<number>();
-    (periodos.dados || []).forEach((p) => p.dias_semana.forEach((d) => ds.add(d)));
+    linhas.forEach((p) => p.dias_semana.forEach((d) => ds.add(d)));
     return [...ds].sort();
-  }, [periodos.dados]);
-  const linhas = periodos.dados || [];
+  }, [linhas]);
   const porCelula = useMemo(() => {
     const m: Record<string, Aula[]> = {};
     (aulas.dados || []).forEach((a) => {
@@ -174,7 +180,7 @@ export default function Grade() {
       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setAulaSel(a); } }}
       title={`${a.turma} · ${a.uc} ${a.uc_nome} · ${a.instrutor || "sem instrutor"}${a.instrutor_titular ? ` (substituindo ${a.instrutor_titular})` : ""} · ${a.ambiente || "sem ambiente"}`}>
       <b>{a.turma}{a.grupo ? ` G${a.grupo}` : ""}</b> {a.uc}<br />
-      <small>{a.inicio}–{a.fim} · {a.instrutor_titular && <span title={`substituindo ${a.instrutor_titular}`}>🔁 </span>}{a.instrutor || <i>sem instrutor</i>} · {a.ambiente || <i>sem sala</i>}</small>
+      <small>{horario(a)} · {a.instrutor_titular && <span title={`substituindo ${a.instrutor_titular}`}>🔁 </span>}{a.instrutor || <i>sem instrutor</i>} · {a.ambiente || <i>sem sala</i>}</small>
       {a.fixa && <span className="tag-fixa" aria-label="aula fixa"> 📌</span>}
     </div>
   );
@@ -184,7 +190,11 @@ export default function Grade() {
     onDragLeave: (e: React.DragEvent) => { if (!(e.currentTarget as Node).contains(e.relatedTarget as Node)) setSoltar(""); },
     onDrop: (e: React.DragEvent) => { e.preventDefault(); setSoltar(""); const id = Number(e.dataTransfer.getData("text/aula")); if (id) mover(id, data, p); },
   } : {};
-  const continuacao = (data: string, p: Periodo) => (aulas.dados || []).some((a) => a.data === data && a.inicio < p.inicio && a.fim > p.inicio);
+  const continuacao = (data: string, p: Periodo) => (aulas.dados || []).some((a) => a.data === data && a.inicio < p.inicio && a.fim > p.inicio
+    && (a.turno_id == null || String(a.turno_id) === String(p.turno_id)));
+  // turma PFP: o dia inteiro tem almoço no meio (08–12 e 13–17)
+  const horario = (a: Aula) => a.inicio < "12:00" && a.fim > "13:00" && linhas.some((p) => p.turno_codigo === "I" && String(p.turno_id) === String(a.turno_id))
+    ? `${a.inicio}–12:00 · 13:00–${a.fim}` : `${a.inicio}–${a.fim}`;
   const livre = (data: string, p: Periodo) => (livres.dados || []).some((l) => l.data === data && l.periodo_id === p.id);
 
   const mover = async (aulaId: number, data: string, p: Periodo) => {

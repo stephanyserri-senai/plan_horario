@@ -7,6 +7,7 @@ Gerado por `scripts/gerar_regras_md.py` a partir de `backend/app/services/regras
 - **Dias da turma** (`TURMA_DIAS`, obrigatória): Toda turma tem 5 dias presenciais (segunda a sexta) ou 4 dias presenciais + 1 dia de EAD (turma 80-20). _Onde: cadastro de turmas, importação, conformidade._
 - **Turma de sábado** (`TURMA_SABADO`, obrigatória): Turma do turno de sábado tem aula presencial só no sábado, das 09:00 às 13:00 (4 aulas). Sábado não é usado por turmas da semana. _Onde: cadastro de turmas, gerador, validação._
 - **Exceção: aperfeiçoamento e empresas** (`TURMA_FLEXIVEL`, obrigatória): Só atendimentos específicos de aperfeiçoamento e turmas para empresas podem ter menos dias por semana (o treinamento costuma ser curto). _Onde: cadastro de turmas, importação._
+- **Turma PFP (dia inteiro)** (`TURMA_PFP`, obrigatória): Turma PFP tem aula o dia todo: 08:00–12:00 e 13:00–17:00 (8 aulas; almoço 12:00–13:00), no turno integral. Cada dia de aula é um dia inteiro da mesma UC. Só instrutores que trabalham manhã e tarde (jornada MV) podem assumir. _Onde: cadastro de turmas, importação, gerador, validação, grade._
 - **Dia EAD (turma 80-20)** (`TURMA_EAD`, obrigatória): O dia EAD (normalmente a sexta) não tem aula presencial: sai dos dias de aula, aparece na grade com a etiqueta EAD e a validação bloqueia aula nele. _Onde: cadastro, gerador, validação, grade, exportações._
 
 ## Aulas e turnos

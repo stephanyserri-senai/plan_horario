@@ -255,7 +255,8 @@ def horarios_livres(cenario_id: int, semana: date, turma_id: int | None = None, 
 @router.get("/periodos")
 def periodos(unidade_id: int, ctx: Contexto = Depends(requer("alocacoes.ler")), db: Session = Depends(get_db)):
     turnos = {t.id: t for t in db.scalars(select(Turno).where(Turno.unidade_id == unidade_id))}
-    return [{"id": p.id, "turno_id": p.turno_id, "turno": turnos[p.turno_id].nome if p.turno_id in turnos else None, "ordem": p.ordem,
+    return [{"id": p.id, "turno_id": p.turno_id, "turno": turnos[p.turno_id].nome if p.turno_id in turnos else None,
+             "turno_codigo": turnos[p.turno_id].codigo if p.turno_id in turnos else None, "ordem": p.ordem,
              "inicio": p.hora_inicio.strftime("%H:%M"), "fim": p.hora_fim.strftime("%H:%M"), "dias_semana": p.dias_semana, "excepcional": p.excepcional}
             for p in db.scalars(select(PeriodoHorario).where(PeriodoHorario.unidade_id == unidade_id, PeriodoHorario.ativo.is_(True))
                                 .order_by(PeriodoHorario.turno_id, PeriodoHorario.ordem))]

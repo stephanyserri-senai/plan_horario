@@ -149,3 +149,39 @@ def test_aceitar_sugestao_aplica_e_registra(db, mundo):
     db.expire_all()
     tipos = {x.tipo for x in db.scalars(select(RegistroDecisao))}
     assert {"sugestao", "rejeicao"} <= tipos
+
+
+def test_turma_pfp_dia_inteiro(db, mundo):
+    """PFP: tipo de oferta próprio, turno integral 08–12 e 13–17, e o dia inteiro é o 'turno inteiro' da UC."""
+    from app.models import Area, DisponibilidadeInstrutor, Turma, TurmaUC
+    m = mundo
+    integral = Turno(unidade_id=m.unidade.id, codigo="I", nome="Integral (PFP)", hora_inicio=time(8), hora_fim=time(17), ordem=5, ativo=True)
+    db.add(integral)
+    db.flush()
+    for k, h in enumerate((8, 9, 10, 11, 13, 14, 15, 16), 1):
+        db.add(PeriodoHorario(unidade_id=m.unidade.id, turno_id=integral.id, ordem=k, hora_inicio=time(h), hora_fim=time(h + 1),
+                              dias_semana=[0, 1, 2, 3, 4], excepcional=False, ativo=True))
+    area = Area(codigo="TSP", nome="TESTE PFP", unidade_id=m.unidade.id, ativo=True)
+    db.add(area)
+    db.flush()
+    m.curso.area_id = area.id
+    db.commit()
+    c = TestClient(app)
+    h = _login(c, "admin@teste", "senha-forte-1")
+    base = {"curso_id": m.curso.id, "matriz_id": m.matriz.id, "qtd_alunos": 20, "data_inicio": "2026-08-03", "data_fim": "2026-12-18"}
+    # PFP: o turno vira o integral sozinho, qualquer que seja o escolhido
+    r = c.post("/api/cadastros/turmas", json={**base, "_numero": "1", "_tipo_oferta": "PFP", "turno_id": m.manha.id}, headers=h)
+    assert r.status_code == 200, r.text
+    assert r.json()["turno_id"] == integral.id and r.json()["codigo"].startswith("PFP-")
+    # turno integral sem ser PFP: não
+    r2 = c.post("/api/cadastros/turmas", json={**base, "_numero": "2", "_tipo_oferta": "HTC", "turno_id": integral.id}, headers=h)
+    assert r2.status_code == 422 and "PFP" in r2.text
+    # uma aula de dia inteiro (8 aulas, 08–17) com instrutor que tem a janela de dia inteiro
+    t = db.get(Turma, r.json()["id"])
+    db.add(DisponibilidadeInstrutor(instrutor_id=m.i1.id, dia_semana=0, hora_inicio=time(8), hora_fim=time(17)))
+    db.commit()
+    tuc = db.scalar(select(TurmaUC).where(TurmaUC.turma_id == t.id, TurmaUC.uc_id == m.uc_a.id))
+    p1 = db.scalar(select(PeriodoHorario).where(PeriodoHorario.turno_id == integral.id, PeriodoHorario.ordem == 1))
+    a, _oc = aloc.criar_aula(db, m.ctx, m.cen.id, aloc.DadosAula(turma_uc_id=tuc.id, data=SEG, periodo_inicio_id=p1.id, num_periodos=8,
+                                                                 instrutor_id=m.i1.id, ambiente_id=m.s1.id))
+    assert (a.inicio.hour, a.fim.hour) == (8, 17)

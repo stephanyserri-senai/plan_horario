@@ -36,14 +36,14 @@ class _Agenda:
     """Turnos ocupados com aula por instrutor (data, turno_id) no cenário."""
 
     def __init__(self, db: Session, cenario_id: int, unidade_id: int, d0: date, d1: date):
-        self.turnos = db.scalars(select(Turno).where(Turno.unidade_id == unidade_id).order_by(Turno.hora_inicio)).all()
+        # turmas PFP (turno integral, 08–17): a aula conta nos turnos de trabalho que ela cobre (manhã e/ou tarde)
+        self.turnos = [t for t in db.scalars(select(Turno).where(Turno.unidade_id == unidade_id).order_by(Turno.hora_inicio)) if t.codigo != "I"]
         self.aulas = defaultdict(set)  # instrutor → {(data, turno_id)}
         self.bloqueados = defaultdict(set)  # licença, afastamento etc. (PL/PJ não: podem ser remanejados)
         self.uc_do_turno = {}          # (instrutor, data, turno_id) → turma_uc_id
         for a in db.scalars(select(Alocacao).where(Alocacao.cenario_id == cenario_id, Alocacao.instrutor_id.isnot(None),
                                                    Alocacao.status != "cancelada", Alocacao.data >= d0, Alocacao.data <= d1)):
-            t = self.turno_de(a.inicio.time())
-            if t:
+            for t in self.turnos_da_aula(a.inicio.time(), a.fim.time(), a.data.weekday()):
                 self.aulas[a.instrutor_id].add((a.data, t.id))
                 self.uc_do_turno[(a.instrutor_id, a.data, t.id)] = a.turma_uc_id
         from datetime import datetime
@@ -58,6 +58,11 @@ class _Agenda:
                         self.bloqueados[b.alvo_id].add((d, t.id))
                 d += timedelta(days=1)
 
+    def turnos_da_aula(self, ini, fim, dia: int | None = None):
+        """Turnos de trabalho que a aula cobre (a de dia inteiro da PFP cobre manhã e tarde). Sábado só tem o turno de sábado."""
+        cands = self.turnos if dia is None else [t for t in self.turnos if (t.codigo == "S") == (dia == 5)]
+        return [t for t in cands if t.hora_inicio < fim and t.hora_fim > ini]
+
     def turno_de(self, h):
         return next((t for t in self.turnos if t.hora_inicio <= h < t.hora_fim), None)
 
@@ -68,8 +73,9 @@ class _Agenda:
 def _livres(db, ag: _Agenda, inst: Instrutor, seg: date, turno: Turno, dias: list[int]) -> list[int]:
     disp = db.scalars(select(DisponibilidadeInstrutor).where(DisponibilidadeInstrutor.instrutor_id == inst.id)).all()
     ocupados = ag.na_semana(inst.id, seg) | ag.bloqueados[inst.id]
+    cobre = [t.id for t in ag.turnos_da_aula(turno.hora_inicio, turno.hora_fim, 5 if turno.codigo == "S" else 0)] or [turno.id]  # PFP: manhã e tarde
     return [k for k in dias if any(x.dia_semana == k and x.hora_inicio <= turno.hora_inicio and x.hora_fim >= turno.hora_fim for x in disp)
-            and (seg + timedelta(days=k), turno.id) not in ocupados]
+            and not any((seg + timedelta(days=k), t) in ocupados for t in cobre)]
 
 
 def _situacao(inst: Instrutor, ocupados: int) -> tuple[int, int, str]:

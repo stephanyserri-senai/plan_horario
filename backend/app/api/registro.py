@@ -79,6 +79,7 @@ TIPOS_OFERTA = [
     {"valor": "AIB", "rotulo": "AIB – Aprendizagem industrial básica"},
     {"valor": "EMP", "rotulo": "EMP – Turma para empresa"},
     {"valor": "QUA", "rotulo": "QUA – Qualificação profissional"},
+    {"valor": "PFP", "rotulo": "PFP – Turma de dia inteiro (08–12 e 13–17)"},
     {"valor": "APE", "rotulo": "APE – Aperfeiçoamento"},
     {"valor": "ESP", "rotulo": "ESP – Especialização técnica"},
 ]
