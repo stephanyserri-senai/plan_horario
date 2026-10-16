@@ -1,8 +1,10 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { CabecalhoGrafico, Colunas, maior, pctBR } from "../components/Graficos";
 import { api, dataBR, qs } from "../api";
-import { Abas, Badge, Card, Pagina, Tabela, useCarregar } from "../components/ui";
+import { Abas, Badge, Card, Modal, Pagina, Tabela, useCarregar } from "../components/ui";
+import { ControleEpis } from "../components/Epis";
+import { rotuloDe, useOpcoes } from "../hooks";
 import { Periodo } from "./Consultas";
 import { Anel, BarraCH, LegendaCH, Medidor, MiniSemana } from "../components/Visual";
 import { BarraOcupacao, GraficoSerie, QuadroInstrutores } from "../components/Ocupacao";
@@ -79,7 +81,6 @@ function QuadroCard() {
   );
 }
 
-const COR = "var(--grafico-1)";
 
 /** Taxas de ocupação no período: semana a semana, por turno, por dia da semana, maiores ocupações e ociosidade. */
 function TaxasDeOcupacao({ inicio, fim, amb, inst, ins }: { inicio: string; fim: string; amb: any; inst: any; ins: any }) {
@@ -104,51 +105,50 @@ function TaxasDeOcupacao({ inicio, fim, amb, inst, ins }: { inicio: string; fim:
   }, [amb]);
   return (
     <div className="ocupacao-quadro">
-      <Card titulo="Ocupação semana a semana" extra={se.dados?.pico && <small className="mudo">semana mais cheia: {se.dados.pico.rotulo} ({se.dados.pico.instrutores_pct}% dos instrutores)</small>}>
-        {se.dados ? <GraficoSerie dados={se.dados} /> : <p role="status">Calculando…</p>}
+      <Card className="graf-card">
+        <CabecalhoGrafico titulo="Ocupação semana a semana" sub="instrutores: % da jornada com aula · salas: % do horário com aula; à direita, a previsão pela grade gerada"
+          destaque={se.dados?.pico && <><small>semana mais cheia</small><b>{pctBR(se.dados.pico.instrutores_pct)}</b><small>{se.dados.pico.rotulo}</small></>} />
+        {se.dados ? <GraficoSerie dados={se.dados} altura={280} /> : <p role="status">Calculando…</p>}
       </Card>
       {amb && <div className="grid-2">
-        <Card titulo="Salas: ocupação por turno" extra={!unidade && <small className="mudo">Beira Mar e Porto somadas</small>}>
-          <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={porTurno} margin={{ bottom: 8 }}><CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="turno" interval={0} /><YAxis unit="%" domain={[0, 100]} /><Tooltip />
-              <Bar dataKey="taxa_ocupacao_pct" name="Ocupação %" fill={COR} /></BarChart>
-          </ResponsiveContainer>
+        <Card className="graf-card">
+          <CabecalhoGrafico titulo="Salas: ocupação por turno" sub={!unidade ? "Beira Mar e Porto somadas · a PFP conta na manhã ou na tarde" : "a PFP conta na manhã ou na tarde"}
+            destaque={maior(porTurno, "turno", "taxa_ocupacao_pct")} />
+          <Colunas dados={porTurno} x="turno" y="taxa_ocupacao_pct" nome="Ocupação do horário" />
         </Card>
-        <Card titulo="Salas: ocupação por dia da semana">
-          <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={amb.por_dia_semana}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="dia" /><YAxis unit="%" domain={[0, 100]} /><Tooltip />
-              <Bar dataKey="taxa_ocupacao_pct" name="Ocupação %" fill={COR} /></BarChart>
-          </ResponsiveContainer>
+        <Card className="graf-card">
+          <CabecalhoGrafico titulo="Salas: ocupação por dia da semana" sub="horas com aula ÷ horas disponíveis das salas"
+            destaque={maior(amb.por_dia_semana, "dia", "taxa_ocupacao_pct")} />
+          <Colunas dados={amb.por_dia_semana} x="dia" y="taxa_ocupacao_pct" nome="Ocupação do horário"
+            extraTooltip={(l: any) => <div className="tt-nota">{Math.round(l.horas_ocupadas)} de {Math.round(l.horas_disponiveis)} h</div>} />
         </Card>
       </div>}
-      {rk.dados && <Card titulo="Ocupação por área" extra={<small className="mudo">instrutor conta na área principal; horas dadas em turmas de outra área contam nela</small>}>
+      {rk.dados && <Card className="graf-card">
+        <CabecalhoGrafico titulo="Ocupação por área" sub="o instrutor conta na área principal; as horas dadas em turmas de outra área contam nela" />
         <div className="grid-2">
           <div>
-            <h3 className="subtitulo">Instrutores</h3>
-            <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={rk.dados.areas} margin={{ top: 8, right: 8 }}><CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="area" interval={0} angle={-35} textAnchor="end" height={90} tick={{ fontSize: 11 }} /><YAxis unit="%" domain={[0, 100]} /><Tooltip />
-                <Bar dataKey="ocupacao_pct" name="Ocupação da jornada %" fill={COR} /></BarChart>
-            </ResponsiveContainer>
+            <div className="graf-sub"><span className="graf-marca" style={{ background: "var(--grafico-1)" }} /> Instrutores <small className="mudo">% da jornada com aula</small>
+              <span className="graf-destaque-mini">{maior(rk.dados.areas, "area", "ocupacao_pct")}</span></div>
+            <Colunas dados={rk.dados.areas} x="area" y="ocupacao_pct" nome="Ocupação da jornada" altura={270}
+              extraTooltip={(l: any) => <div className="tt-nota">{l.instrutores} instrutor(es){l.instrutores_outras_areas ? ` +${l.instrutores_outras_areas} de outras áreas` : ""} · {l.aula_media_semana_h} de {l.capacidade_semana_h} h/sem</div>} />
+            <details className="tabela-dados"><summary>Ver os números (tabela)</summary>
             <Tabela colunas={[{ chave: "area", rotulo: "Área" },
               { chave: "instrutores", rotulo: "Instrutores", alinhar: "dir", render: (l: any) => <>{l.instrutores}{l.instrutores_outras_areas > 0 &&
                 <small className="mudo" title="instrutores de outra área com aulas em turmas desta área"> +{l.instrutores_outras_areas} de outras</small>}</> },
               { chave: "aula_media_semana_h", rotulo: "Aula (h/sem)", alinhar: "dir" }, { chave: "capacidade_semana_h", rotulo: "Jornada (h/sem)", alinhar: "dir" },
               { chave: "ocupacao_pct", rotulo: "Ocupação", render: (l: any) => <BarraOcupacao pct={l.ocupacao_pct} /> }]}
-              linhas={rk.dados.areas} chave={(l: any) => l.area} />
+              linhas={rk.dados.areas} chave={(l: any) => l.area} /></details>
           </div>
           <div>
-            <h3 className="subtitulo">Salas e laboratórios</h3>
-            <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={rk.dados.areas_salas || []} margin={{ top: 8, right: 8 }}><CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="area" interval={0} angle={-35} textAnchor="end" height={90} tick={{ fontSize: 11 }} /><YAxis unit="%" domain={[0, 100]} /><Tooltip />
-                <Bar dataKey="ocupacao_pct" name="Ocupação do horário %" fill="var(--grafico-2)" /></BarChart>
-            </ResponsiveContainer>
+            <div className="graf-sub"><span className="graf-marca" style={{ background: "var(--grafico-2)" }} /> Salas e laboratórios <small className="mudo">% do horário com aula</small>
+              <span className="graf-destaque-mini">{maior(rk.dados.areas_salas || [], "area", "ocupacao_pct")}</span></div>
+            <Colunas dados={rk.dados.areas_salas || []} x="area" y="ocupacao_pct" nome="Ocupação do horário" cor="var(--grafico-2)" altura={270}
+              extraTooltip={(l: any) => <div className="tt-nota">{l.salas} sala(s) · {Math.round(l.horas_ocupadas)} h ocupadas{l.area === "Uso comum" ? " · salas de todas as áreas" : ""}</div>} />
+            <details className="tabela-dados"><summary>Ver os números (tabela)</summary>
             <Tabela colunas={[{ chave: "area", rotulo: "Área", render: (l: any) => l.area === "Uso comum" ? <span title="salas que atendem todas as áreas">Uso comum (todas as áreas)</span> : l.area }, { chave: "salas", rotulo: "Salas", alinhar: "dir" },
               { chave: "horas_ocupadas", rotulo: "Ocupadas (h)", alinhar: "dir", render: (l: any) => Math.round(l.horas_ocupadas) },
               { chave: "ocupacao_pct", rotulo: "Ocupação", render: (l: any) => <BarraOcupacao pct={l.ocupacao_pct} /> }]}
-              linhas={rk.dados.areas_salas || []} chave={(l: any) => l.area} />
+              linhas={rk.dados.areas_salas || []} chave={(l: any) => l.area} /></details>
           </div>
         </div>
       </Card>}
@@ -173,13 +173,11 @@ function TaxasDeOcupacao({ inicio, fim, amb, inst, ins }: { inicio: string; fim:
             { chave: "ocupacao_pct", rotulo: "Ocupação", render: (l: any) => <BarraOcupacao pct={l.ocupacao_pct} /> }]} linhas={rk.dados.salas_menos.slice(0, 8)} chave={(l: any) => l.id} />
         </Card>
       </div>}
-      {inst?.evolucao_versoes?.length >= 2 && <Card titulo="Evolução por versão do semestre">
-        <ResponsiveContainer width="100%" height={220}>
-          <LineChart data={inst.evolucao_versoes.map((v: any) => ({ versao: `v${v.versao}`, ocupacao: v.indicadores?.taxa_ocupacao_ambientes_pct, horas: v.indicadores?.horas_programadas }))}>
-            <CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="versao" /><YAxis /><Tooltip />
-            <Line dataKey="ocupacao" name="Ocupação das salas %" stroke="var(--grafico-1)" /><Line dataKey="horas" name="Horas programadas" stroke="var(--grafico-2)" />
-          </LineChart>
-        </ResponsiveContainer>
+      {inst?.evolucao_versoes?.length >= 2 && <Card className="graf-card">
+        <CabecalhoGrafico titulo="Evolução por versão do semestre" sub="ocupação das salas em cada versão aprovada ou publicada" />
+        <Colunas dados={inst.evolucao_versoes.map((v: any) => ({ versao: `v${v.versao}`, ocupacao: v.indicadores?.taxa_ocupacao_ambientes_pct || 0, horas: v.indicadores?.horas_programadas }))}
+          x="versao" y="ocupacao" nome="Ocupação das salas" referencias={false} altura={200}
+          extraTooltip={(l: any) => l.horas != null && <div className="tt-nota">{Math.round(l.horas)} h programadas</div>} />
       </Card>}
       {amb && ins && <p className="sub">{amb.formula}. {ins.formula}.</p>}
     </div>
@@ -196,6 +194,9 @@ export default function Acompanhamento() {
 
 function PorTurma({ itens, filtro, so }: { itens: any[]; filtro: (t: string) => boolean; so: boolean }) {
   const nav = useNavigate();
+  const [aberta, setAberta] = useState<any | null>(null);
+  const epis = useCarregar<any>(() => api.get("/api/epis-turmas").catch(() => null), [aberta ? 0 : 1]);
+  const episDe = (id: number) => (epis.dados?.itens || []).filter((e: any) => e.turma_id === id);
   const turmas = useMemo(() => {
     const m = new Map<number, any>();
     for (const i of itens) {
@@ -211,13 +212,15 @@ function PorTurma({ itens, filtro, so }: { itens: any[]; filtro: (t: string) => 
   return (
     <div className="grade-cards">
       {lista.map((t) => (
-        <Card key={t.id} className="card-turma" titulo={<>{t.codigo} <small className="mudo">{t.nome}</small></>}
-          extra={<button className="btn-link" onClick={() => nav(`/grade?turma=${t.id}`)}>Ver grade ›</button>}>
+        <Card key={t.id} className="card-turma" titulo={<button className="titulo-link" onClick={() => setAberta(t)}>{t.codigo} <small className="mudo">{t.nome}</small></button>}
+          extra={<span className="acoes-linha"><button className="btn btn-pequeno" onClick={() => setAberta(t)}>Detalhes</button>
+            <button className="btn-link" onClick={() => nav(`/grade?turma=${t.id}`)}>Ver grade ›</button></span>}>
           <BarraCH total={t.total} realizada={t.realizada} programada={t.programada} />
           <div className="chips-status">
             <span>{t.ucs.length} UC(s)</span>
             {t.riscoAlto > 0 && <Badge tipo="bloqueio">{t.riscoAlto} em risco alto</Badge>}
             {t.riscoMedio > 0 && <Badge tipo="alerta">{t.riscoMedio} em risco médio</Badge>}
+            <ChipEpis itens={episDe(t.id)} />
           </div>
           <details open={t.ucs.length <= 6}>
             <summary>Unidades curriculares</summary>
@@ -237,6 +240,83 @@ function PorTurma({ itens, filtro, so }: { itens: any[]; filtro: (t: string) => 
           </details>
         </Card>
       ))}
+      <Modal titulo={aberta ? `${aberta.codigo} — ${aberta.nome}` : ""} aberto={!!aberta} fechar={() => setAberta(null)} largo>
+        {aberta && <DetalheTurma t={aberta} />}
+      </Modal>
+    </div>
+  );
+}
+
+/** Resumo dos EPIs da turma no cartão: entregues ou o que falta (com prazo vencido em destaque). */
+function ChipEpis({ itens }: { itens: any[] }) {
+  if (!itens.length) return null;
+  const falta = itens.filter((e) => !e.entregue);
+  const atraso = falta.filter((e) => e.situacao === "atrasado").length;
+  if (!falta.length) return <Badge tipo="ok">🦺 EPIs entregues</Badge>;
+  return <Badge tipo={atraso ? "bloqueio" : "alerta"}>🦺 {falta.length} EPI(s) a entregar{atraso ? ` · ${atraso} atrasado(s)` : ""}</Badge>;
+}
+
+const DIAS_TXT = ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"];
+
+/** Tudo da turma num lugar: dados gerais, andamento das UCs, instrutores e EPIs (com o controle de entrega). */
+function DetalheTurma({ t }: { t: any }) {
+  const nav = useNavigate();
+  const [aba, setAba] = useState("ucs");
+  const cad = useCarregar<any>(() => api.get(`/api/cadastros/turmas/${t.id}`), [t.id]);
+  const turnos = useOpcoes("turnos");
+  const cursos = useOpcoes("cursos");
+  const epis = useCarregar<any>(() => api.get(`/api/epis-turmas?turma_id=${t.id}`), [t.id, aba]);
+  const d = cad.dados;
+  const instrutores = useMemo(() => {
+    const m = new Map<string, string[]>();
+    for (const u of t.ucs) for (const n of u.instrutores || []) m.set(n, [...(m.get(n) || []), u.uc_codigo]);
+    return [...m.entries()].map(([nome, ucs]) => ({ nome, ucs }));
+  }, [t]);
+  const semInstrutor = t.ucs.filter((u: any) => !u.instrutores?.length);
+  const ep = epis.dados?.itens || [];
+  const epFalta = ep.filter((e: any) => !e.entregue);
+  const pct = t.total ? Math.round((100 * (t.realizada + t.programada)) / t.total) : 0;
+  return (
+    <div className="detalhe-turma">
+      {d && <div className="dt-dados">
+        <div><small>Curso</small><b>{rotuloDe(cursos, d.curso_id)}</b></div>
+        <div><small>Turno</small><b>{rotuloDe(turnos, d.turno_id)}</b></div>
+        <div><small>Dias de aula</small><b>{(d.dias_possiveis || []).map((x: number) => DIAS_TXT[x]).join(", ")}{d.dias_ead?.length ? ` · EAD ${d.dias_ead.map((x: number) => DIAS_TXT[x]).join(", ")}` : ""}</b></div>
+        <div><small>Período</small><b>{dataBR(d.data_inicio)} a {dataBR(d.data_fim)}</b></div>
+        <div><small>Alunos</small><b>{d.qtd_alunos}</b></div>
+      </div>}
+      <div className="dt-kpis">
+        <div><b>{n1(t.realizada)} h</b><small>já realizadas</small></div>
+        <div><b>{pct}%</b><small>da carga com horário</small></div>
+        <div className={t.restante > 0.01 ? "tom-alerta" : "tom-ok"}><b>{n1(t.restante)} h</b><small>sem horário</small></div>
+        <div className={t.riscoAlto ? "tom-erro" : t.riscoMedio ? "tom-alerta" : "tom-ok"}><b>{t.riscoAlto + t.riscoMedio}</b><small>UC(s) em risco de prazo</small></div>
+        <div className={epFalta.some((e: any) => e.situacao === "atrasado") ? "tom-erro" : epFalta.length ? "tom-alerta" : "tom-ok"}>
+          <b>{ep.length ? `${ep.length - epFalta.length}/${ep.length}` : "—"}</b><small>EPIs entregues</small></div>
+      </div>
+      <BarraCH total={t.total} realizada={t.realizada} programada={t.programada} />
+      <Abas abas={[{ id: "ucs", rotulo: `Unidades curriculares (${t.ucs.length})` }, { id: "instrutores", rotulo: `Instrutores (${instrutores.length})` },
+        { id: "epis", rotulo: `🦺 EPIs (${ep.length})` }]} ativa={aba} mudar={setAba} />
+      {aba === "ucs" && <Tabela linhas={t.ucs} chave={(u: any) => u.turma_uc_id} colunas={[
+        { chave: "uc", rotulo: "UC", render: (u: any) => <><b>{u.uc_codigo}</b> {u.uc_nome}</> },
+        { chave: "and", rotulo: "Andamento", render: (u: any) => <BarraCH compacta total={u.total_h} realizada={u.realizada_h} programada={u.programada_h} /> },
+        { chave: "falta", rotulo: "Falta", alinhar: "dir", render: (u: any) => u.restante_h > 0.01 ? <b className="falta-txt">{n1(u.restante_h)} h</b> : "✔" },
+        { chave: "inst", rotulo: "Instrutor(es)", render: (u: any) => u.instrutores?.length ? u.instrutores.join(", ")
+          : u.sem_instrutor_elegivel ? <span className="falta-txt">sem instrutor habilitado</span> : <span className="mudo">a definir</span> },
+        { chave: "prazo", rotulo: "Prazo", render: (u: any) => dataBR(u.data_limite) },
+        { chave: "risco", rotulo: "Situação", render: (u: any) => <Badge tipo={RISCO[u.risco_atraso]?.[0] || "info"}>{RISCO[u.risco_atraso]?.[1] || u.risco_atraso}</Badge> },
+      ]} />}
+      {aba === "instrutores" && <>
+        <Tabela linhas={instrutores} chave={(i: any) => i.nome} vazio="Nenhum instrutor com aula nesta turma ainda." colunas={[
+          { chave: "nome", rotulo: "Instrutor", render: (i: any) => <b>{i.nome}</b> },
+          { chave: "ucs", rotulo: "UCs nesta turma", render: (i: any) => <span className="chips">{i.ucs.map((c: string) => <span key={c} className="chip chip-neutro">{c}</span>)}</span> },
+        ]} />
+        {semInstrutor.length > 0 && <p className="sub">Sem instrutor definido: {semInstrutor.map((u: any) => u.uc_codigo).join(", ")}.</p>}
+      </>}
+      {aba === "epis" && <ControleEpis turmaId={t.id} />}
+      <div className="rodape-modal">
+        <button className="btn" onClick={() => nav(`/cadastros/turmas?id=${t.id}`)}>Cadastro da turma</button>
+        <button className="btn btn-primario" onClick={() => nav(`/grade?turma=${t.id}`)}>Ver a grade da turma ›</button>
+      </div>
     </div>
   );
 }

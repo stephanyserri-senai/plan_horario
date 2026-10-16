@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { CartesianGrid, Legend, Line, LineChart, ReferenceArea, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Area, CartesianGrid, ComposedChart, Legend, Line, ReferenceArea, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { CartaoTooltip, EIXO, GRADE } from "./Graficos";
 import { api, qs } from "../api";
 import { useApp } from "../contexto";
 import { Badge, Tabela, useCarregar } from "./ui";
@@ -43,26 +44,41 @@ export function GraficoSerie({ dados, altura = 260, comparar = false }: { dados:
   return (
     <>
       <ResponsiveContainer width="100%" height={altura}>
-        <LineChart data={pts} margin={{ top: 8, right: 72, bottom: 4, left: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="var(--borda)" vertical={false} />
-          <XAxis dataKey="rotulo" tick={{ fontSize: 11, fill: "var(--mudo)" }} interval="preserveStartEnd" />
-          <YAxis unit="%" domain={[0, (max: number) => Math.max(100, Math.ceil(max / 10) * 10)]} tick={{ fontSize: 11, fill: "var(--mudo)" }} width={44} />
-          {futuras.length > 0 && <ReferenceArea x1={futuras[0].rotulo} x2={futuras[futuras.length - 1].rotulo} fill="var(--fundo)" fillOpacity={0.9}
-            label={{ value: "previsão (grade gerada)", position: "insideTopRight", fontSize: 11, fill: "var(--mudo)" }} />}
-          <ReferenceLine y={80} stroke="var(--ok)" strokeDasharray="4 4" label={{ value: "ideal 80%", position: "right", fontSize: 11, fill: "var(--mudo)" }} />
-          <ReferenceLine y={90} stroke="var(--erro)" strokeDasharray="4 4" label={{ value: "teto 90%", position: "right", fontSize: 11, fill: "var(--mudo)" }} />
-          <Tooltip formatter={pct} labelFormatter={(l) => `Semana de ${l}`} />
-          <Legend wrapperStyle={{ fontSize: 12 }} />
+        <ComposedChart data={pts} margin={{ top: 12, right: 72, bottom: 4, left: -8 }}>
+          <defs>
+            <linearGradient id="wash-1" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--grafico-1)" stopOpacity={0.18} /><stop offset="100%" stopColor="var(--grafico-1)" stopOpacity={0.02} /></linearGradient>
+            <linearGradient id="wash-2" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--grafico-2)" stopOpacity={0.14} /><stop offset="100%" stopColor="var(--grafico-2)" stopOpacity={0.02} /></linearGradient>
+          </defs>
+          <CartesianGrid {...GRADE} />
+          <XAxis dataKey="rotulo" tick={EIXO} tickLine={false} axisLine={{ stroke: "var(--borda)" }} interval="preserveStartEnd" minTickGap={18} />
+          <YAxis domain={[0, (max: number) => Math.max(100, Math.ceil(max / 10) * 10)]} tickFormatter={(v) => `${v}%`} tick={EIXO} tickLine={false} axisLine={false} width={46} />
+          {futuras.length > 0 && <ReferenceArea x1={futuras[0].rotulo} x2={futuras[futuras.length - 1].rotulo} fill="var(--fundo)" fillOpacity={0.8}
+            label={{ value: "previsão pela grade gerada", position: "insideTopRight", fontSize: 11, fill: "var(--mudo)" }} />}
+          <ReferenceLine y={80} stroke="var(--ok)" strokeDasharray="4 4" strokeOpacity={0.8} label={{ value: "ideal 80%", position: "right", fontSize: 10, fill: "var(--mudo)" }} />
+          <ReferenceLine y={90} stroke="var(--erro)" strokeDasharray="4 4" strokeOpacity={0.8} label={{ value: "teto 90%", position: "right", fontSize: 10, fill: "var(--mudo)" }} />
+          <Tooltip cursor={{ stroke: "var(--mudo)", strokeWidth: 1 }} content={<CartaoTooltip formatar={pct} titulo={(l: any) => `Semana de ${l}`}
+            extra={(p: any) => <div className="tt-nota">{p?.aulas_h != null ? `${p.aulas_h} h de aula` : ""}{p?.previsao ? " · previsão" : ""}</div>} />} />
+          <Legend wrapperStyle={{ fontSize: 12, paddingTop: 6 }} content={() => <div className="graf-legenda">
+            {(comparar ? [["var(--grafico-1)", "Instrutores com a nova turma"], ["var(--grafico-2)", "Salas com a nova turma"]]
+              : [["var(--grafico-1)", "Instrutores (% da jornada)"], ["var(--grafico-2)", "Salas (% do horário)"]]).map(([c, t]) =>
+              <span key={t}><i style={{ background: c }} />{t}</span>)}
+            {comparar && <span><i className="tracejado" />hoje (sem a turma)</span>}</div>} />
           {comparar ? <>
-            <Line type="monotone" dataKey="instrutores_pct" name="Instrutores hoje" stroke="var(--grafico-1)" strokeWidth={1.5} strokeDasharray="5 4" dot={false} />
-            <Line type="monotone" dataKey="instrutores_pct_com" name="Instrutores com a nova turma" stroke="var(--grafico-1)" strokeWidth={2.5} dot={{ r: 3 }} activeDot={{ r: 5 }} />
-            <Line type="monotone" dataKey="salas_pct" name="Salas hoje" stroke="var(--grafico-2)" strokeWidth={1.5} strokeDasharray="5 4" dot={false} />
-            <Line type="monotone" dataKey="salas_pct_com" name="Salas com a nova turma" stroke="var(--grafico-2)" strokeWidth={2.5} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+            <Line type="monotone" dataKey="instrutores_pct" name="Instrutores hoje" stroke="var(--grafico-1)" strokeWidth={1.5} strokeDasharray="5 4" dot={false} isAnimationActive={false} />
+            <Line type="monotone" dataKey="instrutores_pct_com" name="Instrutores com a nova turma" stroke="var(--grafico-1)" strokeWidth={2} strokeLinecap="round"
+              dot={{ r: 4, strokeWidth: 2, stroke: "var(--superficie)", fill: "var(--grafico-1)" }} activeDot={{ r: 6, strokeWidth: 2, stroke: "var(--superficie)" }} isAnimationActive={false} />
+            <Line type="monotone" dataKey="salas_pct" name="Salas hoje" stroke="var(--grafico-2)" strokeWidth={1.5} strokeDasharray="5 4" dot={false} isAnimationActive={false} />
+            <Line type="monotone" dataKey="salas_pct_com" name="Salas com a nova turma" stroke="var(--grafico-2)" strokeWidth={2} strokeLinecap="round"
+              dot={{ r: 4, strokeWidth: 2, stroke: "var(--superficie)", fill: "var(--grafico-2)" }} activeDot={{ r: 6, strokeWidth: 2, stroke: "var(--superficie)" }} isAnimationActive={false} />
           </> : <>
-            <Line type="monotone" dataKey="instrutores_pct" name="Instrutores (% da jornada)" stroke="var(--grafico-1)" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
-            <Line type="monotone" dataKey="salas_pct" name="Salas (% do horário)" stroke="var(--grafico-2)" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+            <Area type="monotone" dataKey="instrutores_pct" stroke="none" fill="url(#wash-1)" legendType="none" tooltipType="none" isAnimationActive={false} />
+            <Area type="monotone" dataKey="salas_pct" stroke="none" fill="url(#wash-2)" legendType="none" tooltipType="none" isAnimationActive={false} />
+            <Line type="monotone" dataKey="instrutores_pct" name="Instrutores (% da jornada)" stroke="var(--grafico-1)" strokeWidth={2} strokeLinecap="round"
+              dot={{ r: 4, strokeWidth: 2, stroke: "var(--superficie)", fill: "var(--grafico-1)" }} activeDot={{ r: 6, strokeWidth: 2, stroke: "var(--superficie)" }} isAnimationActive={false} />
+            <Line type="monotone" dataKey="salas_pct" name="Salas (% do horário)" stroke="var(--grafico-2)" strokeWidth={2} strokeLinecap="round"
+              dot={{ r: 4, strokeWidth: 2, stroke: "var(--superficie)", fill: "var(--grafico-2)" }} activeDot={{ r: 6, strokeWidth: 2, stroke: "var(--superficie)" }} isAnimationActive={false} />
           </>}
-        </LineChart>
+        </ComposedChart>
       </ResponsiveContainer>
       <details className="tabela-dados"><summary>Ver os números (tabela)</summary>
         <Tabela colunas={[{ chave: "rotulo", rotulo: "Semana de" }, { chave: "instrutores_pct", rotulo: comparar ? "Instrutores hoje (%)" : "Instrutores (%)", alinhar: "dir" },
