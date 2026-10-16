@@ -1,5 +1,4 @@
-import { useState } from "react";
-import { Link } from "react-router-dom";
+import { useMemo, useState } from "react";
 import { api, dataBR, qs } from "../api";
 import { Badge, Tabela, useCarregar } from "./ui";
 import { useApp } from "../contexto";
@@ -127,6 +126,42 @@ export function ControleEpis({ turmaId, cursoId, situacaoInicial = "", versao = 
   const d = r.dados;
   const itens = (d?.itens || []).filter((i: any) => (!situacao || (situacao === "abertos" ? i.situacao !== "entregue" : i.situacao === situacao))
     && (!busca || `${i.turma} ${i.nome} ${i.curso || ""}`.toLowerCase().includes(busca.toLowerCase())));
+  const [abertos, setAbertos] = useState<Set<number>>(new Set());
+  const alternar = (id: number) => setAbertos((a) => { const n = new Set(a); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  // uma linha por turma (as com prazo vencido primeiro); só os EPIs que passam no filtro aparecem ao abrir
+  const ordem: Record<string, number> = { atrasado: 0, proximo: 1, pendente: 2, providenciado: 3, entregue: 4 };
+  const grupos = useMemo(() => {
+    const m = new Map<number, any>();
+    for (const i of d?.itens || []) {
+      const g = m.get(i.turma_id) || { turma_id: i.turma_id, turma: i.turma, curso: i.curso, alunos: i.alunos, inicio: i.inicio_turma, todos: [], itens: [] };
+      g.todos.push(i);
+      m.set(i.turma_id, g);
+    }
+    for (const i of itens) m.get(i.turma_id)?.itens.push(i);
+    return [...m.values()].filter((g) => g.itens.length)
+      .sort((a, b) => Math.min(...a.todos.map((x: any) => ordem[x.situacao])) - Math.min(...b.todos.map((x: any) => ordem[x.situacao])) || a.turma.localeCompare(b.turma));
+  }, [d, itens]);
+  const colunas = [
+    { chave: "nome", rotulo: "EPI", render: (i: any) => <><b>{i.nome}</b>{i.avulso && <> <span className="chip chip-neutro" title="incluído à mão nesta turma (não vem do curso)">avulso</span>
+      {editavel && <button className="btn-link" onClick={() => excluir(i)}>excluir</button>}</>}</> },
+    { chave: "quantidade", rotulo: "Qtd.", alinhar: "dir" as const },
+    { chave: "prazo", rotulo: "Prazo", render: (i: any) => editavel && !i.entregue
+      ? <input type="date" value={i.prazo || ""} aria-label={`Prazo de ${i.nome}`} onChange={(e) => marcar(i, { prazo: e.target.value })} />
+      : dataBR(i.prazo) },
+    { chave: "situacao", rotulo: "Situação", render: (i: any) => <><Badge tipo={SIT[i.situacao][0]}>{i.situacao_rotulo}</Badge>
+      {!i.entregue && i.dias_para_prazo != null && <small className="mudo"> {i.dias_para_prazo < 0 ? `${-i.dias_para_prazo} dia(s) de atraso` : i.dias_para_prazo === 0 ? "vence hoje" : `faltam ${i.dias_para_prazo} dia(s)`}</small>}</> },
+    { chave: "providenciado", rotulo: "Comprado / separado", render: (i: any) => <label className="check-epi">
+      <input type="checkbox" checked={i.providenciado} disabled={!editavel} onChange={(e) => marcar(i, { providenciado: e.target.checked })} />
+      {i.providenciado_em ? <small className="mudo">{dataBR(i.providenciado_em.slice(0, 10))}</small> : <small className="mudo">não</small>}</label> },
+    { chave: "entregue", rotulo: "Entregue à turma", render: (i: any) => <label className="check-epi">
+      <input type="checkbox" checked={i.entregue} disabled={!editavel} onChange={(e) => marcar(i, { entregue: e.target.checked })} />
+      {i.entregue_em ? <small className="mudo">{dataBR(i.entregue_em.slice(0, 10))}</small> : <small className="mudo">não</small>}</label> },
+    { chave: "observacao", rotulo: "Observação", render: (i: any) => editavel
+      ? <input className="obs-epi" defaultValue={i.observacao || ""} placeholder="ex.: pedido de compra 123" aria-label={`Observação de ${i.nome}`}
+          onBlur={(e) => e.target.value !== (i.observacao || "") && marcar(i, { observacao: e.target.value })} />
+      : i.observacao || <span className="mudo">—</span> },
+  ];
+  const tabela = (linhas: any[]) => <Tabela chave={(i: any) => i.id} linhas={linhas} colunas={colunas} />;
   const contagem = (s: string) => (d?.itens || []).filter((i: any) => (s === "abertos" ? i.situacao !== "entregue" : i.situacao === s)).length;
   return (
     <div className="controle-epis">
@@ -157,30 +192,34 @@ export function ControleEpis({ turmaId, cursoId, situacaoInicial = "", versao = 
       </div>}
       {r.erro && <div className="erro-box">{r.erro}</div>}
       {r.carregando && !d && <p role="status">Carregando…</p>}
-      {d && <Tabela chave={(i: any) => i.id} linhas={itens}
-        vazio={d.itens.length ? "Nada nesta situação." : "Nenhum EPI para controlar. Use “+ Incluir EPI” ou cadastre os EPIs no curso (Cadastros → Cursos, matrizes e UCs)."}
-        colunas={[
-          ...(turmaId ? [] : [{ chave: "turma", rotulo: "Turma", render: (i: any) => <><Link to={`/grade?turma=${i.turma_id}`}><b>{i.turma}</b></Link>
-            <small className="mudo"> {i.alunos} aluno(s) · início {dataBR(i.inicio_turma)}</small></> }]),
-          { chave: "nome", rotulo: "EPI", render: (i: any) => <><b>{i.nome}</b>{i.avulso && <> <span className="chip chip-neutro" title="incluído à mão nesta turma (não vem do curso)">avulso</span>
-            {editavel && <button className="btn-link" onClick={() => excluir(i)}>excluir</button>}</>}</> },
-          { chave: "quantidade", rotulo: "Qtd.", alinhar: "dir" as const },
-          { chave: "prazo", rotulo: "Prazo", render: (i: any) => editavel && !i.entregue
-            ? <input type="date" value={i.prazo || ""} aria-label={`Prazo de ${i.nome}`} onChange={(e) => marcar(i, { prazo: e.target.value })} />
-            : dataBR(i.prazo) },
-          { chave: "situacao", rotulo: "Situação", render: (i: any) => <><Badge tipo={SIT[i.situacao][0]}>{i.situacao_rotulo}</Badge>
-            {!i.entregue && i.dias_para_prazo != null && <small className="mudo"> {i.dias_para_prazo < 0 ? `${-i.dias_para_prazo} dia(s) de atraso` : i.dias_para_prazo === 0 ? "vence hoje" : `faltam ${i.dias_para_prazo} dia(s)`}</small>}</> },
-          { chave: "providenciado", rotulo: "Comprado / separado", render: (i: any) => <label className="check-epi">
-            <input type="checkbox" checked={i.providenciado} disabled={!editavel} onChange={(e) => marcar(i, { providenciado: e.target.checked })} />
-            {i.providenciado_em ? <small className="mudo">{dataBR(i.providenciado_em.slice(0, 10))}</small> : <small className="mudo">não</small>}</label> },
-          { chave: "entregue", rotulo: "Entregue à turma", render: (i: any) => <label className="check-epi">
-            <input type="checkbox" checked={i.entregue} disabled={!editavel} onChange={(e) => marcar(i, { entregue: e.target.checked })} />
-            {i.entregue_em ? <small className="mudo">{dataBR(i.entregue_em.slice(0, 10))}</small> : <small className="mudo">não</small>}</label> },
-          { chave: "observacao", rotulo: "Observação", render: (i: any) => editavel
-            ? <input className="obs-epi" defaultValue={i.observacao || ""} placeholder="ex.: pedido de compra 123" aria-label={`Observação de ${i.nome}`}
-                onBlur={(e) => e.target.value !== (i.observacao || "") && marcar(i, { observacao: e.target.value })} />
-            : i.observacao || <span className="mudo">—</span> },
-        ]} />}
+      {d && d.itens.length === 0 && <p className="vazio-painel">Nenhum EPI para controlar. Use “+ Incluir EPI” ou monte a lista de EPIs do curso.</p>}
+      {d && d.itens.length > 0 && itens.length === 0 && <p className="sub">Nada nesta situação.</p>}
+      {d && itens.length > 0 && (turmaId ? tabela(itens) : <div className="epi-turmas">
+        {grupos.map((g) => {
+          const aberto = abertos.has(g.turma_id);
+          const pior = g.todos.find((x: any) => x.situacao === "atrasado") ? "atrasado" : g.todos.find((x: any) => x.situacao === "proximo") ? "proximo"
+            : g.todos.every((x: any) => x.entregue) ? "entregue" : g.todos.some((x: any) => x.providenciado && !x.entregue) ? "providenciado" : "pendente";
+          const entregues = g.todos.filter((x: any) => x.entregue).length;
+          const proximo = g.todos.filter((x: any) => !x.entregue && x.prazo).map((x: any) => x.prazo).sort()[0];
+          return <div key={g.turma_id} className={`epi-turma ${aberto ? "aberto" : ""}`}>
+            <button className="epi-turma-cab" aria-expanded={aberto} onClick={() => alternar(g.turma_id)}>
+              <span className="epi-seta" aria-hidden="true">{aberto ? "▾" : "▸"}</span>
+              <span className="epi-turma-id"><b>{g.turma}</b><small className="mudo">{g.curso && !cursoId ? `${g.curso} · ` : ""}{g.alunos} aluno(s) · início {dataBR(g.inicio)}</small></span>
+              <span className="epi-turma-resumo">
+                <span className="epi-progresso" title={`${entregues} de ${g.todos.length} entregues`}><i style={{ width: `${(100 * entregues) / g.todos.length}%` }} /></span>
+                <small><b>{entregues}/{g.todos.length}</b> entregues</small>
+                <Badge tipo={SIT[pior][0]}>{SIT[pior][1]}</Badge>
+                {proximo && <small className="mudo">próximo prazo {dataBR(proximo)}</small>}
+              </span>
+            </button>
+            {aberto && <div className="epi-turma-corpo">
+              {tabela(g.itens)}
+              {editavel && <button className="btn-link" onClick={() => { setNovo({ turma_id: String(g.turma_id), nome: "", quantidade: "", prazo: "", observacao: "" });
+                setTimeout(() => document.querySelector(".epi-manual")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50); }}>+ Incluir EPI nesta turma</button>}
+            </div>}
+          </div>;
+        })}
+      </div>)}
       <p className="sub">Marque “comprado/separado” quando o material estiver garantido e “entregue” quando chegar à turma. Prazos vencidos ou a menos de {d?.dias_aviso ?? 7} dias aparecem no Início e em Riscos e gargalos.</p>
     </div>
   );

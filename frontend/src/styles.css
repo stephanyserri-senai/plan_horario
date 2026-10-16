@@ -729,3 +729,15 @@ li.sem-marcador { list-style: none; margin-left: -18px; }
 .check-dispensa input { width: 18px; height: 18px; margin-top: 2px; }
 .check-dispensa span { display: grid; gap: 2px; }
 .check-dispensa.ativo { border-style: solid; border-color: var(--primaria); background: var(--info-bg); }
+/* EPIs agrupados por turma */
+.epi-turmas { display: grid; gap: 8px; }
+.epi-turma { border: 1px solid var(--borda); border-radius: 10px; background: var(--superficie); overflow: hidden; }
+.epi-turma.aberto { border-color: var(--primaria); }
+.epi-turma-cab { width: 100%; display: flex; align-items: center; gap: 12px; padding: 10px 14px; background: none; border: 0; cursor: pointer; text-align: left; font: inherit; color: inherit; flex-wrap: wrap; }
+.epi-turma-cab:hover { background: var(--fundo); }
+.epi-seta { color: var(--mudo); width: 12px; }
+.epi-turma-id { display: grid; min-width: 220px; flex: 1 1 260px; }
+.epi-turma-resumo { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.epi-progresso { width: 90px; height: 8px; border-radius: 999px; background: var(--ch-falta); overflow: hidden; display: inline-block; }
+.epi-progresso i { display: block; height: 100%; background: var(--ok); border-radius: 999px; }
+.epi-turma-corpo { padding: 0 14px 10px; border-top: 1px solid var(--borda); }
