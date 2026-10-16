@@ -83,7 +83,7 @@ const COR = "var(--grafico-1)";
 
 /** Taxas de ocupação no período: semana a semana, por turno, por dia da semana, maiores ocupações e ociosidade. */
 function TaxasDeOcupacao({ inicio, fim, amb, inst, ins }: { inicio: string; fim: string; amb: any; inst: any; ins: any }) {
-  const { cenario } = useApp();
+  const { cenario, unidade } = useApp();
   const nav = useNavigate();
   const p = { cenario_id: cenario?.id, inicio, fim };
   const se = useCarregar<any>(() => cenario ? api.get(`/api/consultas/serie${qs(p)}`) : Promise.resolve(null), [cenario?.id, inicio, fim]);
@@ -108,7 +108,7 @@ function TaxasDeOcupacao({ inicio, fim, amb, inst, ins }: { inicio: string; fim:
         {se.dados ? <GraficoSerie dados={se.dados} /> : <p role="status">Calculando…</p>}
       </Card>
       {amb && <div className="grid-2">
-        <Card titulo="Salas: ocupação por turno" extra={<small className="mudo">unidades somadas</small>}>
+        <Card titulo="Salas: ocupação por turno" extra={!unidade && <small className="mudo">Beira Mar e Porto somadas</small>}>
           <ResponsiveContainer width="100%" height={240}>
             <BarChart data={porTurno} margin={{ bottom: 8 }}><CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="turno" interval={0} /><YAxis unit="%" domain={[0, 100]} /><Tooltip />
