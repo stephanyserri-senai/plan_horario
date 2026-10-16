@@ -1,9 +1,10 @@
 """Consultas: situação no dia, ranking, ocupação no tempo e quadro de instrutores (80% ideal, 90% teto, 5:4)."""
-from datetime import timedelta
+from datetime import time, timedelta
 
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.models import Turno
 from app.services import analise_ocupacao as ao
 from tests.conftest import SEG
 from tests.test_otimizacao import executar
@@ -34,6 +35,18 @@ def test_consultas_e_quadro(db, mundo):
     estados = {cel["estado"] for l in sit["instrutores"] for cel in l["turnos"].values()}
     assert "aula" in estados and sit["resumo"]["instrutores_em_aula"] >= 1
     assert all(set(l["turnos"]) <= {t["codigo"] for t in sit["turnos"]} for l in sit["salas"])
+    # sem coluna da PFP; sábado por último e "sem turno" num dia útil
+    from app.models import PeriodoHorario
+    for cod, dias, ordem in (("I", [0, 1, 2, 3, 4], 8), ("S", [5], 9)):
+        t = Turno(unidade_id=m.unidade.id, codigo=cod, nome=cod, hora_inicio=time(8), hora_fim=time(12), ordem=ordem, ativo=True)
+        db.add(t)
+        db.flush()
+        db.add(PeriodoHorario(unidade_id=m.unidade.id, turno_id=t.id, ordem=1, hora_inicio=time(8), hora_fim=time(12), dias_semana=dias, excepcional=False, ativo=True))
+    db.commit()
+    sit = c.get(f"/api/consultas/situacao?cenario_id={cid}&data={SEG}", headers=h).json()
+    cods = [t["codigo"] for t in sit["turnos"]]
+    assert "I" not in cods and cods[-1] == "S" and not sit["turnos"][-1]["no_dia"]
+    assert {l["turnos"]["S"]["estado"] for l in sit["instrutores"]} == {"sem_turno"}
     rk = c.get(f"/api/consultas/ranking?cenario_id={cid}&inicio={SEG}&fim={SEG + timedelta(days=13)}", headers=h).json()
     pcts = [l["ocupacao_pct"] for l in rk["instrutores_mais"]]
     assert pcts == sorted(pcts, reverse=True) and sum(rk["distribuicao_instrutores"].values()) == rk["total_instrutores"]

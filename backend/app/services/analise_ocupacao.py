@@ -14,7 +14,7 @@ from datetime import date, datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import (Alocacao, Ambiente, Area, Bloqueio, CenarioPlanejamento, DisponibilidadeInstrutor, Instrutor, Turma, TurmaUC, Turno,
+from app.models import (Alocacao, Ambiente, Area, Bloqueio, CenarioPlanejamento, DisponibilidadeInstrutor, Instrutor, PeriodoHorario, Turma, TurmaUC, Turno,
                         UnidadeCurricular)
 from app.services.regras_aula import HORAS_POR_TURNO, OCUPACAO_MAXIMA
 
@@ -69,7 +69,12 @@ def _turno_de(turnos, unidade_id, h):
 def situacao_no_dia(db: Session, cenario_id: int, dia: date, turno_codigo: str | None = None, unidades=None) -> dict:
     """Quem está onde: cada instrutor e cada sala em cada turno do dia (aula, PL/PJ, bloqueio, livre, fora da jornada)."""
     from app.services.calendario import Calendarios
-    turnos = [t for t in _turnos(db, unidades) if not turno_codigo or t.codigo == turno_codigo]
+    # PFP (turno oculto "I") não tem coluna: as aulas dela (08–12, 13–17) caem na manhã e na tarde; o sábado vai por último
+    turnos = sorted([t for t in _turnos(db, unidades) if t.codigo != "I" and (not turno_codigo or t.codigo == turno_codigo)],
+                    key=lambda t: (t.codigo == "S", t.hora_inicio))
+    # turnos com aula neste dia da semana (o de sábado só no sábado; manhã, tarde e noite nos dias úteis)
+    no_dia = {p.turno_id for p in db.scalars(select(PeriodoHorario).where(PeriodoHorario.ativo.is_(True), PeriodoHorario.excepcional.is_(False)))
+              if dia.weekday() in (p.dias_semana or [])}
     insts, ambs = _instrutores(db, unidades), _ambientes(db, unidades)
     aulas = db.scalars(select(Alocacao).where(Alocacao.cenario_id == cenario_id, Alocacao.data == dia, Alocacao.status != "cancelada")).all()
     turmas = {t.id: t for t in db.scalars(select(Turma).where(Turma.id.in_({a.turma_id for a in aulas})))} if aulas else {}
@@ -102,7 +107,9 @@ def situacao_no_dia(db: Session, cenario_id: int, dia: date, turno_codigo: str |
             da = [a for a in aulas if a.instrutor_id == i.id and a.inicio < fim and a.fim > ini]
             bs = [b for b in bloqs if b.alvo_tipo == "instrutor" and b.alvo_id == i.id and b.inicio < fim and b.fim > ini]
             na_jornada = any(x.hora_inicio <= t.hora_inicio and x.hora_fim >= t.hora_fim for x in disp[i.id])
-            if da:
+            if t.id not in no_dia:
+                cel[t.codigo] = {"estado": "sem_turno"}
+            elif da:
                 cel[t.codigo] = {"estado": "aula", **desc_aula(da[0])}
             elif any(b.tipo in ("planejamento", "projeto", "treinamento") for b in bs):
                 b = next(b for b in bs if b.tipo in ("planejamento", "projeto", "treinamento"))
@@ -123,7 +130,9 @@ def situacao_no_dia(db: Session, cenario_id: int, dia: date, turno_codigo: str |
             ini, fim = janela(t)
             da = [x for x in aulas if x.ambiente_id == a.id and x.inicio < fim and x.fim > ini]
             bs = [b for b in bloqs if b.alvo_tipo == "ambiente" and b.alvo_id == a.id and b.inicio < fim and b.fim > ini]
-            if da:
+            if t.id not in no_dia:
+                cel[t.codigo] = {"estado": "sem_turno"}
+            elif da:
                 cel[t.codigo] = {"estado": "aula", **desc_aula(da[0])}
             elif bs:
                 cel[t.codigo] = {"estado": "bloqueado", "detalhe": f"{bs[0].tipo}: {bs[0].motivo or ''}".strip(": ")}
@@ -137,7 +146,8 @@ def situacao_no_dia(db: Session, cenario_id: int, dia: date, turno_codigo: str |
     contagem = lambda linhas, est: sum(1 for l in linhas for c in l["turnos"].values() if c["estado"] == est)
     return {
         "data": dia.isoformat(), "dia_semana": DIAS[dia.weekday()],
-        "turnos": [{"codigo": c, "nome": n} for c, n in dict((t.codigo, t.nome) for t in turnos).items()],
+        "turnos": [{"codigo": c, "nome": n, "no_dia": any(t.id in no_dia for t in turnos if t.codigo == c)}
+                   for c, n in dict((t.codigo, t.nome) for t in turnos).items()],
         "nao_letivo": {str(u): m for u, (ok, m) in letivo.items() if not ok},
         "instrutores": linhas_i, "salas": linhas_a,
         "resumo": {"instrutores_livres": contagem(linhas_i, "livre"), "instrutores_em_aula": contagem(linhas_i, "aula"),

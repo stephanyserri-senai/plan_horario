@@ -4,66 +4,84 @@ import { Abas, Pagina, Tabela, useCarregar } from "../components/ui";
 import { BarraOcupacao, Faixa, GraficoSerie } from "../components/Ocupacao";
 import { useApp } from "../contexto";
 
-const ESTADO: Record<string, [string, string]> = {
-  aula: ["ag-aula", "em aula"], PL: ["ag-PL", "PL · planejamento"], PJ: ["ag-PJ", "PJ · projeto"], TR: ["ag-TR", "TR · treinamento"], livre: ["ag-livre", "livre"],
-  bloqueado: ["ag-bloq", "bloqueado"], fora_jornada: ["ag-fora", "fora da jornada"], nao_letivo: ["ag-fora", "não letivo"],
+const ESTADO: Record<string, [string, string, string]> = {  // classe, rótulo, explicação
+  livre: ["ag-livre", "Livre", "na jornada e sem aula: pode assumir"],
+  aula: ["ag-aula", "Em aula", "com aula marcada"],
+  PL: ["ag-PL", "PL", "planejamento: está na escola, pode substituir"],
+  PJ: ["ag-PJ", "PJ", "projeto: está na escola, pode substituir"],
+  TR: ["ag-TR", "TR", "treinamento: liberado das aulas, não substitui"],
+  bloqueado: ["ag-bloq", "Indisponível", "licença, folga, manutenção…"],
+  nao_letivo: ["ag-fora", "Não letivo", "feriado ou recesso"],
+  fora_jornada: ["ag-fora", "Fora da jornada", "não trabalha neste turno"],
 };
+const FILTROS = { instrutores: ["livre", "aula", "PL", "PJ", "TR", "bloqueado"], salas: ["livre", "aula", "bloqueado"] } as const;
+const NOMES_DIA = ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"];
+const somaDias = (s: string, n: number) => { const d = new Date(s + "T12:00:00"); d.setDate(d.getDate() + n); return iso(d); };
 
-/** Situação de cada instrutor e sala num dia (e turno). */
+/** Situação de cada instrutor e sala num dia, turno a turno. */
 function QuemEstaOnde() {
   const { cenario } = useApp();
   const [dia, setDia] = useState(iso(new Date()));
   const [turno, setTurno] = useState("");
-  const [ver, setVer] = useState("instrutores");
+  const [ver, setVer] = useState<"instrutores" | "salas">("instrutores");
   const [estado, setEstado] = useState("");
   const [busca, setBusca] = useState("");
   const r = useCarregar<any>(() => cenario && dia ? api.get(`/api/consultas/situacao${qs({ cenario_id: cenario.id, data: dia, turno })}`) : Promise.resolve(null),
     [cenario?.id, dia, turno]);
   const d = r.dados;
-  const linhas = (d?.[ver] || []).filter((l: any) => (!busca || (l.nome + " " + (l.codigo || "")).toLowerCase().includes(busca.toLowerCase()))
-    && (!estado || Object.values(l.turnos).some((c: any) => c.estado === estado)));
+  const turnos = (d?.turnos || []).filter((t: any) => t.no_dia);  // só os turnos que acontecem neste dia da semana
+  const fora = (d?.turnos || []).filter((t: any) => !t.no_dia);
+  const todas = d?.[ver] || [];
+  const conta = (e: string) => todas.reduce((n: number, l: any) => n + turnos.filter((t: any) => l.turnos[t.codigo]?.estado === e).length, 0);
+  const linhas = todas.filter((l: any) => (!busca || `${l.nome} ${l.codigo || ""}`.toLowerCase().includes(busca.toLowerCase()))
+    && (!estado || turnos.some((t: any) => l.turnos[t.codigo]?.estado === estado)));
+  const hoje = iso(new Date());
   const celula = (c: any) => {
-    if (!c) return <span className="mudo">—</span>;
-    const [cls, txt] = ESTADO[c.estado] || ["", c.estado];
-    return <div className={`cel-sit ${cls}`}><b>{txt}</b>
-      {c.estado === "aula" && <small>{c.turma} · {c.uc.split(" – ")[0]}{ver === "instrutores" ? ` · ${c.sala || "sem sala"}` : ` · ${c.instrutor || "sem instrutor"}`}</small>}
-      {c.detalhe && <small>{c.detalhe}</small>}</div>;
+    if (!c || c.estado === "sem_turno") return <span className="mudo">—</span>;
+    if (c.estado === "fora_jornada") return <span className="cel-fora">fora da jornada</span>;
+    const [cls, txt, expl] = ESTADO[c.estado] || ["", c.estado, ""];
+    return <div className={`cel-sit ${cls} ${estado && c.estado !== estado ? "apagada" : ""}`} title={expl}>
+      <b>{c.estado === "aula" ? c.turma : txt}</b>
+      {c.estado === "aula" && <small>{c.uc.split(" – ")[0]} · {ver === "instrutores" ? (c.sala || "sem sala") : (c.instrutor || "sem instrutor")} · {c.horario}</small>}
+      {c.estado !== "aula" && (c.detalhe || ["PL", "PJ", "TR"].includes(c.estado)) && <small>{c.detalhe || expl}</small>}</div>;
   };
   return (
     <>
-      <div className="filtros">
-        <label>Dia <input type="date" value={dia} onChange={(e) => setDia(e.target.value)} /></label>
+      <div className="onde-barra">
+        <div className="seletor-dia" role="group" aria-label="Dia">
+          <button className="btn" aria-label="Dia anterior" onClick={() => setDia(somaDias(dia, -1))}>◀</button>
+          <input type="date" aria-label="Dia" value={dia} onChange={(e) => e.target.value && setDia(e.target.value)} />
+          <button className="btn" aria-label="Próximo dia" onClick={() => setDia(somaDias(dia, 1))}>▶</button>
+          {dia !== hoje && <button className="btn-link" onClick={() => setDia(hoje)}>hoje</button>}
+        </div>
+        <div className="segmentado" role="tablist" aria-label="Ver">
+          {(["instrutores", "salas"] as const).map((v) => <button key={v} role="tab" aria-selected={ver === v} className={ver === v ? "ativo" : ""}
+            onClick={() => { setVer(v); setEstado(""); }}>{v === "instrutores" ? "👤 Instrutores" : "🏫 Salas e laboratórios"}</button>)}
+        </div>
         <select aria-label="Turno" value={turno} onChange={(e) => setTurno(e.target.value)}>
-          <option value="">Todos os turnos</option><option value="M">Manhã</option><option value="T">Tarde</option><option value="N">Noite</option></select>
-        <select aria-label="Ver" value={ver} onChange={(e) => setVer(e.target.value)}><option value="instrutores">Instrutores</option><option value="salas">Salas e laboratórios</option></select>
-        <select aria-label="Situação" value={estado} onChange={(e) => setEstado(e.target.value)}>
-          <option value="">Qualquer situação</option>
-          {(ver === "instrutores" ? ["livre", "aula", "PL", "PJ", "TR", "bloqueado", "fora_jornada"] : ["livre", "aula", "bloqueado"]).map((e) => <option key={e} value={e}>{ESTADO[e][1]}</option>)}
-        </select>
-        <input type="search" placeholder="Buscar nome…" aria-label="Buscar" value={busca} onChange={(e) => setBusca(e.target.value)} />
+          <option value="">Todos os turnos</option><option value="M">Manhã</option><option value="T">Tarde</option><option value="N">Noite</option><option value="S">Sábado</option></select>
+        <input type="search" placeholder={ver === "instrutores" ? "Buscar instrutor…" : "Buscar sala…"} aria-label="Buscar" value={busca} onChange={(e) => setBusca(e.target.value)} />
       </div>
       {d && <>
-        <p className="sub">{d.dia_semana}, {dataBR(d.data)}{Object.keys(d.nao_letivo).length ? ` · dia não letivo: ${Object.values(d.nao_letivo).join("; ")}` : ""}</p>
-        <div className="kpis">
-          {ver === "instrutores" ? <>
-            <div className="kpi kpi-ok"><span>Instrutores livres (turnos)</span><b>{d.resumo.instrutores_livres}</b><small>na jornada e sem aula</small></div>
-            <div className="kpi"><span>Em aula</span><b>{d.resumo.instrutores_em_aula}</b></div>
-            <div className="kpi"><span>Em PL / PJ</span><b>{d.resumo.instrutores_pl_pj}</b><small>estão na escola: podem substituir</small></div>
-            <div className="kpi"><span>Em treinamento (TR)</span><b>{d.resumo.instrutores_tr ?? 0}</b><small>liberados das aulas: não substituem</small></div>
-            <div className={`kpi ${d.resumo.instrutores_bloqueados ? "kpi-alerta" : ""}`}><span>Bloqueados</span><b>{d.resumo.instrutores_bloqueados}</b><small>licença, afastamento…</small></div>
-          </> : <>
-            <div className="kpi kpi-ok"><span>Salas livres (turnos)</span><b>{d.resumo.salas_livres}</b></div>
-            <div className="kpi"><span>Ocupadas</span><b>{d.resumo.salas_ocupadas}</b></div>
-            <div className={`kpi ${d.resumo.salas_bloqueadas ? "kpi-alerta" : ""}`}><span>Bloqueadas</span><b>{d.resumo.salas_bloqueadas}</b><small>manutenção…</small></div>
-          </>}
+        <h3 className="onde-dia">{NOMES_DIA[new Date(d.data + "T12:00:00").getDay()]}, {dataBR(d.data)}
+          {Object.keys(d.nao_letivo).length > 0 && <small className="aviso-nl"> · não letivo: {Object.values(d.nao_letivo).join("; ")}</small>}</h3>
+        <div className="filtro-estados" role="group" aria-label="Filtrar por situação">
+          <span className="sub">Mostrar:</span>
+          <button className={`chip-estado sem-ponto ${!estado ? "ativo" : ""}`} onClick={() => setEstado("")}>Todos</button>
+          {FILTROS[ver].map((e) => <button key={e} title={ESTADO[e][2]} className={`chip-estado ${ESTADO[e][0]} ${estado === e ? "ativo" : ""}`}
+            onClick={() => setEstado(estado === e ? "" : e)}>{e === "bloqueado" ? "Indisponível" : ESTADO[e][1]} <b>{conta(e)}</b></button>)}
+          <small className="mudo">números = {ver === "instrutores" ? "instrutor" : "sala"} × turno</small>
         </div>
-        <Tabela colunas={[
-          { chave: "nome", rotulo: ver === "instrutores" ? "Instrutor" : "Sala", render: (l: any) => <><b>{ver === "salas" ? l.codigo : l.nome}</b>{ver === "salas" && <small className="mudo"> {l.nome}</small>}
-            {l.modalidade && <small className="mudo"> · {l.modalidade}</small>}</> },
-          ...d.turnos.map((t: any) => ({ chave: t.codigo, rotulo: t.nome, render: (l: any) => celula(l.turnos[t.codigo]) })),
-        ]} linhas={linhas} chave={(l: any) => l.id} vazio="Ninguém nesta situação." />
+        {turnos.length === 0 ? <p className="sub">Nenhum turno com aula neste dia{turno ? " (no turno escolhido)" : ""}.</p> :
+          <Tabela colunas={[
+            { chave: "nome", rotulo: ver === "instrutores" ? "Instrutor" : "Sala", render: (l: any) => <div className="onde-nome"><b>{ver === "salas" ? l.codigo : l.nome}</b>
+              <small className="mudo">{ver === "salas" ? l.nome : l.modalidade}</small></div> },
+            ...turnos.map((t: any) => ({ chave: t.codigo, rotulo: t.nome, render: (l: any) => celula(l.turnos[t.codigo]) })),
+          ]} linhas={linhas} chave={(l: any) => l.id} vazio={estado ? `Ninguém “${ESTADO[estado][1].toLowerCase()}” neste dia.` : "Nada encontrado."} />}
+        {fora.length > 0 && <p className="sub">{fora.map((t: any) => t.nome).join(", ")}: sem aula {fora.some((t: any) => t.codigo === "S") ? "de segunda a sexta" : "aos sábados"} — escolha {fora.some((t: any) => t.codigo === "S") ? "um sábado" : "um dia útil"} para ver.</p>}
       </>}
       {r.carregando && !d && <p role="status">Consultando…</p>}
+      {r.erro && <div className="erro-box">{r.erro}</div>}
     </>
   );
 }
@@ -77,10 +95,9 @@ function Periodo({ inicio, fim, setInicio, setFim }: { inicio: string; fim: stri
     <div className="filtros">
       <label>De <input type="date" value={inicio} onChange={(e) => setInicio(e.target.value)} /></label>
       <label>Até <input type="date" value={fim} onChange={(e) => setFim(e.target.value)} /></label>
-      <button className="btn-link" onClick={() => atalho("", "")}>semestre inteiro</button>
-      <button className="btn-link" onClick={() => atalho(dias(-28), hoje)}>últimas 4 semanas</button>
-      <button className="btn-link" onClick={() => atalho(hoje, dias(28))}>próximas 4 semanas</button>
-      {cenario?.periodo_fim && <button className="btn-link" onClick={() => atalho(hoje, cenario.periodo_fim!)}>daqui até o fim</button>}
+      {[["Semestre inteiro", "", ""], ["Últimas 4 semanas", dias(-28), hoje], ["Próximas 4 semanas", hoje, dias(28)],
+        ...(cenario?.periodo_fim ? [["Daqui até o fim", hoje, cenario.periodo_fim]] : [])].map(([rot, a, b]) => (
+        <button key={rot} className={`chip-estado sem-ponto ${inicio === a && fim === b ? "ativo" : ""}`} onClick={() => atalho(a!, b!)}>{rot}</button>))}
     </div>
   );
 }
@@ -96,8 +113,10 @@ function Ranking() {
   return (
     <>
       <Periodo inicio={inicio} fim={fim} setInicio={setInicio} setFim={setFim} />
-      <div className="filtros"><select aria-label="Ordem" value={ordem} onChange={(e) => setOrdem(e.target.value)}>
-        <option value="mais">Maiores ocupações</option><option value="menos">Menores ocupações (folga)</option></select></div>
+      <div className="segmentado" role="tablist" aria-label="Ordem">
+        {[["mais", "▲ Mais ocupados"], ["menos", "▼ Com mais folga"]].map(([v, rot]) => <button key={v} role="tab" aria-selected={ordem === v}
+          className={ordem === v ? "ativo" : ""} onClick={() => setOrdem(v)}>{rot}</button>)}
+      </div>
       {d && <>
         <p className="sub">{dataBR(d.periodo.inicio)} a {dataBR(d.periodo.fim)} · {d.periodo.semanas} semana(s) · ocupação do instrutor = horas de aula por semana ÷ carga contratual
           (ideal até {d.referencias.ideal_pct}%, teto {d.referencias.teto_pct}%).</p>
@@ -115,7 +134,7 @@ function Ranking() {
           <section className="card"><h2>Salas e laboratórios</h2>
             <Tabela colunas={[{ chave: "codigo", rotulo: "Sala", render: (l: any) => <><b>{l.codigo}</b><small className="mudo"> {l.tipo}</small></> },
               { chave: "ocupacao_pct", rotulo: "Ocupação", render: (l: any) => <BarraOcupacao pct={l.ocupacao_pct} /> },
-              { chave: "horas_ocupadas", rotulo: "Horas ocupadas", alinhar: "dir" }]}
+              { chave: "horas_ocupadas", rotulo: "Horas ocupadas", alinhar: "dir", render: (l: any) => `${Math.round(l.horas_ocupadas)} h` }]}
               linhas={ordem === "mais" ? d.salas_mais : d.salas_menos} chave={(l: any) => l.id} />
           </section>
           <section className="card"><h2>Áreas (instrutores)</h2>
@@ -163,8 +182,8 @@ export default function Consultas() {
   const [aba, setAba] = useState("onde");
   if (!cenario) return <Pagina titulo="Consultas"><p>Selecione um semestre no topo da página.</p></Pagina>;
   return (
-    <Pagina titulo="Consultas" descricao="Situação de instrutores e salas num dia, rankings de ocupação e a ocupação ao longo do tempo (com previsão pela grade gerada). Seguem o semestre e a unidade escolhidos no topo.">
-      <Abas abas={[{ id: "onde", rotulo: "Quem está onde (dia e turno)" }, { id: "ranking", rotulo: "Ranking de ocupação" }, { id: "tempo", rotulo: "Ocupação no tempo" }]}
+    <Pagina titulo="Consultas" descricao="Quem está livre, em aula ou fora num dia; quem está mais (e menos) ocupado; e como a ocupação evolui semana a semana. Segue o semestre e a unidade escolhidos no topo.">
+      <Abas abas={[{ id: "onde", rotulo: "📍 Quem está onde" }, { id: "ranking", rotulo: "🏆 Ranking de ocupação" }, { id: "tempo", rotulo: "📈 Ocupação no tempo" }]}
         ativa={aba} mudar={setAba} />
       {aba === "onde" && <QuemEstaOnde />}
       {aba === "ranking" && <Ranking />}

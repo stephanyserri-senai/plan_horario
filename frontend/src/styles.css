@@ -638,3 +638,30 @@ li.sem-marcador { list-style: none; margin-left: -18px; }
 .cursos-barra { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
 .vazio-painel { border: 1px dashed var(--borda); border-radius: 10px; padding: 24px; text-align: center; }
 @media (max-width: 800px) { .cursos-layout { grid-template-columns: 1fr; } .cursos-lista { max-height: none; } }
+
+/* Consultas: quem está onde */
+.onde-barra { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 8px 0 4px; }
+.seletor-dia { display: inline-flex; align-items: center; gap: 4px; }
+.seletor-dia .btn { padding: 4px 10px; }
+.segmentado { display: inline-flex; border: 1px solid var(--borda); border-radius: 8px; overflow: hidden; margin: 4px 0; }
+.segmentado button { background: var(--superficie); border: 0; padding: 6px 12px; cursor: pointer; color: var(--texto); font: inherit; }
+.segmentado button + button { border-left: 1px solid var(--borda); }
+.segmentado button.ativo { background: var(--primaria); color: var(--primaria-txt); font-weight: 600; }
+.onde-dia { margin: 10px 0 6px; font-size: 1.05rem; }
+.aviso-nl { color: var(--alerta); font-weight: 600; }
+.filtro-estados { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 10px; }
+.chip-estado { border: 1px solid var(--borda); background: var(--superficie); color: var(--texto); border-radius: 999px; padding: 4px 12px;
+  cursor: pointer; font: inherit; font-size: .85rem; display: inline-flex; gap: 6px; align-items: center; }
+.chip-estado b { font-variant-numeric: tabular-nums; }
+.chip-estado::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--mudo); }
+.chip-estado.ag-livre::before { background: var(--ok); } .chip-estado.ag-aula::before { background: var(--ch-programada); }
+.chip-estado.ag-PL::before, .chip-estado.ag-PJ::before { background: #7b5ea7; } .chip-estado.ag-TR::before { background: #2a8a7a; }
+.chip-estado.ag-bloq::before { background: var(--erro); }
+.chip-estado.ativo { border-color: var(--primaria); box-shadow: 0 0 0 2px color-mix(in srgb, var(--primaria) 25%, transparent); font-weight: 600; }
+.onde-nome { display: grid; } .onde-nome small { font-size: .78rem; }
+.cel-sit { border-left: 3px solid transparent; }
+.cel-sit.ag-livre { border-left-color: var(--ok); } .cel-sit.ag-aula { border-left-color: var(--ch-programada); }
+.cel-sit.ag-PL, .cel-sit.ag-PJ { border-left-color: #7b5ea7; } .cel-sit.ag-TR { border-left-color: #2a8a7a; } .cel-sit.ag-bloq { border-left-color: var(--erro); }
+.cel-sit.apagada { opacity: .35; }
+.cel-fora { color: var(--mudo); font-size: .78rem; font-style: italic; }
+.chip-estado.sem-ponto::before { display: none; }
