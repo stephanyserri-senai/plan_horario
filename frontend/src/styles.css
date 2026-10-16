@@ -553,3 +553,29 @@ button.chip-status { cursor: pointer; } .chip-status.alerta { background: #fff3d
 .seletor-unidade-topo select { max-width: 200px; }
 .seletor-unidade-topo select.filtrado { border-color: var(--primaria); background: var(--info-bg); font-weight: 600; }
 @media (max-width: 900px) { .seletor-unidade-topo label { display: none; } }
+
+/* consultas e ocupação */
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; margin: 10px 0 14px; }
+.kpis .kpi { display: flex; flex-direction: column; gap: 2px; }
+.kpis .kpi span { font-size: .8rem; color: var(--mudo); }
+.kpis .kpi b { font-size: 1.5rem; }
+.kpis .kpi small { color: var(--mudo); font-size: .76rem; }
+.cel-sit { border-radius: 6px; padding: 4px 6px; font-size: .8rem; line-height: 1.25; }
+.cel-sit small { display: block; color: var(--mudo); }
+.cel-sit.ag-aula { background: color-mix(in srgb, var(--ch-programada) 16%, var(--superficie)); }
+.cel-sit.ag-PL, .cel-sit.ag-PJ { background: color-mix(in srgb, #7b5ea7 16%, var(--superficie)); }
+.cel-sit.ag-livre { background: var(--ok-bg); }
+.cel-sit.ag-bloq { background: var(--erro-bg); }
+.cel-sit.ag-fora { background: var(--fundo); color: var(--mudo); }
+.barra-ocup { display: flex; align-items: center; gap: 8px; min-width: 150px; }
+.barra-ocup .trilho { position: relative; flex: 1; height: 10px; border-radius: 5px; background: var(--ch-falta); }
+.barra-ocup .barra-ocup-valor { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 5px; }
+.barra-ocup-valor.baixa { background: var(--grafico-1); opacity: .6; }
+.barra-ocup-valor.ideal { background: var(--ok); }
+.barra-ocup-valor.atencao { background: var(--alerta); }
+.barra-ocup-valor.acima { background: var(--erro); }
+.barra-ocup .ocup-marca { position: absolute; top: -3px; width: 2px; height: 16px; background: var(--texto); opacity: .5; }
+.barra-ocup b { font-size: .82rem; min-width: 44px; text-align: right; }
+.dist-faixas { display: flex; flex-wrap: wrap; gap: 10px 16px; margin: 6px 0 12px; }
+.num-curto { width: 64px; }
+.tabela-dados { margin-top: 6px; }

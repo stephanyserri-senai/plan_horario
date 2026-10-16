@@ -9,6 +9,7 @@ import Perfil from "./components/Perfil";
 import PortalInstrutor from "./pages/PortalInstrutor";
 import { principalDoSemestre, rotuloVersao, semestreDe, semestres, versoesDoSemestre } from "./semestre";
 import Acompanhamento from "./pages/Acompanhamento";
+import Consultas from "./pages/Consultas";
 import Auditoria from "./pages/Auditoria";
 import Cadastro from "./pages/Cadastro";
 import Configuracoes from "./pages/Configuracoes";
@@ -30,6 +31,7 @@ const MENU: { grupo: string; itens: Item[] }[] = [
   { grupo: "Planejamento", itens: [
     { para: "/", rotulo: "Início", icone: "▦", acao: "alocacoes.ler" },
     { para: "/acompanhamento", rotulo: "Acompanhamento", icone: "📊", acao: "indicadores.ler" },
+    { para: "/consultas", rotulo: "Consultas", icone: "🔎", acao: "alocacoes.ler" },
     { para: "/cronograma", rotulo: "Cronograma (Gantt)", icone: "▬", acao: "indicadores.ler" },
     { para: "/grade", rotulo: "Grade horária", icone: "▤", acao: "alocacoes.ler" },
     { para: "/geracao", rotulo: "Gerar horários", icone: "⚙", acao: "alocacoes.ler" },
@@ -190,6 +192,7 @@ export default function App() {
             <Route path="/" element={<Inicio />} />
             <Route path="/indicadores" element={<Dashboard />} />
             <Route path="/acompanhamento" element={<Acompanhamento />} />
+            <Route path="/consultas" element={<Consultas />} />
             <Route path="/cronograma" element={<Cronograma />} />
             <Route path="/grade" element={<Grade />} />
             <Route path="/planejamento" element={<Planejamento />} />

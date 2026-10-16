@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { api, dataBR, qs } from "../api";
 import { Abas, Badge, Card, Pagina, Tabela, useCarregar } from "../components/ui";
 import { Anel, BarraCH, LegendaCH, Medidor, MiniSemana } from "../components/Visual";
+import { BarraOcupacao, GraficoSerie, QuadroInstrutores } from "../components/Ocupacao";
 import { useApp } from "../contexto";
 
 const RISCO: Record<string, [string, string]> = {
@@ -13,7 +14,7 @@ const n1 = (v: number) => (Number(v) || 0).toLocaleString("pt-BR", { maximumFrac
 /** Acompanhamento macro: turmas e suas UCs, instrutores e ocupação, quanto falta por UC, salas. */
 export function PainelAcompanhamento() {
   const { cenario } = useApp();
-  const [aba, setAba] = useState("turmas");
+  const [aba, setAba] = useState("ocupacao");
   const [busca, setBusca] = useState("");
   const [soPendencias, setSoPendencias] = useState(false);
   const tu = useCarregar<any>(() => cenario ? api.get(`/api/indicadores/turmas${qs({ cenario_id: cenario.id })}`) : Promise.resolve(null), [cenario?.id]);
@@ -38,16 +39,46 @@ export function PainelAcompanhamento() {
           <div className={r.sem_instrutor_elegivel ? "tom-erro" : "tom-ok"}><b>{r.sem_instrutor_elegivel}</b> sem nenhum instrutor habilitado</div>
         </div>
       </div>}
-      <Abas abas={[{ id: "turmas", rotulo: "Por turma" }, { id: "instrutores", rotulo: "Por instrutor" }, { id: "ucs", rotulo: "Por unidade curricular" }, { id: "salas", rotulo: "Salas e laboratórios" }]} ativa={aba} mudar={setAba} />
-      <div className="filtros">
+      <Abas abas={[{ id: "ocupacao", rotulo: "Ocupação e quadro de instrutores" }, { id: "turmas", rotulo: "Por turma" }, { id: "instrutores", rotulo: "Por instrutor" }, { id: "ucs", rotulo: "Por unidade curricular" }, { id: "salas", rotulo: "Salas e laboratórios" }]} ativa={aba} mudar={setAba} />
+      {aba === "ocupacao" && <OcupacaoEQuadro />}
+      {aba !== "ocupacao" && <div className="filtros">
         <input type="search" placeholder="Filtrar por nome ou código…" aria-label="Filtrar" value={busca} onChange={(e) => setBusca(e.target.value)} />
         {aba !== "salas" && <label><input type="checkbox" checked={soPendencias} onChange={(e) => setSoPendencias(e.target.checked)} /> Mostrar só o que precisa de atenção</label>}
         {(aba === "turmas" || aba === "ucs") && <LegendaCH />}
-      </div>
+      </div>}
       {aba === "turmas" && tu.dados && <PorTurma itens={tu.dados.itens} filtro={filtro} so={soPendencias} />}
       {aba === "instrutores" && ins.dados && <PorInstrutor dados={ins.dados} filtro={filtro} so={soPendencias} />}
       {aba === "ucs" && tu.dados && <PorUC itens={tu.dados.itens} filtro={filtro} so={soPendencias} />}
       {aba === "salas" && amb.dados && <PorSala dados={amb.dados} filtro={filtro} />}
+    </div>
+  );
+}
+
+/** O que o sistema sabe sobre ocupação: série no tempo, maiores ocupações e o quadro de instrutores (precisa contratar?). */
+function OcupacaoEQuadro() {
+  const { cenario } = useApp();
+  const nav = useNavigate();
+  const se = useCarregar<any>(() => cenario ? api.get(`/api/consultas/serie${qs({ cenario_id: cenario.id })}`) : Promise.resolve(null), [cenario?.id]);
+  const rk = useCarregar<any>(() => cenario ? api.get(`/api/consultas/ranking${qs({ cenario_id: cenario.id })}`) : Promise.resolve(null), [cenario?.id]);
+  return (
+    <div className="ocupacao-quadro">
+      <Card titulo="Quadro de instrutores: precisa contratar?" extra={<button className="btn-link" onClick={() => nav("/simulador")}>Simular nova turma →</button>}>
+        <QuadroInstrutores />
+      </Card>
+      <Card titulo="Ocupação semana a semana" extra={<button className="btn-link" onClick={() => nav("/consultas")}>Consultar outro intervalo →</button>}>
+        {se.dados ? <GraficoSerie dados={se.dados} /> : <p role="status">Calculando…</p>}
+      </Card>
+      {rk.dados && <div className="grid-2">
+        <Card titulo="Instrutores mais ocupados" extra={<button className="btn-link" onClick={() => nav("/consultas")}>Ranking completo →</button>}>
+          <Tabela colunas={[{ chave: "nome", rotulo: "Instrutor", render: (l: any) => <><b>{l.nome}</b><small className="mudo"> {l.area}</small></> },
+            { chave: "ocupacao_pct", rotulo: "Ocupação da jornada", render: (l: any) => <BarraOcupacao pct={l.ocupacao_pct} /> },
+            { chave: "pico_pct", rotulo: "Pico", alinhar: "dir", render: (l: any) => `${l.pico_pct}%` }]} linhas={rk.dados.instrutores_mais.slice(0, 6)} chave={(l: any) => l.id} />
+        </Card>
+        <Card titulo="Salas mais ocupadas">
+          <Tabela colunas={[{ chave: "codigo", rotulo: "Sala", render: (l: any) => <><b>{l.codigo}</b><small className="mudo"> {l.tipo}</small></> },
+            { chave: "ocupacao_pct", rotulo: "Ocupação", render: (l: any) => <BarraOcupacao pct={l.ocupacao_pct} /> }]} linhas={rk.dados.salas_mais.slice(0, 6)} chave={(l: any) => l.id} />
+        </Card>
+      </div>}
     </div>
   );
 }

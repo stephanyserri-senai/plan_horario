@@ -62,6 +62,45 @@ def ind_inst(cenario_id: int, inicio: date | None = None, fim: date | None = Non
     return indicadores.institucionais(db, cenario_id, d0, d1, ctx.unidades, data_referencia)
 
 
+# ============================================================================ consultas e ocupação
+@router.get("/consultas/situacao")
+def consulta_situacao(cenario_id: int, data: date, turno: str | None = None, ctx: Contexto = Depends(requer("alocacoes.ler")),
+                      db: Session = Depends(get_db)):
+    """Quem está onde num dia (e turno): instrutores e salas em aula, PL/PJ, bloqueio, livres ou fora da jornada."""
+    from app.services import analise_ocupacao
+    return analise_ocupacao.situacao_no_dia(db, cenario_id, data, turno, ctx.unidades)
+
+
+@router.get("/consultas/ranking")
+def consulta_ranking(cenario_id: int, inicio: date | None = None, fim: date | None = None, ctx: Contexto = Depends(requer("indicadores.ler")),
+                     db: Session = Depends(get_db)):
+    from app.services import analise_ocupacao
+    d0, d1 = _periodo(db, cenario_id, inicio, fim)
+    return analise_ocupacao.ranking(db, cenario_id, d0, d1, ctx.unidades)
+
+
+@router.get("/consultas/serie")
+def consulta_serie(cenario_id: int, inicio: date | None = None, fim: date | None = None, ctx: Contexto = Depends(requer("indicadores.ler")),
+                   db: Session = Depends(get_db)):
+    from app.services import analise_ocupacao
+    d0, d1 = _periodo(db, cenario_id, inicio, fim)
+    return analise_ocupacao.serie(db, cenario_id, d0, d1, ctx.unidades)
+
+
+@router.get("/consultas/quadro-instrutores")
+def consulta_quadro(cenario_id: int, simulacao_id: int | None = None, extra: str | None = None, ctx: Contexto = Depends(requer("indicadores.ler")),
+                    db: Session = Depends(get_db)):
+    """Análise do quadro de instrutores por área (precisa contratar?), com turmas hipotéticas `extra=area_id:n,...`."""
+    from app.services import analise_ocupacao
+    turmas_extra = {}
+    for par in (extra or "").split(","):
+        if ":" in par:
+            a, n = par.split(":", 1)
+            if a.strip().isdigit() and n.strip().isdigit() and int(n) > 0:
+                turmas_extra[int(a)] = int(n)
+    return analise_ocupacao.quadro_instrutores(db, cenario_id, ctx.unidades, simulacao_id=simulacao_id, turmas_extra=turmas_extra)
+
+
 @router.get("/gargalos")
 def analisar_gargalos(cenario_id: int, inicio: date | None = None, fim: date | None = None, unidade_id: int | None = None,
                       ctx: Contexto = Depends(requer("indicadores.ler")), db: Session = Depends(get_db)):
