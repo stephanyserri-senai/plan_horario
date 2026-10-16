@@ -15,6 +15,7 @@ import Cadastro from "./pages/Cadastro";
 import Configuracoes from "./pages/Configuracoes";
 import Regras from "./pages/Regras";
 import Solicitacoes from "./pages/Solicitacoes";
+import Epis from "./pages/Epis";
 import Cronograma from "./pages/Cronograma";
 import Inicio from "./pages/Inicio";
 import Gargalos from "./pages/Gargalos";
@@ -41,6 +42,7 @@ const MENU: { grupo: string; itens: Item[] }[] = [
     { para: "/gargalos", rotulo: "Riscos e gargalos", icone: "⚠", acao: "indicadores.ler" },
     { para: "/relatorios", rotulo: "Relatórios", icone: "⎙", acao: "exportacao.executar" },
     { para: "/solicitacoes", rotulo: "Solicitações dos instrutores", icone: "📝", acao: "solicitacoes.aprovar" },
+    { para: "/epis", rotulo: "EPIs das turmas", icone: "🦺", acao: "cadastros.ler" },
   ] },
   { grupo: "Cadastros", itens: [
     { para: "/cadastros/turmas", rotulo: "Turmas", icone: "👥", acao: "cadastros.ler" },
@@ -208,6 +210,7 @@ export default function App() {
             <Route path="/configuracoes" element={<Configuracoes />} />
             <Route path="/regras" element={<Regras />} />
             <Route path="/solicitacoes" element={<Solicitacoes />} />
+            <Route path="/epis" element={<Epis />} />
             <Route path="/auditoria" element={<Auditoria />} />
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>

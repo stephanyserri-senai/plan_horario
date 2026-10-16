@@ -135,7 +135,16 @@ def analisar(db: Session, cenario_id: int, unidades=None, hoje: date | None = No
     riscos.append(_risco("solicitacoes", "Pedidos de folga ou substituição sem decisão", "media" if pend else "baixa", pend,
                          "Instrutores pediram folga ou substituição e o coordenador ainda não decidiu.", "Decida em Solicitações dos instrutores.", "/solicitacoes"))
 
-    # 10) turmas fora do padrão de dias
+    # 10) EPIs a comprar/separar e entregar com prazo vencido ou próximo
+    from app.services import epis
+    av = epis.avisos(db, unidades, hoje)
+    riscos.append(_risco("epis", "EPIs não entregues no prazo", "alta" if av["atrasados"] else "media" if av["proximos"] else "baixa",
+                         [{"turma": i["turma"], "epi": i["nome"], "quantidade": i["quantidade"], "prazo": i["prazo"],
+                           "estado": i["situacao_rotulo"]} for i in av["itens"]],
+                         "EPIs que o curso exige e ainda não foram entregues à turma, com prazo vencido ou nos próximos 7 dias: sem EPI a aula prática não acontece.",
+                         "Compre ou separe os EPIs e marque a entrega no controle de EPIs.", "/epis"))
+
+    # 11) turmas fora do padrão de dias
     conf = conformidade(db, unidades)
     riscos.append(_risco("padrao_dias", "Turmas fora do padrão de dias", "baixa", conf,
                          "Turmas que não seguem 5 dias presenciais, 4 + 1 EAD ou só sábado (e não são de aperfeiçoamento/empresa).",

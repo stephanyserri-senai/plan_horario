@@ -202,6 +202,19 @@ INICIO_ESPECIAL = {"PFP-OPL-01": date(ANO, 10, 19)}
 EAD_SEXTA = {"HTC-LOG-21", "HTC-DDS-09"}
 
 # logins do portal do instrutor na demonstração (senha comum, só para apresentação)
+# EPIs por curso: (nome, quantidade por aluno, dias de antecedência do prazo em relação ao início da turma)
+EPIS = {
+    "ELT": [("Luva isolante classe 00", 1, 15), ("Óculos de proteção", 1, 10), ("Calçado de segurança sem biqueira metálica", 1, 15)],
+    "ELI": [("Luva isolante classe 00", 1, 15), ("Óculos de proteção", 1, 10)],
+    "MNT": [("Luva isolante classe 0", 1, 15), ("Capacete com jugular", 1, 15)],
+    "NRB": [("Óculos de proteção", 1, 12), ("Luva de vaqueta", 1, 12)],
+    "MEC": [("Óculos de proteção", 1, 10), ("Protetor auricular tipo plug", 2, 10)],
+    "MAU": [("Óculos de proteção", 1, 10), ("Luva nitrílica (par)", 4, 10), ("Calçado de segurança", 1, 15)],
+    "AUT": [("Óculos de proteção", 1, 10)],
+    "MCT": [("Óculos de proteção", 1, 10)],
+    "OPL": [("Calçado de segurança", 1, 15), ("Luva de vaqueta", 1, 15), ("Colete refletivo", 1, 15)],
+    "LOG": [("Colete refletivo", 1, 10)],
+}
 LOGINS_PORTAL = {"BM-1002": "juliana.prates", "BM-1001": "marcos.vieira", "PT-2006": "igor.batista", "PT-2004": "eduardo.salles"}
 SENHA_PORTAL = "portal@2026"
 
@@ -404,6 +417,7 @@ def montar(db, ctx, limite_s: float = 120) -> dict:
     db.commit()
 
     casos = pendencias(db, ctx, cen, instrutores, unid, area, turno, cursos, cal)
+    casos.update(epis_demo(db, cursos))
 
     n_aulas = db.scalar(select(func.count()).select_from(Alocacao).where(Alocacao.cenario_id == cen.id))
     return {"cenario_id": cen.id, "aulas": n_aulas, "execucao": ex.id, "substituicao": sub_info, **casos}
@@ -478,3 +492,33 @@ def pendencias(db, ctx, cen, instrutores, unid, area, turno, cursos, cal) -> dic
         cenarios.validar(db, ctx, cid)
         db.commit()
     return {"proposta_id": prop.id, "aulas_sem_instrutor": sem_instrutor, "aulas_sem_sala": sem_sala}
+
+
+def epis_demo(db, cursos) -> dict:
+    """EPIs dos cursos e o controle por turma: turmas já em aula com tudo entregue, e casos para acompanhar
+    (prazo vencido sem entrega, separado faltando entregar, prazo nos próximos dias)."""
+    from app.models import EpiCurso, EpiTurma
+    from app.services.epis import sincronizar_turma
+    for sigla, lista in EPIS.items():
+        c, _m = cursos[sigla]
+        for nome, qtd, ant in lista:
+            db.add(EpiCurso(curso_id=c.id, nome=nome, quantidade_por_aluno=qtd, antecedencia_dias=ant))
+    db.flush()
+    turmas = db.scalars(select(Turma).where(Turma.simulacao_id.is_(None))).all()
+    for t in turmas:
+        sincronizar_turma(db, t)
+    pend = {"PFP-OPL-01": 2, "HTC-ELT-14": 1, "QUA-NRB-01": 9}  # turma → quantos EPIs ainda não foram entregues
+    separado = {("HTC-ELT-14", "Óculos de proteção"), ("PFP-OPL-01", "Luva de vaqueta")}
+    for t in turmas:
+        itens = db.scalars(select(EpiTurma).where(EpiTurma.turma_id == t.id).order_by(EpiTurma.id)).all()
+        faltam = pend.get(t.codigo, 0)
+        for k, e in enumerate(itens):
+            quando = datetime.combine(e.prazo or t.data_inicio, time(10)) if (e.prazo or t.data_inicio) else None
+            if (t.codigo, e.nome) in separado:
+                e.providenciado, e.providenciado_em = True, quando
+            elif k >= len(itens) - faltam:
+                continue
+            else:
+                e.providenciado, e.providenciado_em, e.entregue, e.entregue_em = True, quando, True, quando
+    db.commit()
+    return {"epis_pendentes": sum(1 for _ in db.scalars(select(EpiTurma).where(EpiTurma.entregue.is_(False))))}

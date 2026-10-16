@@ -671,3 +671,14 @@ li.sem-marcador { list-style: none; margin-left: -18px; }
 .mini-sit { font-size: .74rem; padding: 2px 6px; border-radius: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px; }
 .mini-sit i { font-style: normal; font-weight: 700; opacity: .7; margin-right: 2px; }
 .mini-fora { color: var(--mudo); }
+
+/* EPIs */
+.epis-curso { margin-top: 18px; border-top: 1px solid var(--borda); padding-top: 12px; display: grid; gap: 8px; }
+.epi-novo { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.epi-novo > input { flex: 1 1 280px; }
+.num-curto { width: 70px; }
+.check-epi { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.check-epi input { width: 18px; height: 18px; }
+.obs-epi { width: 100%; min-width: 140px; font-size: .85rem; }
+.previa-epis { margin: 8px 0; padding: 8px 12px; border: 1px dashed var(--borda); border-radius: 8px; font-size: .9rem; }
+.previa-epis ul { margin: 4px 0; padding-left: 18px; }

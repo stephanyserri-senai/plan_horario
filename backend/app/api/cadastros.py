@@ -666,6 +666,9 @@ def criar(ent: str, dados: dict = Body(...), db: Session = Depends(get_db), ctx:
             for uc in db.scalars(select(UnidadeCurricular).where(UnidadeCurricular.matriz_id == obj.matriz_id, UnidadeCurricular.ativo.is_(True))):
                 db.add(TurmaUC(turma_id=obj.id, uc_id=uc.id, situacao="prevista"))
             db.flush()
+        if ent == "turmas":
+            from app.services.epis import sincronizar_turma
+            sincronizar_turma(db, obj)  # EPIs do curso entram na turma, com quantidade e prazo
         auditoria.registrar(db, ctx, "cadastro.criar", cfg["model"].__tablename__, getattr(obj, "id", None), depois=auditoria.snapshot(obj))
         db.commit()
     except IntegrityError as e:
@@ -706,6 +709,9 @@ def atualizar(ent: str, id_: str, dados: dict = Body(...), db: Session = Depends
             _avisar_instrutor(db, ctx, ent, obj, mudou)
         else:
             _avisar_instrutor(db, ctx, ent, obj)
+        if ent == "turmas":
+            from app.services.epis import sincronizar_turma
+            sincronizar_turma(db, obj)  # alunos ou início mudaram: acerta quantidade e prazo do que ainda não foi providenciado
         auditoria.registrar(db, ctx, "cadastro.alterar", cfg["model"].__tablename__, getattr(obj, "id", id_), antes=antes,
                             depois=auditoria.snapshot(obj), motivo=dados.get("_motivo"))
         db.commit()
@@ -798,6 +804,8 @@ def duplicar_turma(id_: int, dados: dict = Body(...), db: Session = Depends(get_
         db.flush()
         for tuc in db.scalars(select(TurmaUC).where(TurmaUC.turma_id == t.id)):
             db.add(TurmaUC(turma_id=nova.id, uc_id=tuc.uc_id, situacao="prevista"))
+        from app.services.epis import sincronizar_turma
+        sincronizar_turma(db, nova)
         auditoria.registrar(db, ctx, "cadastro.duplicar", "turmas", nova.id, depois={"origem": t.id, **auditoria.snapshot(nova)})
         db.commit()
     except IntegrityError as e:

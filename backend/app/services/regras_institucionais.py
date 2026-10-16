@@ -167,6 +167,10 @@ def catalogo() -> list[dict]:
     regra("SOLICITACOES", "Substituições e solicitações", "obrigatoria", "Solicitações do instrutor",
           "Pelo portal o instrutor pede folga ou substituição, com justificativa; o coordenador aprova ou recusa. Folga aprovada vira bloqueio na agenda e as aulas afetadas recebem sugestão de substituto.",
           ["portal", "coordenação"])
+    regra("EPI_TURMA", "Turmas", "aviso", "EPIs do curso em cada turma",
+          "O curso lista os EPIs exigidos por aluno. Cada turma recebe a lista com quantidade = alunos × por aluno e prazo = início da turma − antecedência; "
+          "o controle marca comprado/separado e entregue. Prazo vencido sem entrega, ou a menos de 7 dias, vira aviso no Início e em Riscos.",
+          ["cadastro de cursos", "cadastro de turmas", "controle de EPIs", "riscos"], {"dias_aviso": 7})
     # quadro e decisões
     regra("PROPORCAO_5_4", "Quadro e decisões", "aviso", "5 instrutores para 4 turmas",
           f"Referência de {INSTRUTORES_POR_TURMA:g} instrutor por turma. É um aviso, que pesa quando a folga dos instrutores não comporta uma turma nova.",

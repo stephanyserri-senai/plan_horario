@@ -19,7 +19,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, select, text
 
-from app.api import analise, cadastros, planejamento, seguranca, portal
+from app.api import analise, cadastros, epis, planejamento, seguranca, portal
 from app.core.config import get_settings
 from app.core.db import SessionLocal
 from app.core.errors import ErroDominio
@@ -107,7 +107,7 @@ async def erro_interno(request: Request, exc: Exception):
     return JSONResponse(status_code=500, content={"erro": "Erro interno. A operação foi desfeita.", "codigo": "ERRO_INTERNO"})
 
 
-for r in (seguranca.router, cadastros.router, planejamento.router, analise.router, portal.router):
+for r in (seguranca.router, cadastros.router, planejamento.router, analise.router, portal.router, epis.router):
     app.include_router(r)
 
 

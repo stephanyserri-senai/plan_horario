@@ -18,6 +18,8 @@ UC transversal/técnica, substituição, solicitações, quadro 5:4...) estão e
 - Ausências do instrutor: PL (planejamento) e PJ (projeto) ficam na escola; TR (treinamento) libera das aulas
   (não é substituto possível e o gerador evita).
 - Matriz curricular por curso com versões por tipo de oferta (`tipo_oferta`, ex.: AIT, HTC); sem pré-requisitos.
+- EPIs: cadastrados no curso (`epis_curso`); cada turma recebe o controle (`epis_turma`: quantidade, prazo, comprado/separado,
+  entregue) via `services/epis.sincronizar_turma`, chamado ao criar/alterar/duplicar/importar turma.
 - Interface e mensagens em português; nada de dados fictícios fora da demonstração (`backend/app/demo_semestre.py`).
 - Migrações Alembic não destrutivas; para cada migração, gere o SQL do Supabase com `scripts/gerar_sql_migracoes.sh`
   (`backend/sql/atualizacao_NNNN.sql`) e cite-o no SUPABASE.md. O demo (`backend/sql/demo_semestre_completo.sql`)

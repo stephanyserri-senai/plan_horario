@@ -826,6 +826,10 @@ def confirmar(db: Session, ctx, importacao_id: int, ignorar_erros: bool = False,
                 for tid in it["tipos"]:
                     if not db.get(UCTipoAmbiente, (obj.id, tid)):
                         db.add(UCTipoAmbiente(uc_id=obj.id, tipo_ambiente_id=tid))
+            if imp.tipo == "turmas":
+                db.flush()
+                from app.services.epis import sincronizar_turma
+                sincronizar_turma(db, obj)  # EPIs do curso entram na turma importada
             if imp.tipo == "levantamento_instrutores":
                 _gravar_levantamento(db, obj, ext)
             if imp.tipo == "turmas" and it["acao"] == "criar":

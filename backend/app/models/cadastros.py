@@ -488,3 +488,34 @@ class AmbienteArea(Base):
     __tablename__ = "ambiente_areas"
     ambiente_id: Mapped[int] = mapped_column(ForeignKey("ambientes.id", ondelete="CASCADE"), primary_key=True)
     area_id: Mapped[int] = mapped_column(ForeignKey("areas.id"), primary_key=True)
+
+
+# --------------------------------------------------------------------------- EPIs
+class EpiCurso(TimestampMixin, Base):
+    """EPI que o curso exige de cada aluno (ex.: luva isolante, óculos de proteção). Entra em toda turma nova do curso."""
+    __tablename__ = "epis_curso"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    curso_id: Mapped[int] = mapped_column(ForeignKey("cursos.id", ondelete="CASCADE"), index=True)
+    nome: Mapped[str] = mapped_column(String(150))
+    quantidade_por_aluno: Mapped[int] = mapped_column(Integer, default=1, server_default=text("1"))
+    antecedencia_dias: Mapped[int] = mapped_column(Integer, default=15, server_default=text("15"))  # prazo = início da turma − antecedência
+    observacao: Mapped[str | None] = mapped_column(Text)
+    ativo: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+
+
+class EpiTurma(TimestampMixin, Base):
+    """EPI a comprar/separar e entregar para uma turma, com prazo e controle (comprado/separado e entregue)."""
+    __tablename__ = "epis_turma"
+    __table_args__ = (UniqueConstraint("turma_id", "epi_curso_id"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    turma_id: Mapped[int] = mapped_column(ForeignKey("turmas.id", ondelete="CASCADE"), index=True)
+    epi_curso_id: Mapped[int | None] = mapped_column(ForeignKey("epis_curso.id", ondelete="SET NULL"))
+    nome: Mapped[str] = mapped_column(String(150))
+    quantidade: Mapped[int] = mapped_column(Integer, default=0)
+    prazo: Mapped[date | None] = mapped_column(Date)
+    providenciado: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))  # comprado ou separado
+    providenciado_em: Mapped[datetime | None] = mapped_column(DateTime)
+    entregue: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    entregue_em: Mapped[datetime | None] = mapped_column(DateTime)
+    atualizado_por_id: Mapped[int | None] = mapped_column(Integer)
+    observacao: Mapped[str | None] = mapped_column(Text)

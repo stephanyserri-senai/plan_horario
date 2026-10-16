@@ -7,6 +7,7 @@ import { invalidarOpcoes, rotuloDe, useOpcoes } from "../hooks";
 import { CompetenciasUCs, JornadaInstrutor, PreviaCodigoTurma } from "../components/CamposEspeciais";
 import ObservacoesInstrutores from "../components/ObservacoesInstrutores";
 import EstruturaCurricular from "./Cursos";
+import { ControleEpis, PreviaEpis } from "../components/Epis";
 
 export type CampoMeta = { nome: string; tipo: string; obrigatorio: boolean; somente_leitura: boolean; rotulo: string; ref?: string; opcoes?: any[]; pessoal?: boolean;
   secao?: "principal" | "avancado" | "auto"; ajuda?: string };
@@ -20,7 +21,7 @@ export function useMeta() {
 }
 
 const RELACIONADOS: Record<string, string[]> = {
-  turmas: ["turmas", "turma_ucs"],
+  turmas: ["turmas", "turma_ucs", "epis"],
   instrutores: ["instrutores", "observacoes", "habilitacoes", "competencias", "disponibilidade_instrutores"],
   ucs: ["ucs", "uc_recursos"],
   cursos: ["estrutura", "cursos", "matrizes", "ucs"],
@@ -321,6 +322,7 @@ export function ListaEntidade({ ent }: { ent: string }) {
         {edicao && <>
           <Formulario meta={meta} valores={edicao} setValores={setEdicao} />
           {ent === "turmas" && edicao.__novo && <p className="sub">As ofertas (turma × UC) da matriz serão criadas automaticamente como “previstas”.</p>}
+          {ent === "turmas" && <PreviaEpis cursoId={edicao.curso_id} alunos={edicao.qtd_alunos} inicio={edicao.data_inicio} />}
           <Erro erro={erro} />
           <div className="rodape-modal"><button className="btn" onClick={() => setEdicao(null)}>Cancelar</button><button className="btn btn-primario" onClick={salvar}>Salvar</button></div>
         </>}
@@ -377,7 +379,7 @@ function FiltroRef({ c, valor, mudar }: { c: CampoMeta; valor: string; mudar: (v
   );
 }
 
-const ROTULO_ABA: Record<string, string> = { observacoes: "💬 Observações dos instrutores", estrutura: "Por área e curso", cursos: "Lista de cursos",
+const ROTULO_ABA: Record<string, string> = { observacoes: "💬 Observações dos instrutores", estrutura: "Por área e curso", epis: "🦺 EPIs das turmas", cursos: "Lista de cursos",
   matrizes: "Lista de versões", ucs: "Lista de UCs" };
 
 /** Explica o portal do instrutor e, no login pelo Supabase, convida todos os instrutores com e-mail de uma vez. */
@@ -429,7 +431,7 @@ export default function Cadastro() {
       </div>}
       {aba === "turnos" && <TurnosPadrao aoCriar={() => setVersao((v) => v + 1)} />}
       {ent === "instrutores" && aba === "instrutores" && <AcessosPortal />}
-      {aba === "observacoes" ? <ObservacoesInstrutores /> : aba === "estrutura" ? <EstruturaCurricular /> : <ListaEntidade key={`${aba}-${versao}`} ent={aba} />}
+      {aba === "observacoes" ? <ObservacoesInstrutores /> : aba === "estrutura" ? <EstruturaCurricular /> : aba === "epis" ? <ControleEpis /> : <ListaEntidade key={`${aba}-${versao}`} ent={aba} />}
     </Pagina>
   );
 }

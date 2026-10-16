@@ -3,7 +3,7 @@
 --         (pesos, regras de aula, limiares), perfis de acesso, usuários da equipe (administrador, planejador,
 --         observador) e o histórico de auditoria.
 -- APAGA:  logins do portal do instrutor (perfil instrutor), observações, notificações e solicitações dos instrutores,
---         cursos, matrizes, UCs, turmas, instrutores, salas/laboratórios, tipos de sala, recursos, calendários,
+--         cursos (e os EPIs exigidos), matrizes, UCs, turmas (e o controle de EPIs), instrutores, salas/laboratórios, tipos de sala, recursos, calendários,
 --         feriados, bloqueios, semestres (cenários), aulas, gerações, simulações, importações e exceções;
 --         e qualquer unidade que não seja BEIRA-MAR ou PORTO (com seus turnos).
 -- IRREVERSÍVEL: faça um backup antes se houver algo que queira guardar. Cole o arquivo inteiro no SQL Editor e clique em Run.
@@ -58,6 +58,7 @@ BEGIN
     || CASE WHEN to_regclass('public.observacoes_instrutor') IS NOT NULL THEN ', observacoes_instrutor' ELSE '' END
     || CASE WHEN to_regclass('public.notificacoes') IS NOT NULL THEN ', notificacoes' ELSE '' END
     || CASE WHEN to_regclass('public.solicitacoes_instrutor') IS NOT NULL THEN ', solicitacoes_instrutor' ELSE '' END
+    || CASE WHEN to_regclass('public.epis_turma') IS NOT NULL THEN ', epis_turma, epis_curso' ELSE '' END
     || ' RESTART IDENTITY';
   -- instrutores: DELETE (a tabela de usuários, que é mantida, aponta para ela)
   DELETE FROM instrutores;

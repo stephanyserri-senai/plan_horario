@@ -827,6 +827,13 @@ def painel(cenario_id: int, ctx: Contexto = Depends(requer("alocacoes.ler")), db
         novas = contar_novas(db, ctx.unidades)
         if novas:
             atencao.append({"tipo": "info", "texto": f"{novas} observação(ões) nova(s) enviada(s) por instrutores", "link": "/cadastros/instrutores?aba=observacoes"})
+    if ctx.pode("cadastros.ler"):
+        from app.services.epis import avisos as avisos_epi
+        av = avisos_epi(db, ctx.unidades)
+        if av["atrasados"]:
+            atencao.append({"tipo": "bloqueio", "texto": f"{av['atrasados']} EPI(s) com prazo vencido e ainda não entregues às turmas", "link": "/epis?situacao=atrasado"})
+        if av["proximos"]:
+            atencao.append({"tipo": "alerta", "texto": f"{av['proximos']} EPI(s) com prazo nos próximos 7 dias", "link": "/epis?situacao=proximo"})
     if ctx.pode("solicitacoes.aprovar"):
         from app.services.solicitacoes import pendentes
         n = pendentes(db, ctx.unidades)

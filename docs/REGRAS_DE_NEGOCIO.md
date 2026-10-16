@@ -35,6 +35,10 @@ Gerado por `scripts/gerar_regras_md.py` a partir de `backend/app/services/regras
 - **Quem pode substituir** (`SUBST_PRESENCA`, obrigatória): Instrutor em PL ou PJ pode assumir no mesmo dia (já está na escola); com turno vazio, só se a substituição for planejada com pelo menos 1 dia de antecedência. _Onde: substituição._
 - **Solicitações do instrutor** (`SOLICITACOES`, obrigatória): Pelo portal o instrutor pede folga ou substituição, com justificativa; o coordenador aprova ou recusa. Folga aprovada vira bloqueio na agenda e as aulas afetadas recebem sugestão de substituto. _Onde: portal, coordenação._
 
+## Turmas
+
+- **EPIs do curso em cada turma** (`EPI_TURMA`, aviso): O curso lista os EPIs exigidos por aluno. Cada turma recebe a lista com quantidade = alunos × por aluno e prazo = início da turma − antecedência; o controle marca comprado/separado e entregue. Prazo vencido sem entrega, ou a menos de 7 dias, vira aviso no Início e em Riscos. _Onde: cadastro de cursos, cadastro de turmas, controle de EPIs, riscos._
+
 ## Quadro e decisões
 
 - **5 instrutores para 4 turmas** (`PROPORCAO_5_4`, aviso): Referência de 1.25 instrutor por turma. É um aviso, que pesa quando a folga dos instrutores não comporta uma turma nova. _Onde: quadro de instrutores._

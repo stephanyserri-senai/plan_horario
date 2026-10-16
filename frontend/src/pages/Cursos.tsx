@@ -4,6 +4,7 @@ import { Badge, Erro, Modal, Tabela, useCarregar } from "../components/ui";
 import { useApp } from "../contexto";
 import { invalidarOpcoes, useOpcoes } from "../hooks";
 import { Formulario, useMeta, type EntMeta } from "./Cadastro";
+import { EpisDoCurso } from "../components/Epis";
 
 const SITUACAO: Record<string, string> = { vigente: "ok", rascunho: "alerta", encerrada: "neutro" };
 const aulas = (ch: number, min: number) => Math.ceil((ch * 60) / min - 1e-9);
@@ -160,6 +161,7 @@ export default function EstruturaCurricular() {
             {ucs.dados?.ucs.length > 0 && <p className="sub">Total: {ucs.dados.ucs.reduce((s: number, u: any) => s + u.carga_horaria_total, 0)} h em {ucs.dados.ucs.length} UC(s) ·{" "}
               {ucs.dados.ucs.filter((u: any) => u.categoria === "transversal").length} transversal(is), {ucs.dados.ucs.filter((u: any) => u.categoria !== "transversal").length} técnica(s).</p>}
           </>}
+          <EpisDoCurso cursoId={curso.id} editavel={editavel} />
         </>}
       </section>
 

@@ -9,6 +9,7 @@ const COLUNAS: Record<string, string> = {
   falta_h: "Falta (h)", cabe_h: "Cabe até o prazo (h)", prazo: "Prazo", risco: "Risco", habilitados: "Habilitado(s)", media_pct: "Ocupação média (%)",
   pico_pct: "Semana mais cheia (%)", maior_semana_h: "Maior semana (h)", tipo: "Tipo", recurso: "Recurso", falta_h_semana: "Falta (h/semana)",
   descricao: "Descrição", pedido: "Pedido", de: "De", ate: "Até", justificativa: "Justificativa", dias: "Dias presenciais", ead: "EAD", problema: "O que ajustar",
+  epi: "EPI", quantidade: "Quantidade", estado: "Situação",
 };
 const DATAS = new Set(["data", "prazo", "de", "ate"]);
 
