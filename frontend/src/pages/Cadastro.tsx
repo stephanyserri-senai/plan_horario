@@ -27,7 +27,7 @@ const RELACIONADOS: Record<string, string[]> = {
   cursos: ["estrutura", "cursos", "matrizes", "ucs"],
   ambientes: ["ambientes", "tipos_ambiente", "disponibilidade_ambientes", "recursos_ambientes"],
   recursos: ["recursos", "recursos_ambientes"],
-  unidades: ["unidades", "areas", "calendarios", "calendario_excecoes", "bloqueios", "horarios_funcionamento", "setores", "deslocamentos"],
+  unidades: ["unidades", "areas", "calendarios", "calendario_excecoes", "bloqueios"],
   turnos: ["turnos", "periodos"],
 };
 

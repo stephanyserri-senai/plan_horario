@@ -7,7 +7,7 @@ import { ListaEntidade, useMeta } from "./Cadastro";
 export default function Configuracoes() {
   const [aba, setAba] = useState("pesos");
   const metas = useMeta();
-  const aux = ["unidades", "setores", "deslocamentos", "turnos", "periodos", "calendarios", "calendario_excecoes", "horarios_funcionamento", "bloqueios"];
+  const aux = ["unidades", "turnos", "periodos", "calendarios", "calendario_excecoes", "bloqueios"];
   const [ent, setEnt] = useState(aux[0]);
   return (
     <Pagina titulo="Configurações" descricao="Regras, pesos e parâmetros editáveis sem alteração de código. Toda mudança é auditada.">
