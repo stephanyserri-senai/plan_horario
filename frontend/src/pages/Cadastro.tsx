@@ -257,10 +257,13 @@ export function ListaEntidade({ ent }: { ent: string }) {
       if (!corpo.__disp) { delete corpo.disp_turnos; delete corpo.disp_dias; delete corpo.jornada; }  // só regrava a disponibilidade se foi alterada
       delete corpo.__disp;
       delete corpo.__horas_manual;
-      if (novo) await api.post(`/api/cadastros/${ent}`, corpo);
-      else await api.put(`/api/cadastros/${ent}/${idDe(meta, edicao)}`, corpo);
+      const salvo = novo ? await api.post(`/api/cadastros/${ent}`, corpo) : await api.put(`/api/cadastros/${ent}/${idDe(meta, edicao)}`, corpo);
       invalidarOpcoes(ent);
-      aviso("Registro salvo.");
+      if (ent === "turmas" && novo) {
+        const ep = await api.get(`/api/epis-turmas?turma_id=${salvo.id}`).catch(() => null);
+        aviso(ep?.itens?.length ? `Turma ${salvo.codigo} criada. ${ep.itens.length} EPI(s) do curso entraram no controle de entregas (menu EPIs das turmas).`
+          : `Turma ${salvo.codigo} criada. O curso ainda não tem lista de EPIs: monte-a em EPIs das turmas → Lista de EPIs por curso.`);
+      } else aviso("Registro salvo.");
       setEdicao(null);
       lista.recarregar();
     } catch (e) { setErro(e); }

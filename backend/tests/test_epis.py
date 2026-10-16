@@ -27,23 +27,25 @@ def test_epis_do_curso_viram_controle_da_turma(db, mundo):
     r = c.post(f"/api/cursos/{m.curso.id}/epis", json={"nome": "Luva isolante", "quantidade_por_aluno": 2, "antecedencia_dias": 10}, headers=h)
     assert r.status_code == 200, r.text
     assert c.post(f"/api/cursos/{m.curso.id}/epis", json={"nome": ""}, headers=h).status_code == 422
-    # turmas já existentes (T1, T2: 30 alunos, início 03/08) recebem o EPI
+    # turmas já existentes (T1, T2: 30 alunos, início 03/08) recebem o EPI; turma que já começou ganha uma semana de prazo
     itens = db.scalars(select(EpiTurma).where(EpiTurma.turma_id == m.t1.id)).all()
-    assert [(e.nome, e.quantidade, e.prazo) for e in itens] == [("Luva isolante", 60, date(2026, 7, 24))]
+    from datetime import timedelta
+    esperado = date(2026, 7, 24) if date.today() < date(2026, 8, 3) else max(date(2026, 7, 24), date.today() + timedelta(days=7))
+    assert [(e.nome, e.quantidade, e.prazo) for e in itens] == [("Luva isolante", 60, esperado)]
     # turma nova pelo cadastro também
-    base = {"curso_id": m.curso.id, "matriz_id": m.matriz.id, "turno_id": m.manha.id, "qtd_alunos": 12, "data_inicio": "2026-09-01",
+    base = {"curso_id": m.curso.id, "matriz_id": m.matriz.id, "turno_id": m.manha.id, "qtd_alunos": 12, "data_inicio": "2026-12-01",
             "data_fim": "2026-12-18", "_numero": "9", "_tipo_oferta": "HTC"}
     t = c.post("/api/cadastros/turmas", json=base, headers=h)
     assert t.status_code == 200, t.text
     lista = c.get(f"/api/epis-turmas?turma_id={t.json()['id']}", headers=h).json()["itens"]
-    assert len(lista) == 1 and lista[0]["quantidade"] == 24 and lista[0]["prazo"] == "2026-08-22"
+    assert len(lista) == 1 and lista[0]["quantidade"] == 24 and lista[0]["prazo"] == "2026-11-21"
     # mudou o número de alunos: a quantidade acompanha (ainda não providenciado)
     assert c.put(f"/api/cadastros/turmas/{t.json()['id']}", json={"qtd_alunos": 15}, headers=h).status_code == 200
     item = c.get(f"/api/epis-turmas?turma_id={t.json()['id']}", headers=h).json()["itens"][0]
     assert item["quantidade"] == 30
     # situação pelo prazo e marcações (entregue implica separado)
-    assert epis.listar(db, hoje=date(2026, 8, 20))["resumo"]["proximo"] == 1
-    a = epis.avisos(db, hoje=date(2026, 8, 25))
+    assert epis.listar(db, hoje=date(2026, 11, 16))["resumo"]["proximo"] == 1
+    a = epis.avisos(db, hoje=date(2026, 11, 25))
     assert a["atrasados"] == 3
     r = c.put(f"/api/epis-turmas/{item['id']}", json={"entregue": True}, headers=h)
     assert r.status_code == 200 and r.json()["providenciado"] and r.json()["entregue"] and r.json()["situacao"] == "entregue"
@@ -51,7 +53,7 @@ def test_epis_do_curso_viram_controle_da_turma(db, mundo):
     c.put(f"/api/cadastros/turmas/{t.json()['id']}", json={"qtd_alunos": 20}, headers=h)
     assert c.get(f"/api/epis-turmas?turma_id={t.json()['id']}", headers=h).json()["itens"][0]["quantidade"] == 30
     # aviso em Riscos
-    rk = riscos.analisar(db, m.cen.id, None, hoje=date(2026, 8, 25))
+    rk = riscos.analisar(db, m.cen.id, None, hoje=date(2026, 11, 25))
     ep = next(x for x in rk["riscos"] if x["codigo"] == "epis")
     assert ep["quantidade"] == 2 and ep["gravidade"] == "alta"
     # retirar o EPI do curso tira das turmas onde ainda não foi providenciado
@@ -79,3 +81,20 @@ def test_epi_incluido_manualmente_na_turma(db, mundo):
     assert {"Protetor facial", "Máscara PFF2"} <= nomes
     assert c.delete(f"/api/epis-turmas/{r.json()['id']}", headers=h).status_code == 200
     assert "Protetor facial" not in {i["nome"] for i in c.get(f"/api/epis-turmas?turma_id={m.t1.id}", headers=h).json()["itens"]}
+
+
+def test_lista_de_epis_colada_no_curso(db, mundo):
+    m = mundo
+    c = TestClient(app)
+    h = _h(c)
+    texto = "Luva isolante; 2; 10\nÓculos de proteção\n\nCapacete;1\nóculos de proteção"
+    r = c.post(f"/api/cursos/{m.curso.id}/epis/lista", json={"texto": texto}, headers=h)
+    assert r.status_code == 200, r.text
+    j = r.json()
+    assert [e["nome"] for e in j["criados"]] == ["Luva isolante", "Óculos de proteção", "Capacete"] and j["repetidos"] == ["óculos de proteção"]
+    assert j["itens_nas_turmas"] == 6  # 3 EPIs × turmas T1 e T2
+    luva = next(e for e in j["criados"] if e["nome"] == "Luva isolante")
+    assert luva["quantidade_por_aluno"] == 2 and luva["antecedencia_dias"] == 10
+    assert c.post(f"/api/cursos/{m.curso.id}/epis/lista", json={"texto": "X; abc"}, headers=h).status_code == 422
+    res = {x["id"]: x for x in c.get("/api/epis-cursos", headers=h).json()}
+    assert res[m.curso.id]["epis"] == 3 and res[m.curso.id]["turmas_ativas"] == 2

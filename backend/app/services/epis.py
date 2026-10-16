@@ -36,23 +36,29 @@ def _ativa(t: Turma, hoje: date) -> bool:
     return t.simulacao_id is None and t.ativo and t.situacao not in ("concluida", "cancelada") and (t.data_fim is None or t.data_fim >= hoje)
 
 
-def sincronizar_turma(db: Session, turma: Turma) -> int:
+def sincronizar_turma(db: Session, turma: Turma, hoje: date | None = None) -> int:
     """Cria na turma os EPIs do curso que ainda não estão lá e acerta quantidade/prazo dos que ainda não foram
     providenciados (ex.: mudou o número de alunos ou a data de início). Não mexe no que já foi separado ou entregue."""
     if turma.simulacao_id is not None or not turma.curso_id:
         return 0
+    hoje = hoje or date.today()
     epis = db.scalars(select(EpiCurso).where(EpiCurso.curso_id == turma.curso_id, EpiCurso.ativo.is_(True))).all()
     atuais = {e.epi_curso_id: e for e in db.scalars(select(EpiTurma).where(EpiTurma.turma_id == turma.id))}
     novos = 0
     for ec in epis:
         qtd = (turma.qtd_alunos or 0) * (ec.quantidade_por_aluno or 1)
         prazo = turma.data_inicio - timedelta(days=ec.antecedencia_dias or 0) if turma.data_inicio else None
+        iniciada = turma.data_inicio is not None and turma.data_inicio <= hoje
         e = atuais.get(ec.id)
         if e is None:
+            if iniciada and prazo is not None and prazo < hoje:
+                prazo = hoje + timedelta(days=DIAS_AVISO)  # EPI novo numa turma já em aula: uma semana para providenciar
             db.add(EpiTurma(turma_id=turma.id, epi_curso_id=ec.id, nome=ec.nome, quantidade=qtd, prazo=prazo))
             novos += 1
         elif not e.providenciado and not e.entregue:
-            e.nome, e.quantidade, e.prazo = ec.nome, qtd, prazo
+            e.nome, e.quantidade = ec.nome, qtd
+            if not iniciada:  # depois do início, o prazo combinado não muda sozinho
+                e.prazo = prazo
     db.flush()
     return novos
 
@@ -92,6 +98,61 @@ def criar_epi_curso(db: Session, ctx, curso_id: int, dados: dict) -> EpiCurso:
     sincronizar_curso(db, curso_id)
     auditoria.registrar(db, ctx, "epi.curso.criar", "epis_curso", e.id, depois=ser_curso(e))
     return e
+
+
+def importar_lista(db: Session, ctx, curso_id: int, texto: str, antecedencia_padrao: int = 15) -> dict:
+    """Lista colada (um EPI por linha; opcional "nome; quantidade por aluno; dias de antecedência"). Repetidos
+    (mesmo nome já ativo no curso) são ignorados. As turmas do curso em andamento ou futuras recebem tudo de uma vez."""
+    if db.get(Curso, curso_id) is None:
+        raise NaoEncontrado("Curso não encontrado.")
+    existentes = {e.nome.strip().lower() for e in db.scalars(select(EpiCurso).where(EpiCurso.curso_id == curso_id, EpiCurso.ativo.is_(True)))}
+    criados, repetidos = [], []
+    for n, linha in enumerate((texto or "").splitlines(), 1):
+        partes = [p.strip() for p in linha.replace("\t", ";").split(";")]
+        if not partes or not partes[0]:
+            continue
+        dados = {"nome": partes[0], "quantidade_por_aluno": partes[1] if len(partes) > 1 and partes[1] else 1,
+                 "antecedencia_dias": partes[2] if len(partes) > 2 and partes[2] else antecedencia_padrao}
+        try:
+            v = _validar(dados)
+        except EntradaInvalida as e:
+            raise EntradaInvalida(f"Linha {n} ({partes[0]}): {e}")
+        if v["nome"].lower() in existentes:
+            repetidos.append(v["nome"])
+            continue
+        e = EpiCurso(curso_id=curso_id, **v)
+        db.add(e)
+        existentes.add(v["nome"].lower())
+        criados.append(e)
+    if not criados and not repetidos:
+        raise EntradaInvalida("Cole ao menos um EPI (um por linha).")
+    db.flush()
+    turmas = sincronizar_curso(db, curso_id)
+    for e in criados:
+        auditoria.registrar(db, ctx, "epi.curso.criar", "epis_curso", e.id, depois=ser_curso(e), origem="lista")
+    return {"criados": [ser_curso(e) for e in criados], "repetidos": repetidos, "itens_nas_turmas": turmas}
+
+
+def resumo_cursos(db: Session, unidades=None, hoje: date | None = None) -> list[dict]:
+    """Por curso: quantos EPIs tem a lista e quantas turmas ativas estão no controle."""
+    from app.models import Area
+    hoje = hoje or date.today()
+    areas = {a.id: a for a in db.scalars(select(Area))}
+    n_epis: dict[int, int] = {}
+    for e in db.scalars(select(EpiCurso).where(EpiCurso.ativo.is_(True))):
+        n_epis[e.curso_id] = n_epis.get(e.curso_id, 0) + 1
+    turmas: dict[int, int] = {}
+    for t in db.scalars(select(Turma).where(Turma.simulacao_id.is_(None))):
+        if _ativa(t, hoje):
+            turmas[t.curso_id] = turmas.get(t.curso_id, 0) + 1
+    res = []
+    for c in db.scalars(select(Curso).where(Curso.ativo.is_(True)).order_by(Curso.nome)):
+        if unidades is not None and c.unidade_id is not None and c.unidade_id not in unidades:
+            continue
+        a = areas.get(c.area_id)
+        res.append({"id": c.id, "codigo": c.codigo, "nome": c.nome, "area_id": c.area_id, "area": a.nome if a else "Sem área",
+                    "epis": n_epis.get(c.id, 0), "turmas_ativas": turmas.get(c.id, 0)})
+    return res
 
 
 def alterar_epi_curso(db: Session, ctx, eid: int, dados: dict) -> EpiCurso:

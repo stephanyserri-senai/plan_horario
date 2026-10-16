@@ -9,7 +9,7 @@ backend/sql/demo_semestre_completo.sql. Nunca roda no banco real.
 """
 from __future__ import annotations
 
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 
 from sqlalchemy import func, select, update
 
@@ -506,7 +506,7 @@ def epis_demo(db, cursos) -> dict:
     db.flush()
     turmas = db.scalars(select(Turma).where(Turma.simulacao_id.is_(None))).all()
     for t in turmas:
-        sincronizar_turma(db, t)
+        sincronizar_turma(db, t, hoje=INICIO - timedelta(days=30))  # listas montadas antes do semestre: prazos naturais
     pend = {"PFP-OPL-01": 2, "HTC-ELT-14": 1, "QUA-NRB-01": 9}  # turma → quantos EPIs ainda não foram entregues
     separado = {("HTC-ELT-14", "Óculos de proteção"), ("PFP-OPL-01", "Luva de vaqueta")}
     for t in turmas:

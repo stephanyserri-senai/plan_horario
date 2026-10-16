@@ -11,9 +11,19 @@ const SIT: Record<string, [string, string]> = {
 };
 
 /** EPIs que o curso exige de cada aluno: entram em todas as turmas do curso, com quantidade e prazo. */
-export function EpisDoCurso({ cursoId, editavel }: { cursoId: number; editavel: boolean }) {
+export function EpisDoCurso({ cursoId, editavel, mudou }: { cursoId: number; editavel: boolean; mudou?: () => void }) {
   const { aviso } = useApp();
-  const l = useCarregar<any[]>(() => api.get(`/api/cursos/${cursoId}/epis`), [cursoId]);
+  const l0 = useCarregar<any[]>(() => api.get(`/api/cursos/${cursoId}/epis`), [cursoId]);
+  const l = { ...l0, recarregar: () => { l0.recarregar(); mudou?.(); } };
+  const [lista, setLista] = useState<string | null>(null);
+  const colar = async () => {
+    try {
+      const r = await api.post(`/api/cursos/${cursoId}/epis/lista`, { texto: lista });
+      aviso(`${r.criados.length} EPI(s) incluído(s)${r.repetidos.length ? `; ${r.repetidos.length} já estava(m) na lista` : ""}. ${r.itens_nas_turmas} item(ns) entraram no controle das turmas do curso.`);
+      setLista(null);
+      l.recarregar();
+    } catch (e: any) { aviso(e.message, "erro"); }
+  };
   const [novo, setNovo] = useState({ nome: "", quantidade_por_aluno: 1, antecedencia_dias: 15 });
   const [editando, setEditando] = useState<any | null>(null);
   const incluir = async () => {
@@ -55,17 +65,27 @@ export function EpisDoCurso({ cursoId, editavel }: { cursoId: number; editavel: 
         <label>por aluno <input type="number" min={1} className="num-curto" value={novo.quantidade_por_aluno} onChange={(e) => setNovo({ ...novo, quantidade_por_aluno: Number(e.target.value) })} /></label>
         <label>pronto <input type="number" min={0} className="num-curto" value={novo.antecedencia_dias} onChange={(e) => setNovo({ ...novo, antecedencia_dias: Number(e.target.value) })} /> dias antes</label>
         <button className="btn btn-primario" disabled={!novo.nome.trim()} onClick={incluir}>+ Incluir EPI</button>
+        {lista == null && <button className="btn" onClick={() => setLista("")}>📋 Colar uma lista</button>}
+      </div>}
+      {editavel && lista != null && <div className="epi-manual">
+        <b>Colar a lista de EPIs do curso</b>
+        <textarea rows={6} value={lista} autoFocus onChange={(e) => setLista(e.target.value)}
+          placeholder={"Um EPI por linha. Ex.:\nLuva isolante classe 00\nÓculos de proteção; 1; 10\nProtetor auricular tipo plug; 2"} />
+        <small className="mudo">Em cada linha: nome; quantidade por aluno; dias de antecedência (os dois últimos são opcionais: 1 por aluno e 15 dias).
+          Pode colar direto de uma planilha. EPIs que já estão na lista são ignorados.</small>
+        <div className="acoes-linha"><button className="btn" onClick={() => setLista(null)}>Cancelar</button>
+          <button className="btn btn-primario" disabled={!lista.trim()} onClick={colar}>Incluir {lista.split("\n").filter((x) => x.trim()).length} EPI(s)</button></div>
       </div>}
     </section>
   );
 }
 
 /** Controle por turma: o que comprar/separar e entregar, com prazo e as marcações (checkbox). */
-export function ControleEpis({ turmaId, situacaoInicial = "" }: { turmaId?: number | string; situacaoInicial?: string }) {
+export function ControleEpis({ turmaId, cursoId, situacaoInicial = "", versao = 0 }: { turmaId?: number | string; cursoId?: number | string; situacaoInicial?: string; versao?: number }) {
   const { pode, aviso } = useApp();
   const [situacao, setSituacao] = useState(situacaoInicial);
   const [busca, setBusca] = useState("");
-  const r = useCarregar<any>(() => api.get(`/api/epis-turmas${qs({ turma_id: turmaId || "" })}`), [turmaId]);
+  const r = useCarregar<any>(() => api.get(`/api/epis-turmas${qs({ turma_id: turmaId || "", curso_id: cursoId || "" })}`), [turmaId, cursoId, versao]);
   const editavel = pode("cadastros.editar");
   const [novo, setNovo] = useState<any | null>(null);
   const turmas = useOpcoes(!turmaId && novo ? "turmas" : null) as any[];
@@ -163,6 +183,51 @@ export function PreviaEpis({ cursoId, alunos, inicio }: { cursoId: any; alunos: 
       {l.dados.length === 0 ? <span className="mudo">o curso não tem EPIs cadastrados (cadastre em Cursos, matrizes e UCs).</span>
         : <ul>{l.dados.map((e) => <li key={e.id}>{e.nome}: {n ? <b>{n * e.quantidade_por_aluno}</b> : <span className="mudo">informe os alunos</span>} ({e.quantidade_por_aluno} por aluno) · pronto até {prazo(e.antecedencia_dias)}</li>)}</ul>}
       {l.dados.length > 0 && <small className="mudo">Entram no controle de EPIs ao salvar; marque lá a compra/separação e a entrega.</small>}
+    </div>
+  );
+}
+
+
+/** Listas de EPIs por curso: escolha a área e o curso, monte a lista (um a um ou colando) e veja as turmas vinculadas. */
+export function ListasPorCurso() {
+  const { pode } = useApp();
+  const [area, setArea] = useState("");
+  const [busca, setBusca] = useState("");
+  const [sel, setSel] = useState<any | null>(null);
+  const [versao, setVersao] = useState(0);
+  const r = useCarregar<any[]>(() => api.get("/api/epis-cursos"), [versao]);
+  const cursos = (r.dados || []).filter((c) => (!area || String(c.area_id) === area) && (!busca || `${c.codigo} ${c.nome}`.toLowerCase().includes(busca.toLowerCase())));
+  const areas = [...new Map((r.dados || []).map((c) => [String(c.area_id), c.area])).entries()].sort((a, b) => String(a[1]).localeCompare(String(b[1])));
+  const grupos = [...new Set(cursos.map((c) => c.area))];
+  const atual = sel && (r.dados || []).find((c) => c.id === sel.id);
+  const semLista = (r.dados || []).filter((c) => !c.epis && c.turmas_ativas).length;
+  return (
+    <div className="cursos-layout">
+      <aside className="cursos-lista">
+        <div className="filtros">
+          <select aria-label="Área" value={area} onChange={(e) => setArea(e.target.value)}>
+            <option value="">Todas as áreas</option>{areas.map(([id, nome]) => <option key={id} value={id}>{nome}</option>)}</select>
+          <input type="search" placeholder="Curso ou sigla" aria-label="Pesquisar curso" value={busca} onChange={(e) => setBusca(e.target.value)} />
+        </div>
+        {semLista > 0 && <small className="aviso-nl">{semLista} curso(s) com turma em andamento ainda sem lista de EPIs</small>}
+        {grupos.map((g) => <div key={g} className="cursos-area"><h4>{g}</h4><ul>
+          {cursos.filter((c) => c.area === g).map((c) => <li key={c.id}><button className={sel?.id === c.id ? "ativo" : ""} onClick={() => setSel(c)}>
+            <b>{c.codigo}</b> {c.nome}
+            <small className="mudo">{c.epis ? `${c.epis} EPI(s)` : "sem lista de EPIs"} · {c.turmas_ativas} turma(s) ativa(s)</small></button></li>)}
+        </ul></div>)}
+        {r.dados && cursos.length === 0 && <p className="sub">Nenhum curso encontrado.</p>}
+      </aside>
+      <section className="cursos-detalhe">
+        {!atual ? <div className="vazio-painel"><p>Escolha a área e o curso ao lado para montar a lista de EPIs.</p>
+          <p className="sub">Toda turma do curso (as que já existem e as que forem criadas) entra automaticamente no controle de entregas, com quantidade = alunos × por aluno e prazo = início − antecedência.</p></div>
+          : <>
+            <div className="cursos-cab"><div><small className="mudo">{atual.area}</small><h3>{atual.codigo} – {atual.nome}</h3>
+              <small className="mudo">{atual.turmas_ativas} turma(s) em andamento ou futuras vinculadas ao controle</small></div></div>
+            <EpisDoCurso cursoId={atual.id} editavel={pode("cadastros.editar")} mudou={() => setVersao((v) => v + 1)} />
+            <h3 className="subtitulo">Controle de entregas das turmas deste curso</h3>
+            <ControleEpis cursoId={atual.id} versao={versao} />
+          </>}
+      </section>
     </div>
   );
 }

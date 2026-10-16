@@ -37,6 +37,22 @@ def incluir_epi(curso_id: int, dados: dict = Body(...), db: Session = Depends(ge
     return epis.ser_curso(e)
 
 
+@router.post("/cursos/{curso_id}/epis/lista")
+def incluir_lista(curso_id: int, dados: dict = Body(...), db: Session = Depends(get_db), ctx: Contexto = Depends(get_contexto)):
+    """Vários EPIs de uma vez: um por linha ("nome" ou "nome; quantidade por aluno; dias de antecedência")."""
+    ctx.exigir("cadastros.editar")
+    _curso(db, ctx, curso_id)
+    r = epis.importar_lista(db, ctx, curso_id, dados.get("texto") or "", int(dados.get("antecedencia_dias") or 15))
+    db.commit()
+    return r
+
+
+@router.get("/epis-cursos")
+def cursos_e_listas(db: Session = Depends(get_db), ctx: Contexto = Depends(get_contexto)):
+    ctx.exigir("cadastros.ler")
+    return epis.resumo_cursos(db, ctx.unidades)
+
+
 @router.put("/epis-curso/{eid}")
 def alterar_epi(eid: int, dados: dict = Body(...), db: Session = Depends(get_db), ctx: Contexto = Depends(get_contexto)):
     ctx.exigir("cadastros.editar")
