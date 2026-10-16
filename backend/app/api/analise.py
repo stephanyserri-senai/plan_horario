@@ -190,6 +190,16 @@ def listar_sim(ctx: Contexto = Depends(requer("simulacao.executar")), db: Sessio
             for s in db.scalars(select(SimulacaoCapacidade).order_by(SimulacaoCapacidade.id.desc()).limit(100))]
 
 
+@router.get("/simulador/{sid}/impacto")
+def impacto_sim(sid: int, inicio: date | None = None, fim: date | None = None, ctx: Contexto = Depends(requer("simulacao.executar")),
+                db: Session = Depends(get_db)):
+    """Ocupação semana a semana sem e com as turmas simuladas, no recorte da turma (ou em `inicio`–`fim`)."""
+    s = db.get(SimulacaoCapacidade, sid)
+    if not s or not s.cenario_base_id:
+        raise NaoEncontrado("Simulação não encontrada.")
+    return simulador.impacto(db, s, inicio, fim, ctx.unidades)
+
+
 @router.get("/simulador/{sid}")
 def obter_sim(sid: int, ctx: Contexto = Depends(requer("simulacao.executar")), db: Session = Depends(get_db)):
     s = db.get(SimulacaoCapacidade, sid)

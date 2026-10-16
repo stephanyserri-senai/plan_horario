@@ -74,9 +74,7 @@ def simular_agregada(db: Session, p: dict, cenario_base_id: int) -> dict:
     if not ucs:
         raise EntradaInvalida("A matriz selecionada não possui UCs.")
     janelas = _distribuir_ucs(ucs, d0, d1, p.get("ucs_sequenciais", True))
-    fake = Turma(id=-1, codigo="SIM", nome="Simulada", curso_id=p["curso_id"], matriz_id=p["matriz_id"], unidade_id=p["unidade_id"],
-                 qtd_alunos=p["alunos_por_turma"], num_grupos=p.get("num_grupos", 1), data_inicio=d0, data_fim=d1,
-                 turno_id=p.get("turno_id"), dias_possiveis=p.get("dias_semana", [0, 1, 2, 3, 4]), necessidades_acessibilidade=p.get("acessibilidade", False))
+    fake = _turma_ficticia(p)
     mpp = minutos_por_periodo(db, p["unidade_id"])
     extras = []
     for n in range(int(p["quantidade_turmas"])):
@@ -131,6 +129,48 @@ def simular_agregada(db: Session, p: dict, cenario_base_id: int) -> dict:
         "depois": {"gargalos": len(depois["gargalos"]), "deficit_h": round(sum(g["deficit_h"] for g in depois["gargalos"]), 1), "resumo": depois["resumo"]},
         "condicoes_necessarias": condicoes, "turnos": turnos,
     }
+
+
+def _turma_ficticia(p: dict) -> Turma:
+    d0, d1 = date.fromisoformat(p["data_inicio"]), date.fromisoformat(p["data_fim"])
+    return Turma(id=-1, codigo="SIM", nome="Simulada", curso_id=p["curso_id"], matriz_id=p["matriz_id"], unidade_id=p["unidade_id"],
+                 qtd_alunos=p["alunos_por_turma"], num_grupos=p.get("num_grupos", 1), data_inicio=d0, data_fim=d1,
+                 turno_id=p.get("turno_id"), dias_possiveis=p.get("dias_semana", [0, 1, 2, 3, 4]), necessidades_acessibilidade=p.get("acessibilidade", False))
+
+
+def carga_semanal_simulada(db: Session, p: dict) -> list[tuple[date, date, float]]:
+    """Horas de aula por semana que as turmas simuladas acrescentam, por UC e na janela de cada UC: [(início, fim, horas)]."""
+    d0, d1 = date.fromisoformat(p["data_inicio"]), date.fromisoformat(p["data_fim"])
+    ucs = _ucs_da_oferta(db, p)
+    janelas = _distribuir_ucs(ucs, d0, d1, p.get("ucs_sequenciais", True))
+    fake = _turma_ficticia(p)
+    mpp = minutos_por_periodo(db, p["unidade_id"])
+    res = []
+    for uc in ucs:
+        grupos = fake.num_grupos if (uc.divide_grupos and fake.num_grupos > 1) else 1
+        encontros = p.get("encontros_semanais") or uc.encontros_semanais
+        horas = encontros * periodos_por_encontro(db, fake, uc) * mpp / 60 * grupos * int(p["quantidade_turmas"])
+        res.append((*janelas[uc.id], horas))
+    return res
+
+
+def impacto(db: Session, sim: SimulacaoCapacidade, inicio: date | None = None, fim: date | None = None, unidades=None) -> dict:
+    """Ocupação no tempo sem e com as turmas da simulação, no recorte da turma (ou no informado).
+    Grade de teste viável → aulas reais do cenário simulado; caso contrário → estimativa pela carga semanal das UCs."""
+    from app.services import analise_ocupacao
+    p = {k: v for k, v in (sim.parametros or {}).items() if k != "_execucao"}
+    _validar_parametros(db, p)
+    d0 = inicio or date.fromisoformat(p["data_inicio"])
+    d1 = fim or date.fromisoformat(p["data_fim"])
+    if d1 < d0:
+        raise EntradaInvalida("O fim do recorte deve ser posterior ao início.")
+    unid = [p["unidade_id"]] if unidades is None or p["unidade_id"] in unidades else list(unidades)
+    real = sim.tipo == "completa" and sim.cenario_simulado_id and (sim.resultado or {}).get("viabilidade") == "viavel" \
+        and db.get(CenarioPlanejamento, sim.cenario_simulado_id) is not None
+    r = analise_ocupacao.serie_impacto(db, sim.cenario_base_id, d0, d1, unid, extras=None if real else carga_semanal_simulada(db, p),
+                                       cenario_com_id=sim.cenario_simulado_id if real else None)
+    r["turma"] = {"inicio": p["data_inicio"], "fim": p["data_fim"], "quantidade": int(p["quantidade_turmas"])}
+    return r
 
 
 def _criar_turmas_simuladas(db: Session, sim: SimulacaoCapacidade, p: dict) -> list[Turma]:

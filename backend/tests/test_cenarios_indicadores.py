@@ -5,7 +5,7 @@ import pytest
 from sqlalchemy import func, select, text
 
 from app.core.errors import ConflitoValidacao
-from app.models import Alocacao, CenarioPlanejamento, Turma
+from app.models import Alocacao, CenarioPlanejamento, SimulacaoCapacidade, Turma
 from app.services import alocacao as aloc
 from app.services import cenarios, indicadores, simulador
 from tests.conftest import SEG, aula
@@ -137,6 +137,10 @@ def test_22_23_simulacao_nao_altera_vigente_e_compara(db, mundo):
     turmas_antes = db.scalar(select(func.count()).select_from(Turma).where(Turma.simulacao_id.is_(None)))
     ag = simulador.simular_agregada(db, _params(m), m.cen.id)
     assert ag["carga_horaria_adicional_semanal_h"] > 0 and ag["viabilidade_estimada"] in ("provavel", "condicionada", "inviavel_sem_novos_recursos")
+    est = simulador.impacto(db, SimulacaoCapacidade(tipo="agregada", parametros=_params(m), cenario_base_id=m.cen.id),
+                            date(2026, 8, 3), date(2026, 8, 30))
+    assert est["fonte"] == "estimativa" and len(est["pontos"]) == 4
+    assert all(p["aulas_h_com"] > p["aulas_h"] for p in est["pontos"])
     sim = simulador.simular_completa(db, m.ctx, _params(m), m.cen.id, "Nova turma", limite_tempo_s=15)
     db.expire_all()
     depois = db.execute(text("SELECT id, inicio, instrutor_id, ambiente_id FROM alocacoes WHERE cenario_id=:c ORDER BY id"), {"c": m.cen.id}).all()
@@ -148,6 +152,11 @@ def test_22_23_simulacao_nao_altera_vigente_e_compara(db, mundo):
     assert r["viabilidade"] == "viavel"
     comp = r["comparacao"]
     assert comp["com_novas_turmas"]["aulas"] > comp["atual"]["aulas"]
+    # impacto no tempo: com a grade de teste, a ocupação com a turma nunca é menor e sobe em alguma semana
+    imp = simulador.impacto(db, sim)
+    assert imp["fonte"] == "grade_de_teste" and imp["pontos"]
+    assert all(p["instrutores_pct_com"] >= p["instrutores_pct"] for p in imp["pontos"])
+    assert any(p["instrutores_pct_com"] > p["instrutores_pct"] for p in imp["pontos"])
     sim_cen = db.get(CenarioPlanejamento, sim.cenario_simulado_id)
     assert sim_cen.tipo == "simulacao"
     with pytest.raises(ConflitoValidacao):

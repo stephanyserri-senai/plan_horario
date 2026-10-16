@@ -4,6 +4,7 @@ import { Badge, Campo, Card, Erro, fmt, Kpi, Modal, Pagina, rotulo, Tabela, useC
 import { StatusProcessamento } from "../components/Processamento";
 import { useApp } from "../contexto";
 import { useOpcoes } from "../hooks";
+import { GraficoSerie } from "../components/Ocupacao";
 
 const SIT: Record<string, string> = { pendente: "Aguardando processamento", executando: "Processando…", em_execucao: "Processando…", concluida: "Concluída", falha: "Falhou" };
 const VIAB: Record<string, [string, string]> = {
@@ -41,7 +42,7 @@ export default function Simulador() {
     ...p, curso_id: Number(p.curso_id), matriz_id: Number(p.matriz_id), unidade_id: Number(p.unidade_id), turno_id: p.turno_id ? Number(p.turno_id) : null,
     calendario_id: p.calendario_id ? Number(p.calendario_id) : null, quantidade_turmas: Number(p.quantidade_turmas), alunos_por_turma: Number(p.alunos_por_turma),
     num_grupos: Number(p.num_grupos), encontros_semanais: p.encontros_semanais ? Number(p.encontros_semanais) : null, uc_ids: p.uc_ids?.length ? p.uc_ids.map(Number) : null } });
-  const agregada = async () => { setErro(null); setRodando(true); try { setRes({ agregada: await api.post("/api/simulador/agregada", corpo()) }); lista.recarregar(); } catch (e) { setErro(e); } finally { setRodando(false); } };
+  const agregada = async () => { setErro(null); setRodando(true); try { const r = await api.post("/api/simulador/agregada", corpo()); setRes({ agregada: r, id: r.id }); lista.recarregar(); } catch (e) { setErro(e); } finally { setRodando(false); } };
   const completa = async () => { setErro(null); try { const r = await api.post("/api/simulador/completa", { ...corpo(), limite_tempo_s: 20 }); aviso(r.mensagem || "Simulação iniciada; o resultado aparecerá na lista ao lado.", "info"); lista.recarregar(); } catch (e) { setErro(e); } };
   return (
     <Pagina titulo="Simulador de capacidade" descricao="Descubra se cabe uma nova turma antes de abri-la. Nada aqui altera os horários publicados.">
@@ -85,8 +86,10 @@ export default function Simulador() {
             linhas={lista.dados || []} vazio="Nenhuma simulação ainda." aoClicar={async (s) => setDet(await api.get(`/api/simulador/${s.id}`))} />
         </Card>
       </div>
+      {res?.id && <ImpactoSimulacao simId={res.id} />}
       {res?.agregada && <ResultadoAgregado r={res.agregada} />}
       <Modal titulo={det ? `Simulação #${det.id} — ${det.nome}` : ""} aberto={!!det} fechar={() => setDet(null)} largo>
+        {det && det.status === "concluida" && <ImpactoSimulacao simId={det.id} key={det.id} />}
         {det && (det.tipo === "agregada" ? <ResultadoAgregado r={det.resultado} /> : <ResultadoCompleto r={det.resultado} />)}
       </Modal>
     </Pagina>
@@ -144,5 +147,41 @@ function ResultadoCompleto({ r }: { r: any }) {
       {c.diagnosticos?.length > 0 && <Card titulo="Observações"><ul>{c.diagnosticos.map((d: string, i: number) => <li key={i}>{d}</li>)}</ul></Card>}
       {r.agregada && <ResultadoAgregado r={r.agregada} />}
     </div>
+  );
+}
+
+/** Impacto da entrada: ocupação semana a semana hoje × com a(s) turma(s) simulada(s), no recorte da turma (ajustável). */
+function ImpactoSimulacao({ simId }: { simId: number }) {
+  const [rec, setRec] = useState<{ inicio?: string; fim?: string }>({});
+  const q = useCarregar<any>(() => api.get(`/api/simulador/${simId}/impacto${rec.inicio || rec.fim ? `?${new URLSearchParams(
+    Object.entries(rec).filter(([, v]) => v) as [string, string][])}` : ""}`), [simId, rec.inicio, rec.fim]);
+  const d = q.dados;
+  const br = (s?: string) => s ? s.split("-").reverse().join("/") : "";
+  const pct = (v: any) => v == null ? "—" : `${Number(v).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
+  return (
+    <Card titulo="Impacto da entrada na ocupação ao longo do tempo">
+      {q.erro && <div className="erro-box">{q.erro}</div>}
+      {!d && !q.erro && <p role="status">Calculando o impacto…</p>}
+      {d && <>
+        <p className="sub">{d.fonte === "grade_de_teste"
+          ? "Com as aulas da grade de teste montada para as novas turmas."
+          : "Estimativa: soma às aulas atuais a carga semanal de cada UC simulada, na janela em que ela acontece. Para o número exato, monte a grade de teste."}
+          {" "}Turma(s) de {br(d.turma.inicio)} a {br(d.turma.fim)}.</p>
+        <div className="filtros">
+          <label>Recorte de <input type="date" value={rec.inicio || d.periodo.inicio} onChange={(e) => setRec({ ...rec, inicio: e.target.value })} /></label>
+          <label>até <input type="date" value={rec.fim || d.periodo.fim} onChange={(e) => setRec({ ...rec, fim: e.target.value })} /></label>
+          {(rec.inicio || rec.fim) && <button className="btn-link" onClick={() => setRec({})}>voltar ao período da turma</button>}
+        </div>
+        <div className="kpis">
+          <Kpi rotulo="Instrutores (média no recorte)" valor={`${pct(d.media.instrutores_pct)} → ${pct(d.media.instrutores_pct_com)}`} detalhe="hoje → com a nova turma" />
+          <Kpi rotulo="Salas (média no recorte)" valor={`${pct(d.media.salas_pct)} → ${pct(d.media.salas_pct_com)}`} detalhe="hoje → com a nova turma" />
+          <Kpi rotulo="Semana mais cheia" valor={d.pico_com ? pct(d.pico_com.instrutores_pct_com) : "—"} detalhe={d.pico_com ? `instrutores, semana de ${d.pico_com.rotulo}` : ""}
+            tom={d.pico_com && d.pico_com.instrutores_pct_com > 90 ? "erro" : d.pico_com && d.pico_com.instrutores_pct_com > 80 ? "alerta" : "ok"} />
+          <Kpi rotulo="Semanas acima do ideal / do teto" valor={`${d.semanas_acima_ideal} / ${d.semanas_acima_teto}`} detalhe="instrutores > 80% / > 90%"
+            tom={d.semanas_acima_teto ? "erro" : d.semanas_acima_ideal ? "alerta" : "ok"} />
+        </div>
+        <GraficoSerie dados={d} comparar altura={280} />
+      </>}
+    </Card>
   );
 }

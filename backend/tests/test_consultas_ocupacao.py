@@ -13,6 +13,17 @@ def test_faixas():
     assert [ao.faixa(p) for p in (30, 60, 75, 85, 95)] == ["ociosa", "baixa", "ideal", "atencao", "acima_teto"]
 
 
+def test_encaixe_nova_turma_prefere_3_2():
+    assert ao.divisao_nova_turma(5) == [3, 2] and ao.divisao_nova_turma(4) == [2, 2]
+    r = ao.encaixe_nova_turma({"Ana": 3, "Bia": 2, "Caio": 1}, 5)
+    assert r["cabe"] and r["modo"] == "divisao_preferida" and sorted(p["turnos"] for p in r["plano"]) == [2, 3]
+    # sem um par 3 + 2, divide entre vários instrutores se a soma der
+    r = ao.encaixe_nova_turma({"Ana": 2, "Bia": 2, "Caio": 1}, 5)
+    assert r["cabe"] and r["modo"] == "dividida" and sum(p["turnos"] for p in r["plano"]) == 5
+    r = ao.encaixe_nova_turma({"Ana": 2, "Bia": 1}, 5)
+    assert not r["cabe"] and r["modo"] == "nao_cabe"
+
+
 def test_consultas_e_quadro(db, mundo):
     m = mundo
     assert executar(db, m).status == "concluida"
@@ -30,11 +41,15 @@ def test_consultas_e_quadro(db, mundo):
     assert len(se["pontos"]) == 4 and se["pontos"][0]["instrutores_pct"] > 0
     q = ao.quadro_instrutores(db, cid, hoje=SEG)
     assert q["areas"] and q["total"]["turmas"] == 2
-    # com 4 turmas a mais a demanda cresce e a proporção 5:4 pede mais instrutores
+    for a in q["areas"]:
+        assert "cabe" in a["nova_turma"] and a["instrutores_equivalentes"] >= 0
+    # com 4 turmas a mais a demanda cresce; a proporção 5:4 vira aviso e não, sozinha, contratação
     linha = q["areas"][0]
     q2 = ao.quadro_instrutores(db, cid, hoje=SEG, turmas_extra={linha["area_id"]: 4} if linha["area_id"] else None)
     l2 = next(a for a in q2["areas"] if a["area_id"] == linha["area_id"])
     if linha["area_id"]:
         assert l2["demanda_semana_h"] > linha["demanda_semana_h"] and l2["ideal_proporcao"] > linha["ideal_proporcao"]
+        assert l2["aviso_proporcao"] and l2["aviso_proporcao"]["faltam"] > 0
+        assert l2["contratar_recomendado"] == l2["contratar_por_ocupacao"] or l2["situacao"] not in ("contratar", "sem_instrutor")
     r = c.get(f"/api/consultas/quadro-instrutores?cenario_id={cid}&extra=x:1", headers=h)
     assert r.status_code == 200

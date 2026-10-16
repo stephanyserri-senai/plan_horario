@@ -31,11 +31,15 @@ export function BarraOcupacao({ pct }: { pct: number }) {
   );
 }
 
-/** Ocupação semana a semana (instrutores × salas), com ideal/teto e as semanas futuras marcadas como previsão. */
-export function GraficoSerie({ dados, altura = 260 }: { dados: any; altura?: number }) {
+/** Ocupação semana a semana (instrutores × salas), com ideal/teto e as semanas futuras marcadas como previsão.
+ *  Com `comparar` (pontos com *_com), mostra também a ocupação com a(s) turma(s) simulada(s): tracejado = hoje, contínuo = com a turma. */
+export function GraficoSerie({ dados, altura = 260, comparar = false }: { dados: any; altura?: number; comparar?: boolean }) {
   const pts: any[] = dados?.pontos || [];
   if (!pts.length) return <p className="mudo">Sem semanas no período.</p>;
   const futuras = pts.filter((p) => p.previsao);
+  const pct = (v: any) => `${Number(v).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
+  const colsComparar = comparar ? [{ chave: "instrutores_pct_com", rotulo: "Instrutores com a turma (%)", alinhar: "dir" as const },
+    { chave: "salas_pct_com", rotulo: "Salas com a turma (%)", alinhar: "dir" as const }, { chave: "aulas_h_com", rotulo: "Horas de aula com a turma", alinhar: "dir" as const }] : [];
   return (
     <>
       <ResponsiveContainer width="100%" height={altura}>
@@ -47,15 +51,23 @@ export function GraficoSerie({ dados, altura = 260 }: { dados: any; altura?: num
             label={{ value: "previsão (grade gerada)", position: "insideTopRight", fontSize: 11, fill: "var(--mudo)" }} />}
           <ReferenceLine y={80} stroke="var(--ok)" strokeDasharray="4 4" label={{ value: "ideal 80%", position: "right", fontSize: 11, fill: "var(--mudo)" }} />
           <ReferenceLine y={90} stroke="var(--erro)" strokeDasharray="4 4" label={{ value: "teto 90%", position: "right", fontSize: 11, fill: "var(--mudo)" }} />
-          <Tooltip formatter={(v: any) => `${Number(v).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`} labelFormatter={(l) => `Semana de ${l}`} />
+          <Tooltip formatter={pct} labelFormatter={(l) => `Semana de ${l}`} />
           <Legend wrapperStyle={{ fontSize: 12 }} />
-          <Line type="monotone" dataKey="instrutores_pct" name="Instrutores (% da jornada)" stroke="var(--grafico-1)" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
-          <Line type="monotone" dataKey="salas_pct" name="Salas (% do horário)" stroke="var(--grafico-2)" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+          {comparar ? <>
+            <Line type="monotone" dataKey="instrutores_pct" name="Instrutores hoje" stroke="var(--grafico-1)" strokeWidth={1.5} strokeDasharray="5 4" dot={false} />
+            <Line type="monotone" dataKey="instrutores_pct_com" name="Instrutores com a nova turma" stroke="var(--grafico-1)" strokeWidth={2.5} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+            <Line type="monotone" dataKey="salas_pct" name="Salas hoje" stroke="var(--grafico-2)" strokeWidth={1.5} strokeDasharray="5 4" dot={false} />
+            <Line type="monotone" dataKey="salas_pct_com" name="Salas com a nova turma" stroke="var(--grafico-2)" strokeWidth={2.5} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+          </> : <>
+            <Line type="monotone" dataKey="instrutores_pct" name="Instrutores (% da jornada)" stroke="var(--grafico-1)" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+            <Line type="monotone" dataKey="salas_pct" name="Salas (% do horário)" stroke="var(--grafico-2)" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+          </>}
         </LineChart>
       </ResponsiveContainer>
       <details className="tabela-dados"><summary>Ver os números (tabela)</summary>
-        <Tabela colunas={[{ chave: "rotulo", rotulo: "Semana de" }, { chave: "instrutores_pct", rotulo: "Instrutores (%)", alinhar: "dir" },
-          { chave: "salas_pct", rotulo: "Salas (%)", alinhar: "dir" }, { chave: "aulas_h", rotulo: "Horas de aula", alinhar: "dir" },
+        <Tabela colunas={[{ chave: "rotulo", rotulo: "Semana de" }, { chave: "instrutores_pct", rotulo: comparar ? "Instrutores hoje (%)" : "Instrutores (%)", alinhar: "dir" },
+          { chave: "salas_pct", rotulo: comparar ? "Salas hoje (%)" : "Salas (%)", alinhar: "dir" }, { chave: "aulas_h", rotulo: "Horas de aula", alinhar: "dir" },
+          ...colsComparar,
           { chave: "instrutores_acima_teto", rotulo: "Instrutores acima de 90%", alinhar: "dir" },
           { chave: "previsao", rotulo: "", render: (p: any) => p.previsao ? <small className="mudo">previsão</small> : "" }]} linhas={pts} chave={(p: any) => p.semana} />
       </details>
@@ -68,7 +80,7 @@ const SITUACAO: Record<string, [string, string]> = {
   contratar: ["bloqueio", "⛔ contratar"], sem_instrutor: ["bloqueio", "⛔ sem instrutor"],
 };
 
-/** Análise do quadro de instrutores por área: demanda × capacidade (80%/90%) e proporção 5 instrutores : 4 turmas. */
+/** Análise do quadro de instrutores por área: demanda × capacidade (80%/90%), encaixe de uma turma nova e o aviso da proporção 5:4. */
 export function QuadroInstrutores() {
   const { cenario } = useApp();
   const [extra, setExtra] = useState<Record<string, number>>({});
@@ -85,10 +97,13 @@ export function QuadroInstrutores() {
     <div className="quadro-instrutores">
       <div className="kpis">
         <div className="kpi"><span>Ocupação projetada da jornada</span><b>{t.ocupacao_projetada_pct}%</b><small>ideal até {d.parametros.ideal_pct}% · teto {d.parametros.teto_pct}%</small></div>
-        <div className="kpi"><span>Instrutores por turma</span><b>{t.razao_instrutores_turma ?? "—"}</b><small>ideal 1,25 (5 para 4 turmas) · {t.instrutores} instrutores, {t.turmas} turmas</small></div>
+        <div className={`kpi ${t.areas_sem_encaixe?.length ? "kpi-erro" : "kpi-ok"}`}><span>Cabe mais uma turma?</span>
+          <b>{t.areas_sem_encaixe?.length ? `${t.areas_sem_encaixe.length} área(s) sem encaixe` : "sim, em todas"}</b>
+          <small>{t.areas_sem_encaixe?.length ? t.areas_sem_encaixe.join(", ") : "folga até 90%, de preferência em 3 + 2 turnos"}</small></div>
+        <div className="kpi"><span>Instrutores por turma (aviso)</span><b>{t.razao_instrutores_turma ?? "—"}</b><small>referência 1,25 (5 para 4 turmas) · {t.instrutores} instrutores, {t.turmas} turmas{t.avisos_proporcao ? ` · ${t.avisos_proporcao} área(s) abaixo` : ""}</small></div>
         <div className="kpi"><span>Demanda de aulas por semana</span><b>{t.demanda_semana_h} h</b><small>capacidade ideal {t.capacidade_ideal_h} h · teto {t.capacidade_teto_h} h</small></div>
         <div className={`kpi ${t.contratar_recomendado ? "kpi-erro" : "kpi-ok"}`}><span>Contratações sugeridas</span><b>{t.contratar_recomendado}</b>
-          <small>{t.contratar_recomendado ? `em ${contratar.map((a: any) => a.area).join(", ")}` : "nenhuma área precisa contratar"}</small></div>
+          <small>{t.contratar_recomendado ? `pela ocupação, em ${contratar.map((a: any) => a.area).join(", ")}` : "pela ocupação, nenhuma área precisa contratar"}</small></div>
       </div>
       <p className="sub">{d.explicacao} Período analisado: de {d.referencia.split("-").reverse().join("/")} a {d.fim.split("-").reverse().join("/")} ({d.semanas_restantes} semanas).</p>
       <div className="filtros">
@@ -100,10 +115,14 @@ export function QuadroInstrutores() {
         { chave: "area", rotulo: "Área", render: (a: any) => <b>{a.area}</b> },
         { chave: "turmas", rotulo: "Turmas", alinhar: "dir", render: (a: any) => <span title={[...a.turmas_lista, ...a.turmas_simuladas.map((x: string) => `${x} (simulada)`)].join(", ")}>
           {a.turmas}{a.turmas_hipoteticas ? <small className="mudo"> (+{a.turmas_hipoteticas} hip.)</small> : ""}</span> },
-        { chave: "instrutores", rotulo: "Instrutores", alinhar: "dir", render: (a: any) => <span>{a.instrutores} <small className="mudo">/ ideal {a.ideal_proporcao}</small></span> },
+        { chave: "instrutores", rotulo: "Instrutores", alinhar: "dir", render: (a: any) => <span title={a.instrutores_outras_areas.map((o: any) =>
+            `${o.nome} (área principal: ${o.area_principal || "—"}) — ${o.aula_semana_h} h/sem aqui, ${Math.round(o.fracao * 100)}% da jornada`).join("\n")}>
+          {a.instrutores}{a.instrutores_outras_areas.length > 0 && <small className="mudo"> + {a.instrutores_outras_areas.length} de outra área</small>}
+          <br /><small className="mudo">ref. 5:4 = {a.ideal_proporcao}</small></span> },
         { chave: "demanda_semana_h", rotulo: "Demanda (h/sem)", alinhar: "dir", render: (a: any) => <span title={`na grade: ${a.na_grade_h} h · ainda sem horário: ${a.sem_horario_semana_h} h`}>{a.demanda_semana_h}</span> },
         { chave: "capacidade_ideal_h", rotulo: "Capacidade 80% (h/sem)", alinhar: "dir" },
         { chave: "ocupacao_projetada_pct", rotulo: "Ocupação projetada", render: (a: any) => <BarraOcupacao pct={a.ocupacao_projetada_pct} /> },
+        { chave: "nova_turma", rotulo: "Cabe nova turma?", render: (a: any) => <NovaTurma n={a.nova_turma} /> },
         { chave: "situacao", rotulo: "Situação", render: (a: any) => { const [tom, txt] = SITUACAO[a.situacao] || ["info", a.situacao]; return <Badge tipo={tom}>{txt}</Badge>; } },
         { chave: "contratar_recomendado", rotulo: "O que fazer", render: (a: any) => <small>{recomendacao(a)}</small> },
         { chave: "hip", rotulo: "Simular + turmas", render: (a: any) => a.area_id ? (
@@ -114,11 +133,28 @@ export function QuadroInstrutores() {
   );
 }
 
+const MODO: Record<string, string> = { divisao_preferida: "em 2 UCs", uma_uc: "em 1 UC", um_instrutor: "com um só instrutor", dividida: "dividida entre vários" };
+
+/** Cabe mais uma turma nos turnos livres (até 90%)? Mostra a divisão encontrada (de preferência 3 + 2). */
+function NovaTurma({ n }: { n: any }) {
+  if (!n) return null;
+  const plano = (n.plano || []).map((p: any) => `${p.instrutor} (${p.turnos})`).join(" + ");
+  return (
+    <span title={`Turma nova típica da área: ${n.turnos_semana} turno(s) por semana; divisão preferida ${n.divisao_preferida.join(" + ")}. `
+      + `Turnos livres até o teto: ${n.turnos_livres_total} em ${n.instrutores_com_folga} instrutor(es).`}>
+      {n.cabe ? <Badge tipo="ok">sim, {n.divisao_preferida.join(" + ")} {MODO[n.modo] && n.modo !== "divisao_preferida" ? MODO[n.modo] : ""}</Badge>
+        : <Badge tipo="bloqueio">não cabe</Badge>}
+      <br /><small className="mudo">{n.cabe ? plano : `precisa de ${n.turnos_semana} turnos; há ${n.turnos_livres_total} livres`}</small>
+    </span>
+  );
+}
+
 function recomendacao(a: any): string {
   const partes = [];
   if (a.situacao === "sem_instrutor") partes.push(`Não há instrutor na área para ${a.demanda_semana_h} h/semana.`);
-  if (a.contratar_por_ocupacao) partes.push(`Pela ocupação: contratar ${a.contratar_por_ocupacao} instrutor(es) de 40 h para ficar em 80%.`);
-  if (a.contratar_por_proporcao) partes.push(`Pela proporção 5:4: faltam ${a.contratar_por_proporcao} instrutor(es) para ${a.turmas} turma(s).`);
+  if (a.contratar_recomendado) partes.push(`Pela ocupação: contratar ${a.contratar_recomendado} instrutor(es) de 40 h para ficar em 80%.`);
+  if (a.turmas && a.nova_turma && !a.nova_turma.cabe && !a.aviso_proporcao) partes.push("Não cabe mais uma turma com o quadro atual: para abrir outra, contrate ou habilite instrutor de outra área.");
+  if (a.aviso_proporcao) partes.push(`⚠ Aviso: ${a.aviso_proporcao.texto}`);
   if (!partes.length && a.situacao === "ociosa") partes.push("Há folga: a área pode receber mais turmas ou ceder instrutores habilitados.");
   if (!partes.length) partes.push("Quadro adequado para a demanda prevista.");
   return partes.join(" ");
