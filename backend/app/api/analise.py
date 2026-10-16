@@ -691,6 +691,13 @@ def regras_do_sistema(ctx: Contexto = Depends(requer("cadastros.ler")), db: Sess
 
 
 # ============================================================================ riscos ao desenvolvimento
+@router.get("/riscos/{codigo}/sugestoes")
+def sugestoes_risco(codigo: str, cenario_id: int, db: Session = Depends(get_db), ctx: Contexto = Depends(requer("indicadores.ler"))):
+    """Uma correção por caso do risco, pronta para aceitar em /api/sugestoes/aplicar."""
+    from app.services import resolucoes
+    return resolucoes.sugerir(db, cenario_id, codigo, ctx.unidades)
+
+
 @router.get("/riscos")
 def riscos_do_semestre(cenario_id: int, ctx: Contexto = Depends(requer("indicadores.ler")), db: Session = Depends(get_db)):
     """Tudo o que pode atrapalhar as turmas daqui para a frente, com gravidade e o que fazer."""

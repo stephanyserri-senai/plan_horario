@@ -27,6 +27,8 @@ UC transversal/técnica, substituição, solicitações, quadro 5:4...) estão e
   é gerado por `scripts/gerar_semestre_demo_sql.py`.
 - Nunca expor chaves `service_role`, senhas ou segredos no frontend ou no repositório.
 - Toda alocação passa pela validação central (`backend/app/services/validacao.py`).
+- Riscos: `services/resolucoes.sugerir` dá uma correção por caso (acao para `services/sugestoes.aplicar`); trocar sala e
+  remarcar valem também com o horário publicado (ajuste operacional, como a substituição).
 
 ## Testes locais
 `service postgresql start`; `cd backend && python -m pytest -q`; frontend: `cd frontend && npx tsc --noEmit -p . && npm run build`.

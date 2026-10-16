@@ -50,14 +50,14 @@ def analisar(db: Session, cenario_id: int, unidades=None, hoje: date | None = No
               "prazo": i["data_limite"], "risco": i["risco_atraso"]} for i in tu["itens"] if i["risco_atraso"] in ("alto", "medio")]
     riscos.append(_risco("prazo", "UCs que podem não terminar no prazo", "alta" if any(p["risco"] == "alto" for p in prazo) else "media", prazo,
                          "A carga horária que falta é maior (ou quase) do que cabe nos dias letivos até o prazo da UC.",
-                         "Gere os horários que faltam, aumente os dias de aula da UC na semana ou reveja o prazo.", "/cronograma"))
+                         "Abra o risco: o sistema sugere gerar de novo os horários da turma (semestre em edição) ou indica o ajuste no cadastro.", "/cronograma"))
 
     # 2) aulas sem instrutor ou sem sala
     sem = [{**rot(a), "falta": " e ".join(x for x, ok in (("instrutor", a.instrutor_id), ("sala", a.ambiente_id)) if not ok)}
            for a in futuras if not a.instrutor_id or not a.ambiente_id]
     riscos.append(_risco("sem_recurso", "Aulas sem instrutor ou sem sala", "alta", sem,
                          "Aulas já marcadas que ainda não têm instrutor ou sala definidos.",
-                         "Abra a aula na grade e aceite a sugestão de instrutor/sala, ou gere os horários de novo.", "/grade"))
+                         "Abra o risco e aceite a sugestão de cada aula: o sistema indica o instrutor ou a sala livre e compatível.", "/grade"))
 
     # 3) instrutor ausente (licença, folga, treinamento, indisponibilidade) em dia de aula
     bloq_i = defaultdict(list)
@@ -68,7 +68,7 @@ def analisar(db: Session, cenario_id: int, unidades=None, hoje: date | None = No
                for a in futuras if a.instrutor_id for b in bloq_i.get(a.instrutor_id, []) if b.inicio < a.fim and b.fim > a.inicio]
     riscos.append(_risco("instrutor_ausente", "Instrutor ausente em dia de aula", "alta", ausente,
                          "O instrutor tem licença, folga, treinamento (TR) ou outra indisponibilidade no horário de uma aula marcada.",
-                         "Use 'Substituir instrutor' na grade (o sistema sugere quem pode assumir).", "/grade"))
+                         "Abra o risco e aceite o substituto sugerido para cada aula (livre, da área e com a UC; senão, com exceção justificada).", "/grade"))
 
     # 4) sala em manutenção ou bloqueada em dia de aula
     bloq_a = defaultdict(list)
@@ -81,7 +81,7 @@ def analisar(db: Session, cenario_id: int, unidades=None, hoje: date | None = No
              if a.ambiente_id in ambs and ambs[a.ambiente_id].situacao != "operacional"]
     riscos.append(_risco("sala_indisponivel", "Sala ou laboratório indisponível em dia de aula", "alta", sala,
                          "A sala está em manutenção, interditada ou bloqueada no horário de uma aula marcada.",
-                         "Troque a sala da aula na grade (o formulário sugere salas compatíveis livres).", "/grade"))
+                         "Abra o risco e aceite a sala compatível livre sugerida (ou a remarcação para quando a sala estiver livre).", "/grade"))
 
     # 5) aula em feriado, recesso ou dia não letivo
     cal = Calendarios(db)
@@ -91,7 +91,7 @@ def analisar(db: Session, cenario_id: int, unidades=None, hoje: date | None = No
         if not ok:
             nao_letivo.append({**rot(a), "motivo": motivo})
     riscos.append(_risco("nao_letivo", "Aulas em feriado ou dia não letivo", "media", nao_letivo,
-                         "Aulas marcadas em dias que o calendário não considera letivos.", "Remarque as aulas (arraste na grade para outro dia).", "/grade"))
+                         "Aulas marcadas em dias que o calendário não considera letivos.", "Abra o risco e aceite a remarcação sugerida: o primeiro horário livre da turma com o mesmo instrutor e sala.", "/grade"))
 
     # 6) UC que depende de um único instrutor (se ele faltar, ninguém da casa substitui)
     unico, vistos = [], set()
@@ -107,7 +107,7 @@ def analisar(db: Session, cenario_id: int, unidades=None, hoje: date | None = No
             unico.append({"turma": t.codigo, "uc": uc.codigo, "habilitados": eleg[0]["nome"] if eleg else "nenhum"})
     riscos.append(_risco("dependencia", "UCs que dependem de um só instrutor", "media", unico,
                          "Só um instrutor está habilitado para a UC: uma falta, licença ou treinamento dele deixa a turma sem aula.",
-                         "Habilite outro instrutor na UC (perfil do instrutor) ou combine um substituto com antecedência.", "/cadastros/instrutores"))
+                         "Abra o risco e aceite habilitar o segundo instrutor sugerido (da área, com o nível e a certificação exigidos e com folga).", "/cadastros/instrutores"))
 
     # 7) instrutores acima do teto de 90% em alguma semana
     rk = analise_ocupacao.ranking(db, cenario_id, hoje, fim, unidades, limite=500)
@@ -123,7 +123,7 @@ def analisar(db: Session, cenario_id: int, unidades=None, hoje: date | None = No
            for x in g["gargalos"]]
     riscos.append(_risco("capacidade", "Falta de sala, laboratório ou instrutor compatível", "alta" if cap else "baixa", cap,
                          "A demanda semanal das turmas passa da capacidade dos recursos compatíveis (salas do tipo exigido, instrutores habilitados).",
-                         "Veja as alternativas de cada caso abaixo; o simulador mostra o impacto de abrir turmas novas.", None))
+                         "Abra o risco: cada caso traz a sugestão do sistema (quando há correção automática) ou as alternativas.", None))
 
     # 9) solicitações de folga/substituição aguardando decisão
     pend = []

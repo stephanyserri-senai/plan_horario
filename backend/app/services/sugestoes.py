@@ -13,6 +13,9 @@ Ações:
 - adiar_uc {turma_uc_id, data_inicio}: a UC passa a começar na data sugerida.
 - alocar_aula {turma_uc_id, data, periodo_inicio_id, num_periodos, grupo, instrutor_id, ambiente_id}: cria a aula sugerida.
 - substituir {alocacao_ids, substituto_id}: registra a substituição sugerida.
+- trocar_sala {alocacao_ids, ambiente_id} / remarcar {alocacao_ids, data, periodo_inicio_id, num_periodos}: ajustes operacionais
+  (valem também com o horário publicado), pela validação central (services/resolucoes.ajustar).
+- gerar_turma {turma_id}: gera de novo os horários da turma (semestre em edição).
 Depois de habilitar, passar ou adiar, se o semestre está em edição, o gerador roda só para a turma (gerar=True).
 """
 from __future__ import annotations
@@ -27,7 +30,8 @@ from app.models import Alocacao, CenarioPlanejamento, CompetenciaInstrutor, Inst
 from app.services import auditoria
 
 PERMISSOES = {"habilitar_instrutor": "cadastros.editar", "passar_uc": "alocacoes.editar", "adiar_uc": "cadastros.editar",
-              "alocar_aula": "alocacoes.editar", "substituir": "alocacoes.editar"}
+              "alocar_aula": "alocacoes.editar", "substituir": "alocacoes.editar", "trocar_sala": "alocacoes.editar",
+              "remarcar": "alocacoes.editar", "gerar_turma": "otimizacao.executar"}
 EDITAVEIS = ("em_elaboracao", "em_validacao")
 
 
@@ -119,6 +123,20 @@ def aplicar(db: Session, ctx, cenario_id: int, acao: dict, motivo: str | None = 
         r = substituicao.substituir(db, ctx, cenario_id, aulas, int(acao["substituto_id"]), motivo or acao.get("motivo") or "")
         res.update({"mensagem": f"{r['substituidas']} aula(s) substituída(s).", "falhas": r["falhas"][:10]})
         gerar = False
+    elif tipo in ("trocar_sala", "remarcar"):
+        from app.services import resolucoes
+        r = resolucoes.ajustar(db, ctx, cenario_id, acao.get("alocacao_ids") or [], ambiente_id=acao.get("ambiente_id"), data=acao.get("data"),
+                               periodo_inicio_id=acao.get("periodo_inicio_id"), num_periodos=acao.get("num_periodos"),
+                               motivo=motivo or ("Sala trocada" if tipo == "trocar_sala" else "Aula remarcada") + ": sugestão aceita na análise de riscos")
+        res.update({"mensagem": f"{r['ajustadas']} aula(s) " + ("com a sala trocada." if tipo == "trocar_sala" else "remarcada(s)."), "falhas": r["falhas"][:10]})
+        gerar = False
+    elif tipo == "gerar_turma":
+        db.add(RegistroDecisao(tipo="sugestao", cenario_id=cenario_id, usuario_id=ctx.id, motivo=motivo, dados={"acao": acao, "aceita": True}))
+        db.commit()
+        g = _gerar_turma(db, ctx, cenario_id, acao.get("turma_id"))
+        if not g or not g.get("gerado"):
+            raise ConflitoValidacao((g or {}).get("aviso") or "Não foi possível gerar os horários da turma.")
+        return {**res, "mensagem": "Geração dos horários da turma iniciada; acompanhe em Gerar horários.", "geracao": g}
     db.add(RegistroDecisao(tipo="sugestao", cenario_id=cenario_id, usuario_id=ctx.id, motivo=motivo, dados={"acao": acao, "aceita": True}))
     db.flush()
     if gerar and tipo in ("habilitar_instrutor", "passar_uc", "adiar_uc"):
