@@ -99,7 +99,7 @@ export function QuadroInstrutores() {
         <div className="kpi"><span>Ocupação projetada da jornada</span><b>{t.ocupacao_projetada_pct}%</b><small>ideal até {d.parametros.ideal_pct}% · teto {d.parametros.teto_pct}%</small></div>
         <div className={`kpi ${t.areas_sem_encaixe?.length ? "kpi-erro" : "kpi-ok"}`}><span>Cabe mais uma turma?</span>
           <b>{t.areas_sem_encaixe?.length ? `${t.areas_sem_encaixe.length} área(s) sem encaixe` : "sim, em todas"}</b>
-          <small>{t.areas_sem_encaixe?.length ? t.areas_sem_encaixe.join(", ") : "folga até 90%, de preferência em 3 + 2 turnos"}</small></div>
+          <small>{t.areas_sem_encaixe?.length ? t.areas_sem_encaixe.join(", ") : "folga até 90%, de preferência em 3 + 2 dias de aula"}</small></div>
         <div className="kpi"><span>Instrutores por turma (aviso)</span><b>{t.razao_instrutores_turma ?? "—"}</b><small>referência 1,25 (5 para 4 turmas) · {t.instrutores} instrutores, {t.turmas} turmas{t.avisos_proporcao ? ` · ${t.avisos_proporcao} área(s) abaixo` : ""}</small></div>
         <div className="kpi"><span>Demanda de aulas por semana</span><b>{t.demanda_semana_h} h</b><small>capacidade ideal {t.capacidade_ideal_h} h · teto {t.capacidade_teto_h} h</small></div>
         <div className={`kpi ${t.contratar_recomendado ? "kpi-erro" : "kpi-ok"}`}><span>Contratações sugeridas</span><b>{t.contratar_recomendado}</b>
@@ -136,17 +136,17 @@ export function QuadroInstrutores() {
   );
 }
 
-/** Cabe mais uma turma nos turnos livres (até 90%)? Lista quem assumiria cada UC (de preferência 2 UCs: 3 + 2 turnos). */
+/** Cabe mais uma turma nos dias de aula livres dos instrutores (até 90%)? Lista quem assumiria cada UC (de preferência 2 UCs: 3 + 2 dias). */
 function NovaTurma({ n }: { n: any }) {
   if (!n) return null;
   const nivel = n.nivel === "basico" ? "básica" : "técnica";
   return (
-    <div className="nova-turma" title={`Turnos livres até o teto de 90%: ${n.turnos_livres_total}, em ${n.instrutores_com_folga} instrutor(es) aptos à turma ${nivel}.`}>
+    <div className="nova-turma" title={`Dias de aula livres até o teto de 90%: ${n.turnos_livres_total}, em ${n.instrutores_com_folga} instrutor(es) aptos à turma ${nivel}.`}>
       {n.cabe ? <Badge tipo="ok">cabe</Badge> : <Badge tipo="bloqueio">não cabe</Badge>}
-      <small className="mudo nt-perfil">turma {nivel} de {n.turnos_semana} turno{n.turnos_semana > 1 ? "s" : ""}/semana</small>
+      <small className="mudo nt-perfil">turma {nivel} com {n.turnos_semana} dia{n.turnos_semana > 1 ? "s" : ""} de aula por semana</small>
       {n.cabe ? <ul className="nt-plano">{(n.plano || []).map((p: any, k: number) => (
-          <li key={k}><span className="nt-uc">{n.modo === "dividida" ? `parte ${k + 1}` : `UC ${k + 1}`}</span> {p.turnos} turno{p.turnos > 1 ? "s" : ""} · {p.instrutor}</li>))}</ul>
-        : <small className="nt-falta">faltam {n.faltam_turnos || n.turnos_semana} turno(s): há {n.turnos_livres_total} livre(s) até 90%</small>}
+          <li key={k}><span className="nt-uc">{n.modo === "dividida" ? `parte ${k + 1}` : `UC ${k + 1}`}</span> {p.turnos} dia{p.turnos > 1 ? "s" : ""} · {p.instrutor}</li>))}</ul>
+        : <small className="nt-falta">faltam {n.faltam_turnos || n.turnos_semana} dia(s) de aula: os instrutores têm {n.turnos_livres_total} livre(s) até 90%</small>}
     </div>
   );
 }

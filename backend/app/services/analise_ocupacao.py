@@ -280,7 +280,7 @@ def divisao_nova_turma(turnos: int) -> list[int]:
 
 
 def encaixe_nova_turma(livres: dict[str, int], turnos: int) -> dict:
-    """Cabe mais uma turma com `turnos` turnos por semana nos turnos livres (até o teto de 90%) dos instrutores?
+    """Cabe mais uma turma com `turnos` dias de aula por semana nos dias livres (até o teto de 90%) dos instrutores?
     Tenta a divisão 3 + 2 (uma UC por instrutor) e, se não der, qualquer divisão entre vários instrutores."""
     partes = divisao_nova_turma(turnos)
     ordem = sorted(((n, nome) for nome, n in livres.items() if n > 0), reverse=True)
@@ -480,5 +480,5 @@ def quadro_instrutores(db: Session, cenario_id: int, unidades=None, hoje: date |
             "explicacao": "Demanda = aulas já na grade daqui até o fim do semestre + carga ainda sem horário, por semana. "
                           "Capacidade = jornada dos instrutores da área (ideal 80%, teto 90%); instrutor de outra área só conta se já dá aula "
                           "em turma desta área, e com a fração que dedica a ela. Contratar = instrutores de 40 h que faltam para a área ficar em 80%. "
-                          "Nova turma = cabe mais uma turma nos turnos livres até 90%, de preferência dividida em 2 UCs (ex.: 3 + 2 dias). "
+                          "Nova turma = cabe mais uma turma nos dias de aula livres dos instrutores até 90%, de preferência dividida em 2 UCs (ex.: 3 + 2 dias). "
                           "A proporção 5 instrutores : 4 turmas aparece como aviso."}
