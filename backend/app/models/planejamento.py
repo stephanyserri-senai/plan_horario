@@ -368,7 +368,7 @@ class HistoricoAuditoria(Base):
 class Usuario(Base):
     __tablename__ = "usuarios"
     __table_args__ = (
-        CheckConstraint("perfil in ('administrador','planejador','instrutor','observador')", name="usuarios_perfil_check"),
+        CheckConstraint("perfil in ('administrador','planejador','coordenador','instrutor','observador')", name="usuarios_perfil_check"),
     )
     id: Mapped[int] = mapped_column(primary_key=True)
     nome: Mapped[str] = mapped_column(String(200))
@@ -398,6 +398,29 @@ class ObservacaoInstrutor(Base):
     resposta: Mapped[str | None] = mapped_column(Text)
     respondido_por_id: Mapped[int | None] = mapped_column(ForeignKey("usuarios.id", ondelete="SET NULL"))
     respondido_em: Mapped[datetime | None] = mapped_column(DateTime)
+    criado_em: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class SolicitacaoInstrutor(Base):
+    """Pedido do instrutor pelo portal (folga ou substituição), com justificativa, decidido pelo coordenador."""
+    __tablename__ = "solicitacoes_instrutor"
+    __table_args__ = (
+        CheckConstraint("tipo in ('folga','substituicao')", name="solicitacoes_tipo_check"),
+        CheckConstraint("status in ('pendente','aprovada','recusada','cancelada')", name="solicitacoes_status_check"),
+        CheckConstraint("data_fim >= data_inicio", name="solicitacoes_datas_check"),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    instrutor_id: Mapped[int] = mapped_column(ForeignKey("instrutores.id", ondelete="CASCADE"), index=True)
+    tipo: Mapped[str] = mapped_column(String(20))
+    data_inicio: Mapped[date] = mapped_column(Date)
+    data_fim: Mapped[date] = mapped_column(Date)
+    turnos: Mapped[list[int]] = mapped_column(ARRAY(Integer), default=list, server_default=text("'{}'"))  # vazio = o dia todo
+    justificativa: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), default="pendente", server_default="pendente")
+    resposta: Mapped[str | None] = mapped_column(Text)
+    decidido_por_id: Mapped[int | None] = mapped_column(ForeignKey("usuarios.id", ondelete="SET NULL"))
+    decidido_em: Mapped[datetime | None] = mapped_column(DateTime)
+    efeitos: Mapped[dict | None] = mapped_column(JSONB)  # o que a aprovação fez (bloqueio criado, aulas substituídas...)
     criado_em: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 

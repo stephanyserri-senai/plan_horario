@@ -64,6 +64,8 @@ TURNOS_PADRAO = [
     ("T", "Tarde", [(13 * 60 + 30, 55), (14 * 60 + 25, 55), (15 * 60 + 40, 55), (16 * 60 + 35, 55)]),
     ("N", "Noite", [(18 * 60 + 30, 50), (19 * 60 + 20, 50), (20 * 60 + 20, 50), (21 * 60 + 10, 50)]),  # 18:30–22:00, intervalo 20:10–20:20
 ]
+# Sábado: turno próprio, 09:00–13:00 (4 aulas, intervalo 10:50–11:10), só aos sábados. Turma de sábado só tem aula presencial no sábado.
+TURNO_SABADO = ("S", "Sábado", [(9 * 60, 55), (9 * 60 + 55, 55), (11 * 60 + 10, 55), (12 * 60 + 5, 55)])
 
 
 HORAS_POR_TURNO = 4  # cada turno = 4 aulas

@@ -291,6 +291,21 @@ def _derivar(db: Session, ent: str, dados: dict, obj=None) -> dict:
             d["dias_ead"] = sorted({int(x) for x in (ead or [])})
             d["dias_possiveis"] = dias_com_ead(d["dias_possiveis"] if "dias_possiveis" in d else (obj.dias_possiveis if obj else [0, 1, 2, 3, 4]),
                                                d["dias_ead"], obj.dias_ead if obj and "dias_ead" in d else None)
+        # padrão de dias (regras institucionais): 5 presenciais | 4 + 1 EAD | só sábado; aperfeiçoamento/empresa pode ter menos
+        if obj is None or any(k in d for k in ("dias_possiveis", "dias_ead", "turno_id", "curso_id", "_tipo_oferta", "codigo")):
+            from app.services.regras_institucionais import TURNO_SABADO, erro_padrao_dias, oferta_flexivel
+            tid = d.get("turno_id") if "turno_id" in d else (obj.turno_id if obj else None)
+            turno = db.get(Turno, int(tid)) if tid not in (None, "") else None
+            if turno is not None and turno.codigo == TURNO_SABADO:
+                d["dias_possiveis"], d["dias_ead"] = [5], []  # turma de sábado: só o sábado é presencial
+            dias = d["dias_possiveis"] if "dias_possiveis" in d else (obj.dias_possiveis if obj else [0, 1, 2, 3, 4])
+            ead = d["dias_ead"] if "dias_ead" in d else (obj.dias_ead if obj else [])
+            cid = d.get("curso_id") or (obj.curso_id if obj else None)
+            erro = erro_padrao_dias([int(x) for x in dias or []], [int(x) for x in ead or []], turno.codigo if turno else None,
+                                    oferta_flexivel(db, d.get("codigo") or (obj.codigo if obj else None) or
+                                                    (f"{(d.get('_tipo_oferta') or '').upper()}-" if d.get("_tipo_oferta") else ""), int(cid) if cid else None))
+            if erro:
+                raise EntradaInvalida(erro)
         if obj is None and vazio("codigo") and vazio("_numero"):
             raise EntradaInvalida("Informe o número da turma (o código é montado com a sigla do curso e o tipo de oferta).")
         un = d.get("unidade_id") or (obj.unidade_id if obj else None)
@@ -318,14 +333,15 @@ def _dados_instrutor(db: Session | None, inst) -> dict:
         return {}
     comps = db.scalars(select(CompetenciaInstrutor).where(CompetenciaInstrutor.instrutor_id == inst.id, CompetenciaInstrutor.ativo.is_(True))).all()
     disp = db.scalars(select(DisponibilidadeInstrutor).where(DisponibilidadeInstrutor.instrutor_id == inst.id)).all()
-    turnos = db.scalars(select(Turno).where(Turno.unidade_id == inst.unidade_id, Turno.ativo.is_(True))).all()
-    t_ids = [t.id for t in turnos if any(x.hora_inicio <= t.hora_inicio and x.hora_fim >= t.hora_fim for x in disp)]
+    # jornada = turnos de segunda a sexta (M, V, N); o sábado (turno S, 09:00–13:00) é marcado à parte pelo dia
+    turnos = [t for t in db.scalars(select(Turno).where(Turno.unidade_id == inst.unidade_id, Turno.ativo.is_(True))) if t.codigo != "S"]
+    t_ids = [t.id for t in turnos if any(x.dia_semana < 5 and x.hora_inicio <= t.hora_inicio and x.hora_fim >= t.hora_fim for x in disp)]
     janelas = {(t.hora_inicio, t.hora_fim) for t in turnos}
     cod = {t.id: t.codigo for t in turnos}
     return {"ucs_competencia": [{"uc_id": c.uc_id, "nivel": c.nivel} for c in comps],
             "jornada": jornada_dos_codigos(cod[i] for i in t_ids) if t_ids else None,
             "disp_turnos": t_ids, "disp_dias": sorted({x.dia_semana for x in disp}),
-            "disp_personalizada": any((x.hora_inicio, x.hora_fim) not in janelas for x in disp)}
+            "disp_personalizada": any((x.hora_inicio, x.hora_fim) not in janelas for x in disp if x.dia_semana < 5)}
 
 
 def _gravar_instrutor(db: Session, inst, dados: dict):
@@ -370,7 +386,12 @@ def _gravar_instrutor(db: Session, inst, dados: dict):
             if t is None or t.unidade_id != inst.unidade_id:
                 raise EntradaInvalida("Turno inválido para a unidade do instrutor.")
             for dia in dias:
+                if dia == 5 and "S" in turnos_un:
+                    continue  # sábado: turno próprio (abaixo)
                 db.add(DisponibilidadeInstrutor(instrutor_id=inst.id, dia_semana=dia, hora_inicio=t.hora_inicio, hora_fim=t.hora_fim))
+        if 5 in dias and "S" in turnos_un:  # dá aula aos sábados: 09:00–13:00
+            sab = turnos_un["S"]
+            db.add(DisponibilidadeInstrutor(instrutor_id=inst.id, dia_semana=5, hora_inicio=sab.hora_inicio, hora_fim=sab.hora_fim))
     elif inst.id and ("max_horas_dia" in dados or "carga_horaria_contratual" in dados):
         # mudou a carga sem mexer nos turnos: os turnos atuais precisam continuar valendo (40 h = MV ou VN)
         db.flush()
@@ -406,7 +427,7 @@ def listar_ucs_por_area(db: Session, ids: list[int], unidade_id: int | None = No
             if ucs:
                 res.append({"curso_id": c.id, "curso": f"{c.codigo} – {c.nome}" + (f" (matriz {m.versao})" if len(ms) > 1 else ""),
                             "area": nomes_area.get(c.area_id), "ucs": [{"id": u.id, "codigo": u.codigo, "nome": u.nome, "ch": u.carga_horaria_total,
-                                                                        "certificacao": u.certificacao_exigida} for u in ucs]})
+                                                                        "certificacao": u.certificacao_exigida, "categoria": u.categoria} for u in ucs]})
     return res
 
 

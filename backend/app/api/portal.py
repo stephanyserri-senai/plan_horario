@@ -23,7 +23,7 @@ from app.core.deps import Contexto, get_contexto, requer
 from app.core.errors import AcessoNegado, ConflitoValidacao, EntradaInvalida, NaoEncontrado
 from app.core.security import hash_senha
 from app.models import (Alocacao, Ambiente, Area, Bloqueio, CenarioPlanejamento, CompetenciaInstrutor, HabilitacaoInstrutor, Instrutor, InstrutorArea,
-                        Notificacao, ObservacaoInstrutor, Turma, TurmaUC, Turno, Unidade, UnidadeCurricular, Usuario)
+                        Notificacao, ObservacaoInstrutor, SolicitacaoInstrutor, Turma, TurmaUC, Turno, Unidade, UnidadeCurricular, Usuario)
 from app.services import auditoria
 from app.services.agenda_instrutor import TIPO_PARA_SIGLA
 
@@ -51,7 +51,7 @@ def _areas_ids(db: Session, inst: Instrutor) -> list[int]:
 def _eu(db: Session, inst: Instrutor) -> dict:
     un = db.get(Unidade, inst.unidade_id)
     principal = db.get(Area, inst.area_id) if inst.area_id else None
-    turnos = db.scalars(select(Turno).where(Turno.unidade_id == inst.unidade_id, Turno.ativo.is_(True)).order_by(Turno.hora_inicio)).all()
+    turnos = db.scalars(select(Turno).where(Turno.unidade_id == inst.unidade_id, Turno.ativo.is_(True)).order_by(Turno.ordem, Turno.hora_inicio)).all()
     certs = db.scalars(select(HabilitacaoInstrutor.nome).where(HabilitacaoInstrutor.instrutor_id == inst.id, HabilitacaoInstrutor.ativo.is_(True))
                        .order_by(HabilitacaoInstrutor.nome)).all()
     return {
@@ -334,6 +334,73 @@ def responder_observacao(oid: int, dados: dict = Body(...), ctx: Contexto = Depe
         notificar(db, o.instrutor_id, "observacao", titulo + sobre, o.resposta, "obs", ctx)
     db.commit()
     return _obs(db, o, True)
+
+
+# ============================================================================ solicitações (folga e substituição)
+@router.get("/portal/solicitacoes")
+def minhas_solicitacoes(ctx: Contexto = Depends(get_contexto), db: Session = Depends(get_db)):
+    from app.services import solicitacoes
+    inst = _meu_instrutor(ctx, db)
+    q = select(SolicitacaoInstrutor).where(SolicitacaoInstrutor.instrutor_id == inst.id).order_by(SolicitacaoInstrutor.id.desc()).limit(200)
+    return [solicitacoes.serializar(db, s) for s in db.scalars(q)]
+
+
+@router.post("/portal/solicitacoes")
+def nova_solicitacao(dados: dict = Body(...), ctx: Contexto = Depends(get_contexto), db: Session = Depends(get_db)):
+    from app.services import solicitacoes
+    inst = _meu_instrutor(ctx, db)
+    s = solicitacoes.criar(db, ctx, inst, dados)
+    r = solicitacoes.serializar(db, s, detalhes=False)
+    _c, aulas = solicitacoes.aulas_afetadas(db, s)
+    r["aulas_afetadas"] = len(aulas)
+    db.commit()
+    return r
+
+
+@router.post("/portal/solicitacoes/{sid}/cancelar")
+def cancelar_solicitacao(sid: int, ctx: Contexto = Depends(get_contexto), db: Session = Depends(get_db)):
+    from app.services import solicitacoes
+    s = solicitacoes.cancelar(db, ctx, _meu_instrutor(ctx, db), sid)
+    db.commit()
+    return solicitacoes.serializar(db, s)
+
+
+@router.get("/solicitacoes-instrutores")
+def listar_solicitacoes(status: str | None = None, ctx: Contexto = Depends(requer("solicitacoes.aprovar")), db: Session = Depends(get_db)):
+    from app.services import solicitacoes
+    q = select(SolicitacaoInstrutor).join(Instrutor, Instrutor.id == SolicitacaoInstrutor.instrutor_id)
+    if ctx.unidades is not None:
+        q = q.where(Instrutor.unidade_id.in_(ctx.unidades or [-1]))
+    if status:
+        q = q.where(SolicitacaoInstrutor.status == status)
+    ordem = {"pendente": 0, "aprovada": 1, "recusada": 2, "cancelada": 3}
+    lista = [solicitacoes.serializar(db, s) for s in db.scalars(q.order_by(SolicitacaoInstrutor.data_inicio, SolicitacaoInstrutor.id).limit(500))]
+    return sorted(lista, key=lambda x: ordem.get(x["status"], 9))
+
+
+@router.get("/solicitacoes-instrutores/{sid}")
+def detalhe_solicitacao(sid: int, ctx: Contexto = Depends(requer("solicitacoes.aprovar")), db: Session = Depends(get_db)):
+    """Pedido com as aulas afetadas, os possíveis substitutos e a sugestão do sistema."""
+    from app.services import solicitacoes
+    s = db.get(SolicitacaoInstrutor, sid)
+    if s is None:
+        raise NaoEncontrado("Solicitação não encontrada.")
+    ctx.exigir_unidade(db.get(Instrutor, s.instrutor_id).unidade_id)
+    return solicitacoes.serializar(db, s, detalhes=True)
+
+
+@router.put("/solicitacoes-instrutores/{sid}")
+def decidir_solicitacao(sid: int, dados: dict = Body(...), ctx: Contexto = Depends(requer("solicitacoes.aprovar")), db: Session = Depends(get_db)):
+    """{aprovar: bool, resposta, substituto_id?, aceitar_sugestao?}"""
+    from app.services import solicitacoes
+    s = db.get(SolicitacaoInstrutor, sid)
+    if s is None:
+        raise NaoEncontrado("Solicitação não encontrada.")
+    ctx.exigir_unidade(db.get(Instrutor, s.instrutor_id).unidade_id)
+    r = solicitacoes.decidir(db, ctx, sid, bool(dados.get("aprovar")), dados.get("resposta"), dados.get("substituto_id"),
+                             bool(dados.get("aceitar_sugestao")))
+    db.commit()
+    return r
 
 
 # ============================================================================ acesso do instrutor ao portal

@@ -596,3 +596,16 @@ button.chip-status { cursor: pointer; } .chip-status.alerta { background: #fff3d
 .o-que-fazer { display: flex; flex-direction: column; gap: 4px; min-width: 240px; max-width: 360px; }
 .nova-turma { min-width: 200px; }
 .nova-turma .nt-plano li { white-space: nowrap; }
+.tag-transversal { display: inline-block; font-size: 10.5px; font-weight: 600; padding: 0 6px; border-radius: 8px; background: var(--fundo); color: var(--mudo); border: 1px solid var(--borda); }
+.linha-uc.transversal { opacity: .85; padding: 3px 0 3px 24px; }
+.lista-regras { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.lista-regras li { border-left: 3px solid var(--borda); padding: 2px 0 2px 12px; }
+.lista-regras p { margin: 4px 0 2px; }
+.sugestao { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--borda); border-left: 4px solid var(--grafico-1, #2f6fab);
+  border-radius: 8px; background: var(--fundo); margin: 8px 0; }
+.sugestao .sugestao-txt { flex: 1; }
+.sugestao .btn { white-space: nowrap; }
+.sugestao-ok { border-left-color: var(--ok); }
+.sugestao-feito { color: var(--ok); font-weight: 600; white-space: nowrap; }
+.sugestao-botoes { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+li.sem-marcador { list-style: none; margin-left: -18px; }

@@ -203,7 +203,8 @@ SPECS: dict[str, dict] = {
         "encontros_semanais": ("int", False, ["dias_de_aula_por_semana", "encontros_por_semana"]),
         "tipos_ambiente": ("str", False, ["tipo_de_sala_exigido", "tipos_de_ambiente"]), "sequencia": ("int", False, ["ordem_na_matriz"]),
         "prerequisitos": ("str", False, ["pre_requisitos_codigos_das_ucs", "pre_requisitos"]),
-        "certificacao_exigida": ("str", False, ["certificacao_exigida_do_instrutor"])}},
+        "certificacao_exigida": ("str", False, ["certificacao_exigida_do_instrutor"]),
+        "categoria": ("str", False, ["categoria_da_uc", "categoria_da_uc_tecnica_ou_transversal", "uc_transversal"])}},
     "levantamento_instrutores": {"chave": ["matricula"], "campos": {
         "matricula": ("str", True, ["matricula_ou_registro"]), "nome": ("str", True, ["nome_completo", "instrutor"]), "email": ("str", False, ["e_mail"]),
         "unidade": ("str", True, ["unidade_principal"]), "area": ("str", True, ["areas_em_que_atua", "areas"]),
@@ -214,7 +215,7 @@ SPECS: dict[str, dict] = {
         "max_horas_dia": ("float", False, ["maximo_de_horas_por_dia"]),
         "turnos": ("str", False, ["turnos_de_trabalho", "turnos_disponiveis"]), "dias": ("dias", False, ["dias_disponiveis"]),
         "ucs_pleno": ("str", False, ["ucs_que_ministra_codigos", "ucs_que_ministra"]),
-        "ucs_supervisionado": ("str", False, ["ucs_que_ministra_sob_supervisao_codigos", "ucs_sob_supervisao"]),
+        "ucs_parcial": ("str", False, ["ucs_que_ministra_em_partes_codigos", "ucs_em_partes", "ucs_que_ministra_sob_supervisao_codigos", "ucs_sob_supervisao"]),
         "certificacoes": ("str", False, ["certificacoes_ex_nr_10"]), "areas_competencia": ("str", False, ["formacao_e_especialidades", "especialidades"])}},
     "disponibilidade_instrutores": {"chave": ["matricula", "dia_semana", "hora_inicio"], "campos": {
         "matricula": ("str", True, ["instrutor"]), "dia_semana": ("dia", True, ["dia"]), "hora_inicio": ("time", True, ["inicio"]),
@@ -422,6 +423,14 @@ def _preparar_estrutura(db, r, v, E, A):
     for k in ("sequencia", "certificacao_exigida"):
         if v.get(k) is not None:
             d[k] = v[k]
+    if v.get("categoria"):  # técnica (padrão) ou transversal (qualquer instrutor pode dar)
+        cat = norm(v["categoria"])
+        if cat.startswith("transvers") or cat in ("sim", "s"):
+            d["categoria"] = "transversal"
+        elif cat.startswith("tecnic") or cat in ("nao", "n"):
+            d["categoria"] = "tecnica"
+        else:
+            E.append(f"categoria da UC '{v['categoria']}' inválida: use Técnica ou Transversal")
     if ex is not None and mid and db.scalar(select(func.count()).select_from(Turma).where(Turma.matriz_id == mid)):
         if any(getattr(ex, k) != d[k] for k in ("carga_horaria_total",) if k in d):
             E.append("a matriz já é usada por turmas: para mudar a carga horária, use uma nova versão da matriz (coluna 'Versão da matriz')")
@@ -509,7 +518,7 @@ def _preparar_levantamento(db, r, v, E, A):
     else:
         A.append("turnos de trabalho não informados: cadastre depois (M, V, N, MV ou VN)")
     comps = []
-    for col, nivel in (("ucs_pleno", "pleno"), ("ucs_supervisionado", "supervisionado")):
+    for col, nivel in (("ucs_pleno", "pleno"), ("ucs_parcial", "parcial")):
         for cod in _lista(v[col]):
             ids = r.ucs_por_codigo(cod)
             if not ids:
@@ -577,6 +586,15 @@ def _preparar(db: Session, r: Resolvedor, tipo: str, v: dict) -> tuple[dict | No
             d["dias_possiveis"] = dias_com_ead(d.get("dias_possiveis") or [0, 1, 2, 3, 4], d["dias_ead"])
         if v["turno_codigo"] and uid:
             d["turno_id"] = r.turno(uid, v["turno_codigo"]) or E.append(f"turno '{v['turno_codigo']}' não cadastrado na unidade")
+        from app.models import Turno as _Turno
+        from app.services.regras_institucionais import TURNO_SABADO, erro_padrao_dias, oferta_flexivel
+        tn = db.get(_Turno, d["turno_id"]) if d.get("turno_id") else None
+        if tn is not None and tn.codigo == TURNO_SABADO:
+            d["dias_possiveis"], d["dias_ead"] = [5], []
+        erro = erro_padrao_dias(d.get("dias_possiveis") or [0, 1, 2, 3, 4], d.get("dias_ead") or [], tn.codigo if tn else None,
+                                oferta_flexivel(db, v["codigo"], d.get("curso_id")))
+        if erro:
+            E.append(erro)
         if v["data_inicio"] and v["data_fim"] and v["data_fim"] < v["data_inicio"]:
             E.append("data_fim anterior a data_inicio")
         if not v["area"] and d.get("curso_id"):
@@ -619,8 +637,9 @@ def _preparar(db: Session, r: Resolvedor, tipo: str, v: dict) -> tuple[dict | No
             E.append(f"UC '{v['uc_codigo']}' {'não encontrada' if not ucs else 'ambígua (informe curso e versão da matriz)'}")
             return None, None, E, A
         nivel = norm(v["nivel"] or "pleno")
-        if nivel not in ("pleno", "supervisionado", "em_formacao"):
-            E.append(f"nível '{v['nivel']}' inválido (pleno, supervisionado, em_formacao)")
+        nivel = {"sim": "pleno", "em_partes": "parcial", "supervisionado": "parcial", "sob_supervisao": "parcial"}.get(nivel, nivel)
+        if nivel not in ("pleno", "parcial"):
+            E.append(f"nível '{v['nivel']}' inválido: use Sim ou Em partes")
         ex = db.scalars(select(CompetenciaInstrutor).where(CompetenciaInstrutor.instrutor_id == iid, CompetenciaInstrutor.uc_id == ucs[0])).first() if iid else None
         return {"instrutor_id": iid, "uc_id": ucs[0], "nivel": nivel, "valido_ate": v["valido_ate"]}, ex, E, A
     if tipo == "estrutura_curricular":

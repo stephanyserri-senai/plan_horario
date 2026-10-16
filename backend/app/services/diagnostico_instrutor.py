@@ -146,6 +146,7 @@ def analisar(db: Session, cenario_id: int, turma_uc_id: int, hoje: date | None =
         if True:
             so_hab = q["falta"] == [f"habilitação em {uc.codigo}"]
             sugestoes.append({"tipo": "habilitar", "prioridade": 1 if so_hab else 3,
+                              "acao": {"tipo": "habilitar_instrutor", "instrutor_id": q["id"], "uc_id": uc.id, "turma_id": turma.id} if so_hab else None,
                               "descricao": f"Habilitar {q['nome']} em {uc.codigo}"
                                            f"{'' if so_hab else ' (e providenciar ' + ', '.join(x for x in q['falta'] if 'certificação' in x) + ')'}: "
                                            f"tem {len(q['livres_no_turno'])} {rot_turno}s livres ({', '.join(q['livres_no_turno'])}) e ficaria com "
@@ -185,6 +186,8 @@ def analisar(db: Session, cenario_id: int, turma_uc_id: int, hoje: date | None =
                     continue
                 dias_txt = ", ".join(f"{DIAS[d.weekday()]} {next(x.nome for x in ag.turnos if x.id == t).lower()}" for d, t in slots)
                 sugestoes.append({"tipo": "liberar_instrutor", "prioridade": 2 if c.id in ok2 else 4,
+                                  "acao": {"tipo": "passar_uc", "turma_uc_id": t2.id, "de_instrutor_id": h.id, "para_instrutor_id": c.id,
+                                           "habilitar": c.id not in ok2, "turma_id": turma.id},
                                   "descricao": f"Passar {uc2.codigo} da {turma2.codigo} ({dias_txt}) de {h.nome} para {c.nome} ({req}): "
                                                f"{h.nome} fica com {ocup_h - len(slots)} de {teto_h} turnos e {rot_turno}s livres em "
                                                f"{', '.join(DIAS[k] for k in sorted(livres_depois))} para a {turma.codigo}."})
@@ -198,6 +201,7 @@ def analisar(db: Session, cenario_id: int, turma_uc_id: int, hoje: date | None =
                 n_sem = max(1, (fim - s).days // 7 + 1)
                 cabe_ch = n_sem * n_enc * HORAS_POR_TURNO >= float(uc.carga_horaria_total)
                 sugestoes.append({"tipo": "adiar", "prioridade": 3 if cabe_ch else 5,
+                                  "acao": {"tipo": "adiar_uc", "turma_uc_id": tuc.id, "data_inicio": s.isoformat(), "turma_id": turma.id} if cabe_ch else None,
                                   "descricao": f"Iniciar a {turma.codigo} em {s:%d/%m}, quando {h.nome} passa a ter {rot_turno}s livres "
                                                f"(fim de outra UC dele/dela)."
                                                + ("" if cabe_ch else f" Para cumprir {float(uc.carga_horaria_total):g} h, o término teria de ser estendido "

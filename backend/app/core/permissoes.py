@@ -24,11 +24,14 @@ ACOES = {
     "aprendizado.gerenciar": "Revisar registros de decisão para treinamento",
     "observacoes.gerenciar": "Ler e responder observações enviadas pelos instrutores",
     "portal.instrutor": "Portal do instrutor: atualizar os próprios dados e ver as próprias turmas",
+    "solicitacoes.aprovar": "Aprovar ou recusar as solicitações de folga e de substituição dos instrutores",
 }
 
-# Perfis: administrador (gestão do projeto), planejador (planejamento), instrutor (portal) e observador (só acompanha).
-PERFIS = ["administrador", "planejador", "instrutor", "observador"]
+# Perfis: administrador (gestão do projeto), planejador (planejamento), coordenador (planejamento + aprova as
+# solicitações dos instrutores), instrutor (portal) e observador (só acompanha).
+PERFIS = ["administrador", "planejador", "coordenador", "instrutor", "observador"]
 ROTULOS_PERFIL = {"administrador": "Administrador (gestão do projeto)", "planejador": "Planejador",
+                  "coordenador": "Coordenador (planejamento + aprova solicitações dos instrutores)",
                   "instrutor": "Instrutor", "observador": "Observador (somente acompanhar)"}
 
 PADRAO = {
@@ -37,6 +40,12 @@ PADRAO = {
         "cadastros.ler", "cadastros.editar", "alocacoes.ler", "alocacoes.editar", "cenarios.criar",
         "cenarios.editar", "otimizacao.executar", "simulacao.executar", "indicadores.ler",
         "importacao.executar", "exportacao.executar", "dados_pessoais.ler", "observacoes.gerenciar",
+    ],
+    # Coordenador: o mesmo que o planejador e, além disso, decide as solicitações de folga/substituição dos instrutores.
+    "coordenador": [
+        "cadastros.ler", "cadastros.editar", "alocacoes.ler", "alocacoes.editar", "cenarios.criar",
+        "cenarios.editar", "otimizacao.executar", "simulacao.executar", "indicadores.ler",
+        "importacao.executar", "exportacao.executar", "dados_pessoais.ler", "observacoes.gerenciar", "solicitacoes.aprovar",
     ],
     # O instrutor só acessa o portal: os próprios dados, as próprias turmas e as próprias observações.
     "instrutor": ["portal.instrutor"],

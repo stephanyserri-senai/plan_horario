@@ -2,6 +2,7 @@ import { useState } from "react";
 import { api, dataBR, qs } from "../api";
 import { useApp } from "../contexto";
 import { useOpcoes } from "../hooks";
+import { Sugestao } from "./Sugestao";
 import { Badge, Campo, Erro, Modal, useCarregar } from "./ui";
 
 export const ESTADOS_SUBSTITUICAO = ["em_elaboracao", "em_validacao", "aguardando_aprovacao", "aprovado", "publicado"];
@@ -43,6 +44,7 @@ export default function Substituicao({ cenarioId, publicado, aula, fechar }: { c
     } catch (e) { setErro(e); }
   };
   const lista: any[] = cand.dados?.instrutores || [];
+  const melhor = lista.find((i) => i.grupo === "recomendado") || lista.find((i) => i.grupo === "excecao");
   const escolhido = lista.find((i) => i.id === sub) || (sub ? { nome: instrutores.find((i) => Number(i.id) === sub)?.rotulo } : null);
   const SITUACAO: Record<string, string> = { recomendado: "✓ livre, da área", excecao: "⚠ livre, outra área/sem a UC", parcial: "◐ livre só em parte", indisponivel: "✗ não pode" };
   const situacao = (id: number) => { const c = lista.find((i) => i.id === id); return c ? ` — ${c.na_escola ? "📍 " : ""}${SITUACAO[c.grupo]}` : ""; };
@@ -104,6 +106,17 @@ export default function Substituicao({ cenarioId, publicado, aula, fechar }: { c
       <Campo rotulo="Motivo da substituição" obrigatorio ajuda="Fica registrado na aula, no histórico e no aviso aos instrutores.">
         <textarea rows={2} value={motivo} placeholder="Ex.: falta do titular por motivo de saúde; ninguém de Energias livre neste turno." onChange={(e) => { setMotivo(e.target.value); setPrevia(null); }} /></Campo>
 
+      {melhor && cand.dados?.aulas > 0 && <Sugestao
+        texto={<><b>{melhor.nome}</b> assume {cand.dados.aulas > 1 ? `as ${cand.dados.aulas} aulas` : "a aula"}{melhor.na_escola ? " (está na escola: PL/PJ)" : ""}</>}
+        detalhe={melhor.grupo === "recomendado" ? "Livre em todas as aulas, da área e com a UC." : "Livre, mas de outra área ou sem a UC: fica registrado como exceção com o motivo."}
+        rotulo="Aceitar e substituir" desabilitada={motivo.trim().length < 10}
+        aplicar={async () => {
+          if (motivo.trim().length < 10) throw new Error("Escreva o motivo da substituição (mínimo de 10 caracteres).");
+          const r = await api.post("/api/substituicoes", { ...alvo, substituto_id: melhor.id, motivo });
+          aviso(`${r.substituidas} aula(s) substituída(s)${r.falhas.length ? `; ${r.falhas.length} não puderam` : ""}.`);
+          fechar(true); return r;
+        }} />}
+      {melhor && cand.dados?.aulas > 0 && motivo.trim().length < 10 && <small className="mudo">Para aceitar a sugestão, escreva o motivo abaixo.</small>}
       {previa && <div className={`previa-sub ${previa.falhas.length ? "tom-alerta" : "tom-ok"}`}>
         <b>{previa.possiveis} aula(s) podem ser trocadas para {escolhido?.nome}.</b>
         {[...new Set<string>(previa.aulas.flatMap((a: any) => a.avisos))].slice(0, 4).map((x) => <div key={x}><small>{x}</small></div>)}

@@ -1,0 +1,45 @@
+# Regras de negócio do planejamento (memória do algoritmo)
+
+Gerado por `scripts/gerar_regras_md.py` a partir de `backend/app/services/regras_institucionais.py`. Não edite à mão: altere o catálogo e gere de novo.
+
+## Turmas e dias
+
+- **Dias da turma** (`TURMA_DIAS`, obrigatória): Toda turma tem 5 dias presenciais (segunda a sexta) ou 4 dias presenciais + 1 dia de EAD (turma 80-20). _Onde: cadastro de turmas, importação, conformidade._
+- **Turma de sábado** (`TURMA_SABADO`, obrigatória): Turma do turno de sábado tem aula presencial só no sábado, das 09:00 às 13:00 (4 aulas). Sábado não é usado por turmas da semana. _Onde: cadastro de turmas, gerador, validação._
+- **Exceção: aperfeiçoamento e empresas** (`TURMA_FLEXIVEL`, obrigatória): Só atendimentos específicos de aperfeiçoamento e turmas para empresas podem ter menos dias por semana (o treinamento costuma ser curto). _Onde: cadastro de turmas, importação._
+- **Dia EAD (turma 80-20)** (`TURMA_EAD`, obrigatória): O dia EAD (normalmente a sexta) não tem aula presencial: sai dos dias de aula, aparece na grade com a etiqueta EAD e a validação bloqueia aula nele. _Onde: cadastro, gerador, validação, grade, exportações._
+
+## Aulas e turnos
+
+- **Turnos oficiais** (`TURNOS`, obrigatória): Turnos: Manhã 07:30–11:30; Tarde 13:30–17:30; Noite 18:30–22:00; Sábado 09:00–13:00. _Onde: estrutura fixa._
+- **Turno inteiro** (`TURNO_INTEIRO`, obrigatória): Cada UC ocupa o turno inteiro do dia (4 aulas). Aula parcial só no fechamento da carga horária. _Onde: gerador, validação._
+- **Hora-aula** (`HORA_AULA`, obrigatória): Cada aula conta 1 hora de carga horária, dure 50 ou 55 minutos. _Onde: carga horária, relatórios._
+- **Divisão 3 + 2** (`DIVISAO_3_2`, preferência): Na semana, a turma pode ter duas UCs: uma com 3 dias e outra com 2, conforme a carga a cumprir, as horas da UC e o instrutor disponível. É uma opção, não obrigação. _Onde: análise do quadro (encaixe de turma nova)._
+
+## Instrutores
+
+- **Teto de 90% da jornada com aula** (`TETO_90`, obrigatória): Aula em no máximo 90% dos turnos da jornada: 40 h → 9 de 10 turnos (36 h); 20 h → 4 de 5 (16 h). O turno restante é planejamento (PL), projeto (PJ) ou reserva. _Onde: cadastro, importação, gerador, validação._
+- **Ocupação ideal de 80%** (`OCUPACAO_IDEAL`, preferência): O ideal é até 80% da jornada com aula; entre 80% e 90% é atenção. _Onde: acompanhamento, quadro de instrutores._
+- **Turnos de trabalho** (`JORNADA`, obrigatória): 40 h semanais = dois turnos por dia (MV ou VN); 20 h = um turno (M, V ou N). Sábado (09:00–13:00) é marcado à parte, por dia. _Onde: cadastro, portal, gerador._
+- **Mensalista e horista** (`MODALIDADE`, obrigatória): Mensalista tem as horas garantidas (aula, PL ou PJ); horista não (turno sem aula pode ser dispensa). A modalidade não depende do turno. _Onde: cadastro, agenda do instrutor._
+- **Nível básico ou técnico** (`NIVEL`, obrigatória): Instrutor BÁSICO só dá aula em aprendizagem industrial básica e qualificações (AIB, QUA); TÉCNICO, em todas as modalidades (inclusive AIT, ESP, HTC). Sem exceção. _Onde: gerador, validação, substituição, quadro._
+- **UC transversal** (`UC_TRANSVERSAL`, obrigatória): UC transversal: qualquer instrutor da unidade pode dar (sem precisar marcar no perfil; vale só a certificação exigida, se houver). _Onde: cadastro de UCs, gerador, validação._
+- **UC técnica: sim ou em partes** (`UC_TECNICA`, obrigatória): UC técnica: só quem marcou a UC no próprio perfil — 'Sim' (dá a UC) ou 'Em partes' (dá com alerta). _Onde: portal, cadastro, gerador, validação._
+- **Área do instrutor** (`AREA`, obrigatória): O instrutor dá aula nas turmas da área principal e das outras áreas em que atua; fora disso só com exceção justificada. _Onde: gerador, validação._
+- **Certificação exigida** (`CERTIFICACAO`, obrigatória): UC que exige certificação (ex.: NR-10) só com instrutor certificado e dentro da validade. _Onde: gerador, validação._
+
+## Substituições e solicitações
+
+- **Quem pode substituir** (`SUBST_PRESENCA`, obrigatória): Instrutor em PL ou PJ pode assumir no mesmo dia (já está na escola); com turno vazio, só se a substituição for planejada com pelo menos 1 dia de antecedência. _Onde: substituição._
+- **Solicitações do instrutor** (`SOLICITACOES`, obrigatória): Pelo portal o instrutor pede folga ou substituição, com justificativa; o coordenador aprova ou recusa. Folga aprovada vira bloqueio na agenda e as aulas afetadas recebem sugestão de substituto. _Onde: portal, coordenação._
+
+## Quadro e decisões
+
+- **5 instrutores para 4 turmas** (`PROPORCAO_5_4`, aviso): Referência de 1.25 instrutor por turma. É um aviso, que pesa quando a folga dos instrutores não comporta uma turma nova. _Onde: quadro de instrutores._
+- **Capacidade da área** (`CAPACIDADE_AREA`, obrigatória): Na capacidade de uma área contam os instrutores da área principal; um de outra área só entra se já dá aula em turma desta, com a fração da jornada que dedica a ela. _Onde: quadro de instrutores._
+- **Sugestões e aprendizado** (`SUGESTOES`, preferência): Toda sugestão do sistema (substituto, sala, horário, habilitação, adiamento) pode ser aceita com um clique e é aplicada automaticamente, pela mesma validação. Aceites e recusas ficam registrados como decisões para revisar e calibrar o sistema. _Onde: grade, substituição, geração, diagnósticos._
+
+## Salas
+
+- **Laboratório especializado** (`SALA_AREA`, obrigatória): Laboratório especializado só recebe turmas da(s) área(s) dele; sala comum atende todas. _Onde: gerador, validação._
+- **Capacidade e acessibilidade** (`SALA_CAPACIDADE`, obrigatória): A sala precisa comportar a turma (ou o grupo) e ser acessível quando a turma exige. _Onde: gerador, validação._

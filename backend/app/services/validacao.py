@@ -496,8 +496,11 @@ def validar_aula(b: BaseDados, a: AulaProposta, ignorar: set[int] | None = None)
         if not instrutor.ativo or instrutor.situacao != "ativo":
             add(BLOQUEIO, "INSTRUTOR_INATIVO", f"O instrutor {instrutor.nome} não está ativo ({instrutor.situacao}).", "instrutor", instrutor.id)
         # (8) habilitação
+        transversal = getattr(uc, "categoria", "tecnica") == "transversal"  # UC transversal: qualquer instrutor pode dar
         comp = b.competencia(instrutor.id, uc.id)
-        if comp is None:
+        if transversal:
+            pass
+        elif comp is None:
             if academica:
                 add(ALERTA, "EXCECAO_REGRA_ACADEMICA", f"{instrutor.nome} sem competência cadastrada para {uc.codigo}, por exceção justificada #{excecao.id}: {excecao.justificativa}", "instrutor", instrutor.id)
             else:
@@ -506,20 +509,21 @@ def validar_aula(b: BaseDados, a: AulaProposta, ignorar: set[int] | None = None)
             add(BLOQUEIO, "INSTRUTOR_NAO_HABILITADO", f"A habilitação de {instrutor.nome} para {uc.codigo} venceu em {comp.valido_ate:%d/%m/%Y}.", "instrutor", instrutor.id)
         elif comp.nivel == "em_formacao":
             add(BLOQUEIO, "INSTRUTOR_NAO_HABILITADO", f"{instrutor.nome} está 'em formação' para {uc.codigo} e não pode assumir a UC.", "instrutor", instrutor.id)
-        elif comp.nivel == "supervisionado":
-            add(ALERTA, "INSTRUTOR_SUPERVISIONADO", f"{instrutor.nome} atua em {uc.codigo} somente sob supervisão. {comp.condicoes or ''}".strip(), "instrutor", instrutor.id)
+        elif comp.nivel == "parcial":
+            add(ALERTA, "INSTRUTOR_PARCIAL", f"{instrutor.nome} ministra {uc.codigo} em partes (marcou 'em partes' no perfil). {comp.condicoes or ''}".strip(),
+                "instrutor", instrutor.id)
         if uc.certificacao_exigida:
             habs = [h for h in b.habilitacoes(instrutor.id) if h.nome.strip().lower() == uc.certificacao_exigida.strip().lower()]
             if not habs or all(h.valido_ate and h.valido_ate < d for h in habs):
                 add(BLOQUEIO, "CERTIFICACAO_AUSENTE", f"A UC {uc.codigo} exige a certificação '{uc.certificacao_exigida}', ausente ou vencida para {instrutor.nome}.", "instrutor", instrutor.id)
-        if not atende_area(*b.areas_recurso(instrutor), area_turma):
+        if not transversal and not atende_area(*b.areas_recurso(instrutor), area_turma):
             if academica:
                 add(ALERTA, "EXCECAO_REGRA_ACADEMICA", f"{instrutor.nome} ({nome_area(instrutor.area_id)}) em turma de {nome_area(area_turma)}, por exceção justificada #{excecao.id}: {excecao.justificativa}", "instrutor", instrutor.id)
             else:
                 add(BLOQUEIO, "INSTRUTOR_OUTRA_AREA", f"{instrutor.nome} é da área {nome_area(instrutor.area_id)} e a turma {turma.codigo} é da área {nome_area(area_turma)}.", "instrutor", instrutor.id)
         from app.services.planejamento import nivel_atende, nivel_da_turma
         nivel_turma = b._memo(("nivel_turma", turma.id), lambda: nivel_da_turma(b.db, turma))
-        if not nivel_atende(instrutor.nivel, nivel_turma):  # regra de habilitação: não admite exceção
+        if not transversal and not nivel_atende(instrutor.nivel, nivel_turma):  # regra de habilitação: não admite exceção
             add(BLOQUEIO, "INSTRUTOR_NIVEL", f"{instrutor.nome} é instrutor básico (só AIB e qualificações) e a turma {turma.codigo} exige instrutor técnico.",
                 "instrutor", instrutor.id)
         if unidade_aula not in b.unidades_instrutor(instrutor):

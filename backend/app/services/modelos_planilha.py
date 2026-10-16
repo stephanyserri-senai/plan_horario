@@ -49,6 +49,8 @@ MODELOS: dict[str, dict] = {
             ("Ordem na matriz", False, "Ordem sugerida da UC no curso (1, 2, 3...).", None, 10, 1, 2),
             ("Pré-requisitos (códigos das UCs)", False, "Códigos de UCs da mesma matriz que precisam terminar antes, separados por ';'.", None, 18, "", "FEL"),
             ("Certificação exigida do instrutor", False, "Ex.: NR-10. O instrutor precisa ter essa certificação para dar a UC.", None, 16, "", "NR-10"),
+            ("Categoria da UC", False, "TÉCNICA (padrão): só quem marcou a UC no perfil pode dar. TRANSVERSAL: qualquer instrutor pode dar "
+             "(ex.: comunicação, segurança do trabalho básica, empreendedorismo).", "categorias_uc", 14, "Transversal", "Técnica"),
         ],
     },
     "ambientes": {
@@ -88,7 +90,7 @@ MODELOS: dict[str, dict] = {
             ("Turnos de trabalho", False, "M (manhã), V (tarde) ou N (noite) para um turno; com 40 h semanais (8 h por dia), MV ou VN.", "jornadas", 14, "MV", "N"),
             ("Dias disponíveis", False, "Ex.: seg a sex; seg;qua;sex.", None, 14, "seg a sex", "seg a qui"),
             ("UCs que ministra (códigos)", False, "Códigos das UCs em que é habilitado, separados por ';'.", None, 22, "FEL; CMD", "LOG01"),
-            ("UCs que ministra sob supervisão (códigos)", False, "UCs em que atua acompanhado.", None, 20, "", ""),
+            ("UCs que ministra em partes (códigos)", False, "UCs técnicas que ministra só em parte. UCs transversais não precisam ser informadas: qualquer instrutor pode dar.", None, 20, "", ""),
             ("Certificações (ex.: NR-10)", False, "Separadas por ';'.", None, 18, "NR-10", ""),
             ("Formação e especialidades", False, "Texto livre: formação, experiência, softwares, equipamentos.", None, 36,
              "Eng. elétrica; 8 anos em manutenção industrial", "Tecnólogo em logística; WMS"),
@@ -123,7 +125,7 @@ def gerar_modelo(db: Session, tipo: str, dados: list[list] | None = None) -> byt
     tipos = sorted({*TIPOS_SALA_PADRAO, *(t.nome for t in db.scalars(select(TipoAmbiente).where(TipoAmbiente.ativo.is_(True))) if not t.codigo.startswith("DEMO-"))})
     listas = {
         "unidades": unidades, "areas": [a for a, _ in areas], "areas_ou_todas": ["TODAS"] + [a for a, _ in areas],
-        "tipos_sala": tipos, "turnos": ["Manhã", "Tarde", "Noite"], "jornadas": ["M", "V", "N", "MV", "VN"], "modalidades_instrutor": ["Mensalista", "Horista"], "niveis_instrutor": ["Técnico", "Básico"], "sim_nao": ["Sim", "Não"],
+        "tipos_sala": tipos, "turnos": ["Manhã", "Tarde", "Noite"], "jornadas": ["M", "V", "N", "MV", "VN"], "modalidades_instrutor": ["Mensalista", "Horista"], "niveis_instrutor": ["Técnico", "Básico"], "categorias_uc": ["Técnica", "Transversal"], "sim_nao": ["Sim", "Não"],
         "modalidades": ["presencial", "semipresencial", "EAD"],
         "tipos_curso": ["técnico", "qualificação", "aperfeiçoamento", "aprendizagem industrial", "habilitação", "graduação tecnológica"],
     }

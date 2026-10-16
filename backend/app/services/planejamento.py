@@ -98,16 +98,35 @@ def nivel_atende(nivel_instrutor: str | None, nivel_turma: str | None) -> bool:
     return not (nivel_turma == "tecnico" and (nivel_instrutor or "tecnico") == "basico")
 
 
+def _tem_certificacao(db: Session, instrutor_id: int, uc: UnidadeCurricular, na_data: date) -> bool:
+    if not uc.certificacao_exigida:
+        return True
+    return bool(db.scalar(select(func.count()).select_from(HabilitacaoInstrutor).where(
+        HabilitacaoInstrutor.instrutor_id == instrutor_id, HabilitacaoInstrutor.ativo.is_(True),
+        func.lower(HabilitacaoInstrutor.nome) == uc.certificacao_exigida.strip().lower(),
+        (HabilitacaoInstrutor.valido_ate.is_(None)) | (HabilitacaoInstrutor.valido_ate >= na_data))))
+
+
 def instrutores_elegiveis(db: Session, uc: UnidadeCurricular, unidade_id: int, na_data: date | None = None, area_id: int | None = None,
                           nivel: str | None = None) -> list[dict]:
     """Elegibilidade pela matriz de competências (nunca por seleção manual), pelo nível exigido pela turma
-    (instrutor básico não entra em turma técnica) e, se informada, pela área da turma (instrutor sem área definida é aceito)."""
+    (instrutor básico não entra em turma técnica) e, se informada, pela área da turma (instrutor sem área definida é aceito).
+    UC TRANSVERSAL: qualquer instrutor ativo da unidade pode dar (sem competência, área ou nível); só a certificação exigida vale."""
     na_data = na_data or date.today()
+    if getattr(uc, "categoria", "tecnica") == "transversal":
+        res = []
+        for inst in db.scalars(select(Instrutor).where(Instrutor.ativo.is_(True), Instrutor.situacao == "ativo").order_by(Instrutor.nome)):
+            unidades = {inst.unidade_id, *db.scalars(select(InstrutorUnidade.unidade_id).where(InstrutorUnidade.instrutor_id == inst.id))}
+            if unidade_id not in unidades or not _tem_certificacao(db, inst.id, uc, na_data):
+                continue
+            res.append({"id": inst.id, "nome": inst.nome, "matricula": inst.matricula, "nivel": "pleno", "area_id": inst.area_id,
+                        "nivel_instrutor": inst.nivel, "transversal": True})
+        return res
     q = (
         select(Instrutor, CompetenciaInstrutor)
         .join(CompetenciaInstrutor, CompetenciaInstrutor.instrutor_id == Instrutor.id)
         .where(CompetenciaInstrutor.uc_id == uc.id, CompetenciaInstrutor.ativo.is_(True),
-               CompetenciaInstrutor.nivel.in_(["pleno", "supervisionado"]),
+               CompetenciaInstrutor.nivel.in_(["pleno", "parcial"]),
                Instrutor.ativo.is_(True), Instrutor.situacao == "ativo")
     )
     res = []
@@ -121,13 +140,8 @@ def instrutores_elegiveis(db: Session, uc: UnidadeCurricular, unidade_id: int, n
         unidades = {inst.unidade_id, *db.scalars(select(InstrutorUnidade.unidade_id).where(InstrutorUnidade.instrutor_id == inst.id))}
         if unidade_id not in unidades:
             continue
-        if uc.certificacao_exigida:
-            ok = db.scalar(select(func.count()).select_from(HabilitacaoInstrutor).where(
-                HabilitacaoInstrutor.instrutor_id == inst.id, HabilitacaoInstrutor.ativo.is_(True),
-                func.lower(HabilitacaoInstrutor.nome) == uc.certificacao_exigida.strip().lower(),
-                (HabilitacaoInstrutor.valido_ate.is_(None)) | (HabilitacaoInstrutor.valido_ate >= na_data)))
-            if not ok:
-                continue
+        if not _tem_certificacao(db, inst.id, uc, na_data):
+            continue
         res.append({"id": inst.id, "nome": inst.nome, "matricula": inst.matricula, "nivel": comp.nivel, "area_id": inst.area_id,
                     "nivel_instrutor": inst.nivel})
     return res

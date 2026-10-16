@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { addDias, api, baixar, dataBR, DIAS_CURTOS, iso, segundaDe } from "../api";
 import { CompetenciasUCs, JornadaInstrutor } from "../components/CamposEspeciais";
 import Perfil from "../components/Perfil";
-import { Abas, Badge, Erro, useCarregar } from "../components/ui";
+import { Abas, Badge, Campo, Erro, useCarregar } from "../components/ui";
 import { useApp } from "../contexto";
 
 const TIPOS: [string, string][] = [["sugestao", "Sugestão"], ["dificuldade", "Dificuldade"], ["recurso", "Recurso ou material"], ["horario", "Horário"], ["outro", "Outro"]];
@@ -17,6 +17,8 @@ export default function PortalInstrutor({ trocarSenha }: { trocarSenha: () => vo
   const respostas = (obs.dados || []).filter((o) => o.resposta).length;
   const notifs = useCarregar<any[]>(() => api.get("/api/portal/notificacoes"), []);
   const novas = (notifs.dados || []).filter((n) => !n.lida).length;
+  const solic = useCarregar<any[]>(() => api.get("/api/portal/solicitacoes"), []);
+  const aguardando = (solic.dados || []).filter((x) => x.status === "pendente").length;
   const irPara = (a: string) => { setAba(a); window.scrollTo({ top: 0 }); };
   return (
     <div className="portal">
@@ -44,11 +46,13 @@ export default function PortalInstrutor({ trocarSenha }: { trocarSenha: () => vo
           </section>
           <Abas abas={[{ id: "turmas", rotulo: "📅 Minhas turmas e horários" }, { id: "dados", rotulo: "🧑‍🏫 Meus dados e expertise" },
             { id: "obs", rotulo: `💬 Minhas observações${respostas ? ` (${respostas} resposta${respostas > 1 ? "s" : ""})` : ""}` },
+            { id: "solic", rotulo: `📝 Solicitações${aguardando ? ` (${aguardando} aguardando)` : ""}` },
             { id: "notif", rotulo: `🔔 Notificações${novas ? ` (${novas})` : ""}` }]} ativa={aba} mudar={setAba} />
           {aba === "turmas" && <MinhasTurmas aoEnviar={obs.recarregar} />}
           {aba === "dados" && eu.dados && <MeusDados eu={eu.dados} salvo={eu.recarregar} />}
           {aba === "obs" && <MinhasObservacoes lista={obs.dados} />}
-          {aba === "notif" && <Notificacoes lista={notifs.dados} mudou={notifs.recarregar} ir={(a) => { irPara(a); if (a === "dados") eu.recarregar(); if (a === "obs") obs.recarregar(); }} />}
+          {aba === "solic" && eu.dados && <MinhasSolicitacoes lista={solic.dados} turnos={eu.dados.turnos} mudou={solic.recarregar} />}
+          {aba === "notif" && <Notificacoes lista={notifs.dados} mudou={notifs.recarregar} ir={(a) => { irPara(a); if (a === "dados") eu.recarregar(); if (a === "obs") obs.recarregar(); if (a === "solic") solic.recarregar(); }} />}
         </>}
       </main>
     </div>
@@ -238,7 +242,7 @@ function MeusDados({ eu, salvo }: { eu: any; salvo: () => void }) {
 }
 
 // ---------------------------------------------------------------------------- notificações
-const ICONE_NOTIF: Record<string, string> = { substituicao: "🔁", publicacao: "📅", cadastro: "🧑‍🏫", observacao: "💬" };
+const ICONE_NOTIF: Record<string, string> = { substituicao: "🔁", publicacao: "📅", cadastro: "🧑‍🏫", observacao: "💬", solicitacao: "📝" };
 
 function Notificacoes({ lista, mudou, ir }: { lista: any[] | null; mudou: () => void; ir: (aba: string) => void }) {
   if (!lista) return <p role="status">Carregando…</p>;
@@ -276,5 +280,63 @@ function MinhasObservacoes({ lista }: { lista: any[] | null }) {
         <p>{o.texto}</p>
         {o.resposta && <div className="portal-resposta"><b>Resposta{o.respondido_por ? ` de ${o.respondido_por}` : ""}:</b> {o.resposta}</div>}
       </article>))}</div>
+  );
+}
+
+// ---------------------------------------------------------------------------- solicitações (folga e substituição)
+const ST_SOLIC: Record<string, string> = { pendente: "alerta", aprovada: "ok", recusada: "bloqueio", cancelada: "info" };
+
+function MinhasSolicitacoes({ lista, turnos, mudou }: { lista: any[] | null; turnos: any[]; mudou: () => void }) {
+  const { aviso } = useApp();
+  const amanha = iso(addDias(new Date(), 1));
+  const [f, setF] = useState<any>({ tipo: "folga", data_inicio: amanha, data_fim: amanha, turnos: [], justificativa: "" });
+  const [erro, setErro] = useState<any>(null);
+  const [enviando, setEnviando] = useState(false);
+  const enviar = async () => {
+    setErro(null); setEnviando(true);
+    try {
+      const r = await api.post("/api/portal/solicitacoes", f);
+      aviso(`Pedido enviado ao coordenador${r.aulas_afetadas ? ` (${r.aulas_afetadas} aula(s) no período)` : ""}.`);
+      setF({ ...f, justificativa: "" }); mudou();
+    } catch (e) { setErro(e); } finally { setEnviando(false); }
+  };
+  const cancelar = async (id: number) => { if (!confirm("Cancelar este pedido?")) return; await api.post(`/api/portal/solicitacoes/${id}/cancelar`, {}); mudou(); };
+  const marcarTurno = (id: number, on: boolean) => setF({ ...f, turnos: on ? [...f.turnos, id] : f.turnos.filter((x: number) => x !== id) });
+  return (
+    <div className="portal-dados">
+      <section className="card">
+        <h2>Nova solicitação</h2>
+        <p className="sub">Avise com antecedência quando precisar de <b>folga</b> (não vai estar disponível) ou de <b>substituição</b> (outra pessoa assume as suas aulas).
+          O pedido vai para o coordenador, que aprova ou recusa; a resposta aparece aqui e nas notificações.</p>
+        <div className="form-grid">
+          <Campo rotulo="Tipo"><select value={f.tipo} onChange={(e) => setF({ ...f, tipo: e.target.value })}>
+            <option value="folga">Folga</option><option value="substituicao">Substituição nas minhas aulas</option></select></Campo>
+          <Campo rotulo="De"><input type="date" min={iso(new Date())} value={f.data_inicio} onChange={(e) => setF({ ...f, data_inicio: e.target.value, data_fim: f.data_fim < e.target.value ? e.target.value : f.data_fim })} /></Campo>
+          <Campo rotulo="Até"><input type="date" min={f.data_inicio} value={f.data_fim} onChange={(e) => setF({ ...f, data_fim: e.target.value })} /></Campo>
+        </div>
+        <fieldset className="painel-campo"><legend>Turnos <small>(nenhum marcado = o dia todo)</small></legend>
+          <div className="checks">{turnos.map((t: any) => <label key={t.id}><input type="checkbox" checked={f.turnos.includes(t.id)} onChange={(e) => marcarTurno(t.id, e.target.checked)} /> {t.nome} <small className="mudo">{t.inicio}–{t.fim}</small></label>)}</div>
+        </fieldset>
+        <Campo rotulo="Justificativa" obrigatorio ajuda="Mínimo de 10 caracteres. O coordenador lê antes de decidir.">
+          <textarea rows={3} maxLength={3000} placeholder="Ex.: consulta médica agendada; participação em banca; curso de capacitação…" value={f.justificativa}
+            onChange={(e) => setF({ ...f, justificativa: e.target.value })} /></Campo>
+        <Erro erro={erro} />
+        <div className="acoes"><button className="btn btn-primario" disabled={enviando || f.justificativa.trim().length < 10} onClick={enviar}>{enviando ? "Enviando…" : "Enviar ao coordenador"}</button></div>
+      </section>
+      <section className="card">
+        <h2>Meus pedidos</h2>
+        {!lista ? <p role="status">Carregando…</p> : !lista.length ? <p className="mudo">Nenhum pedido ainda.</p> :
+          <ul className="lista-notif">{lista.map((x) => (
+            <li key={x.id}>
+              <span className="notif-ico" aria-hidden="true">{x.tipo === "folga" ? "🌴" : "🔁"}</span>
+              <div><b>{x.tipo_rotulo}</b> · {dataBR(x.data_inicio)}{x.data_fim !== x.data_inicio ? ` a ${dataBR(x.data_fim)}` : ""} · {x.turnos.join(", ")}
+                <p>{x.justificativa}</p>
+                {x.resposta && <div className="portal-resposta"><b>Resposta:</b> {x.resposta}</div>}
+                {x.status === "aprovada" && x.efeitos?.substituidas > 0 && <small className="mudo">{x.efeitos.substituidas} aula(s) com {x.efeitos.substituto}.</small>}</div>
+              <div className="notif-acoes"><Badge tipo={ST_SOLIC[x.status] || "info"}>{x.status_rotulo}</Badge>
+                {x.status === "pendente" && <button className="btn-link" onClick={() => cancelar(x.id)}>Cancelar</button>}</div>
+            </li>))}</ul>}
+      </section>
+    </div>
   );
 }

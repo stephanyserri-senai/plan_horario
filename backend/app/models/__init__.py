@@ -10,6 +10,6 @@ from app.models.cadastros import (  # noqa: F401
 from app.models.planejamento import (  # noqa: F401
     Alocacao, AlocacaoRecurso, Atividade, CenarioPlanejamento, ExcecaoAutorizada, ExecucaoOtimizacao,
     HistoricoAuditoria, Importacao, Notificacao, ObservacaoInstrutor, OcorrenciaValidacao, ParametrosOtimizacao, PermissaoEscopo,
-    PermissaoPerfil, RegistroDecisao, ResultadoOtimizacao, SimulacaoCapacidade, Usuario, Validacao,
+    PermissaoPerfil, RegistroDecisao, ResultadoOtimizacao, SimulacaoCapacidade, SolicitacaoInstrutor, Usuario, Validacao,
     VersaoPlanejamento, TODOS_GRUPOS, ESTADOS_CENARIO,
 )

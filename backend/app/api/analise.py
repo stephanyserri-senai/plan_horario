@@ -678,3 +678,12 @@ def avaliacao_aprendizado(ctx: Contexto = Depends(requer("aprendizado.gerenciar"
         "situacao": "Coletando e revisando registros de decisão; nenhum modelo de aprendizado está ativo." if aptos < MINIMO_TREINO
         else "Dados suficientes para iniciar a avaliação offline do modelo candidato.",
     }
+
+
+# ============================================================================ regras institucionais (memória do algoritmo)
+@router.get("/regras")
+def regras_do_sistema(ctx: Contexto = Depends(requer("cadastros.ler")), db: Session = Depends(get_db)):
+    """Catálogo das regras que o sistema aplica e as turmas fora do padrão de dias."""
+    from app.services import regras_institucionais as ri
+    decisoes = {t: n for t, n in db.execute(select(RegistroDecisao.tipo, func.count()).group_by(RegistroDecisao.tipo))}
+    return {"regras": ri.catalogo(), "conformidade": ri.conformidade(db, ctx.unidades), "decisoes_registradas": decisoes}

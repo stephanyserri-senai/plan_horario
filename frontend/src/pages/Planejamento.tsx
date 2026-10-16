@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { api, dataBR, qs } from "../api";
 import { Abas, Badge, Campo, Card, Kpi, AntesDepois, Erro, EstadoCenario, Modal, ResumoTabela, rotulo, OcorrenciasLista, Pagina, Tabela, useCarregar } from "../components/ui";
 import { useApp } from "../contexto";
+import { Sugestao } from "../components/Sugestao";
 import { useOpcoes } from "../hooks";
 import { semestreDe, semestres as listarSemestres } from "../semestre";
 
@@ -155,15 +156,28 @@ const LIMITANTE: Record<string, string> = {
   "combinação": "Poucos horários em que turma, instrutor e sala estão livres ao mesmo tempo", nenhum: "Competição com outras aulas pelos mesmos horários",
 };
 
+const ROT_ACAO: Record<string, string> = { habilitar_instrutor: "Aceitar e habilitar", passar_uc: "Aceitar e trocar", adiar_uc: "Aceitar e adiar", alocar_aula: "Alocar aqui" };
+
 function Alternativa({ a }: { a: any }) {
+  const { cenario } = useApp();
   const itens: any[] = Array.isArray(a.itens) ? a.itens : [];
   if (a.gargalo) return null; // tratado em tabela própria
+  const aplicar = (acao: any) => async () => {
+    const r = await api.post("/api/sugestoes/aplicar", { cenario_id: cenario!.id, acao });
+    if (r.geracao?.aviso) alert(`${r.mensagem}\n\n${r.geracao.aviso}`);
+    else if (r.geracao?.gerado) alert(`${r.mensagem}\n\nO gerador está refazendo a grade da turma (execução #${r.geracao.execucao_id}); acompanhe em Gerar horários.`);
+    return r;
+  };
+  if (a.acao && cenario) return <li className="sem-marcador"><Sugestao texto={a.descricao} rotulo={ROT_ACAO[a.acao.tipo] || "Aceitar sugestão"} aplicar={aplicar(a.acao)}
+    recusar={() => api.post("/api/sugestoes/recusar", { cenario_id: cenario.id, acao: a.acao, motivo: "não serve" })}
+    detalhe={a.acao.tipo !== "alocar_aula" ? "Depois de aplicar, o gerador refaz os horários só desta turma (se o semestre estiver em edição)." : undefined} /></li>;
   return (
     <li>{a.descricao || rotulo(a.tipo || "")}
       {Array.isArray(a.itens) && itens.length === 0 && <div className="chips"><span className="mudo">nenhum</span></div>}
       {itens.length > 0 && typeof itens[0] === "string" && <div className="chips">{itens.map((x: string) => <span key={x} className="chip">{x}</span>)}</div>}
       {itens.length > 0 && typeof itens[0] === "object" && <Tabela colunas={[{ chave: "data", rotulo: "Dia", render: (it: any) => dataBR(it.data) }, { chave: "h", rotulo: "Horário", render: (it: any) => `${it.inicio}–${it.fim}` },
-        { chave: "i", rotulo: "Instrutores livres", render: (it: any) => it.instrutores?.join(", ") }, { chave: "a", rotulo: "Salas livres", render: (it: any) => it.ambientes?.join(", ") }]}
+        { chave: "i", rotulo: "Instrutores livres", render: (it: any) => it.instrutores?.join(", ") }, { chave: "a", rotulo: "Salas livres", render: (it: any) => it.ambientes?.join(", ") },
+        { chave: "ac", rotulo: "", render: (it: any) => it.acao && cenario ? <AlocarAqui aplicar={aplicar(it.acao)} rotulo={it.acao.rotulo} /> : null }]}
         linhas={itens.slice(0, 10)} chave={(_it, k) => k} />}
     </li>
   );
@@ -306,4 +320,13 @@ function Comparar() {
       </>}
     </>
   );
+}
+
+function AlocarAqui({ aplicar, rotulo }: { aplicar: () => Promise<any>; rotulo: string }) {
+  const { aviso } = useApp();
+  const [estado, setEstado] = useState<"" | "rodando" | "ok">("");
+  if (estado === "ok") return <span className="sugestao-feito">✔ alocada</span>;
+  return <button className="btn" title={`Aceitar a sugestão: criar a aula com ${rotulo}`} disabled={estado === "rodando"}
+    onClick={async () => { setEstado("rodando"); try { await aplicar(); setEstado("ok"); aviso("Aula criada pela sugestão."); } catch (e: any) { setEstado(""); aviso(e?.message || String(e), "erro"); } }}>
+    {estado === "rodando" ? "Alocando…" : "✔ Alocar aqui"}</button>;
 }

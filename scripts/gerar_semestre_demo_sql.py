@@ -162,16 +162,23 @@ def escrever(corpo, resumo, logins, senha):
             f"SELECT i.nome, {lit(login)}, {lit(h)}, 'instrutor', false, true, i.id FROM instrutores i WHERE i.matricula = {lit(mat)}\n"
             f"ON CONFLICT (email) DO UPDATE SET instrutor_id = EXCLUDED.instrutor_id, ativo = true, senha_hash = EXCLUDED.senha_hash "
             f"WHERE usuarios.perfil = 'instrutor';")
+    # login de coordenação da demonstração (aprova as solicitações dos instrutores); só é criado se ainda não existir
+    usuarios.append(
+        f"INSERT INTO usuarios (nome, email, senha_hash, perfil, acesso_global, ativo)\n"
+        f"VALUES ('Coordenação (demonstração)', 'coordenacao', {lit(hash_senha(senha))}, 'coordenador', true, true)\n"
+        f"ON CONFLICT (email) DO NOTHING;")
     linhas = [
         "-- SEMESTRE COMPLETO DE DEMONSTRAÇÃO (2026/2) — gerado por scripts/gerar_semestre_demo_sql.py a partir de app/demo_semestre.py.",
         "-- ATENÇÃO: APAGA todos os dados (cursos, turmas, instrutores, salas, semestres, aulas, observações...) e carrega a demonstração.",
         "-- MANTÉM: unidades, áreas, turnos e horários oficiais, configurações, perfis e usuários (os de instrutor perdem o vínculo antigo).",
-        "-- Requer as atualizações 0003 a 0009. Cole o arquivo inteiro no SQL Editor do Supabase e clique em Run.",
-        "-- Conteúdo: 2 unidades, 11 áreas, 14 cursos, 17 turmas (manhã, tarde e noite), 30 instrutores, 19 salas e laboratórios,",
+        "-- Requer as atualizações 0003 a 0010. Cole o arquivo inteiro no SQL Editor do Supabase e clique em Run.",
+        "-- Conteúdo: 2 unidades, 11 áreas, 15 cursos, 18 turmas (manhã, tarde, noite e sábado), 30 instrutores, 19 salas e laboratórios,",
         f"-- {resumo['aulas']} aulas geradas pelo gerador de horários, semestre PUBLICADO, aulas até 15/10 marcadas como realizadas,",
         "-- uma substituição, observações de instrutores, notificações do portal, instrutores mensalistas e horistas",
         "-- e turnos de planejamento (PL) / projeto (PJ) dos mensalistas, instrutores BÁSICOS (só AIB e qualificações:",
-        "-- Rogério Lima, Tiago Barbosa, Wagner Prado e Sabrina Lopes) e turmas 80-20 com a sexta EAD (HTC-LOG-21 e HTC-DDS-09).",
+        "-- Rogério Lima, Tiago Barbosa, Wagner Prado e Sabrina Lopes), turmas 80-20 com a sexta EAD (HTC-LOG-21 e HTC-DDS-09),",
+        "-- turma de SÁBADO (QUA-INF-01, 09:00–13:00), UCs TRANSVERSAIS (INF-BAS, ADM-ATC), competências 'em partes' e",
+        "-- SOLICITAÇÕES de instrutores (2 aguardando o coordenador, 1 aprovada, 1 recusada).",
         "-- CASOS PARA TESTAR CONFLITOS E AÇÕES:",
         "--  * licença médica de Fábio Teixeira (26/10 a 06/11) com aulas marcadas → resolver por substituição;",
         "--  * Laboratório de Automação e CLP (Beira Mar) em manutenção de 03/11 a 06/11 → trocar a sala;",
@@ -182,6 +189,7 @@ def escrever(corpo, resumo, logins, senha):
         "--  * proposta de alteração 'Ajustes de novembro' (em edição) com aulas SEM INSTRUTOR (HTC-INS-02)",
         "--    e aulas SEM SALA (QUA-DGR-01) → alocar na grade, validar e submeter.",
         "-- Logins do portal do instrutor (senha " + senha + "): " + ", ".join(logins.values()) + ".",
+        "-- Login de coordenação (perfil coordenador, senha " + senha + "): coordenacao — aprova as solicitações dos instrutores.",
         "",
         "-- 1) Limpeza (igual a limpar_dados_teste.sql)",
         bloco_limpeza,
@@ -200,6 +208,9 @@ def escrever(corpo, resumo, logins, senha):
         "  END IF;",
         "  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'instrutores' AND column_name = 'nivel') THEN",
         "    RAISE EXCEPTION 'Aplique antes atualizacao_0009.sql (nível do instrutor e dias EAD da turma).';",
+        "  END IF;",
+        "  IF to_regclass('public.solicitacoes_instrutor') IS NULL OR NOT EXISTS (SELECT 1 FROM turnos WHERE codigo = 'S') THEN",
+        "    RAISE EXCEPTION 'Aplique antes atualizacao_0010.sql (coordenador, solicitações, UC transversal e turno de sábado).';",
         "  END IF;",
         "  IF EXISTS (SELECT 1 FROM turmas) OR EXISTS (SELECT 1 FROM instrutores) THEN",
         "    RAISE EXCEPTION 'A limpeza (parte 1) não foi executada: rode o arquivo inteiro.';",

@@ -5,10 +5,11 @@ import { useApp } from "../contexto";
 import { useOpcoes } from "../hooks";
 
 /** Os quatro perfis da plataforma. */
-const PERFIS: Record<string, string> = { administrador: "Administrador", planejador: "Planejador", instrutor: "Instrutor", observador: "Observador" };
+const PERFIS: Record<string, string> = { administrador: "Administrador", planejador: "Planejador", coordenador: "Coordenador", instrutor: "Instrutor", observador: "Observador" };
 const AJUDA_PERFIL: Record<string, string> = {
   administrador: "Gestão do projeto: tudo, inclusive usuários, configurações, aprovação e publicação.",
   planejador: "Usa o planejamento: cadastros, grade, geração de horários, simulações, importação e relatórios.",
+  coordenador: "Tudo o que o planejador faz e, além disso, aprova ou recusa as solicitações de folga e substituição dos instrutores.",
   instrutor: "Portal do instrutor: os próprios dados, turmas, observações e notificações.",
   observador: "Só acompanha: consulta cadastros, grade, cronograma, indicadores e baixa relatórios, sem alterar nada.",
 };

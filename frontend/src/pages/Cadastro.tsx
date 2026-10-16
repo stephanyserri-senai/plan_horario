@@ -65,9 +65,10 @@ function CelulaRef({ ent, id }: { ent: string; id: any }) {
 
 // rótulos amigáveis de valores de listas (o banco guarda o código)
 const VALOR_ENUM: Record<string, string> = { tecnico: "Técnico (todas as modalidades)", basico: "Básico (só AIB e qualificações)",
-  mensalista: "Mensalista", horista: "Horista", em_formacao: "Em formação", ferias: "Férias", manutencao: "Manutenção" };
+  mensalista: "Mensalista", horista: "Horista", em_formacao: "Em formação (legado)", ferias: "Férias", manutencao: "Manutenção",
+  pleno: "Sim", parcial: "Em partes", tecnica: "Técnica (só quem marcou no perfil)", transversal: "Transversal (qualquer instrutor)" };
 const rotEnum = (o: any) => VALOR_ENUM[o] ?? o;
-const CURTO: Record<string, string> = { tecnico: "Técnico", basico: "Básico" };  // na lista, o rótulo curto
+const CURTO: Record<string, string> = { tecnico: "Técnico", basico: "Básico", tecnica: "Técnica", transversal: "Transversal" };  // na lista, o rótulo curto
 
 function valorCelula(c: CampoMeta, v: any) {
   if (c.tipo === "enum") return v == null || v === "" ? <span className="mudo">—</span> : <span title={rotEnum(v)}>{CURTO[v] ?? rotEnum(v)}</span>;

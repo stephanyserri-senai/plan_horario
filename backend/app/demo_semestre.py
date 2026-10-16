@@ -112,6 +112,9 @@ CURSOS = [
         ("MNT-MPE", "Manutenção Preventiva Elétrica", 136, 2, ["SALA"], None)]),
     ("NRB", "NR-10 Básico", "ENERGIAS", "qualificação", [
         ("NRB-SEP", "Segurança em Eletricidade – NR-10 Básico", 40, 2, ["SALA"], "NR-10")]),
+    # turma de sábado (09:00–13:00): uma UC transversal por vez, um dia por semana
+    ("INF", "Informática Básica (sábado)", "DDS-TI", "qualificação", [
+        ("INF-BAS", "Informática Básica e Pacote Office", 56, 1, ["INFO"], None)]),
     ("ADM", "Assistente Administrativo", "GESTAO", "qualificação", [
         ("ADM-ROT", "Rotinas Administrativas", 48, 1, ["SALA"], None),
         ("ADM-PLA", "Planilhas Eletrônicas", 48, 1, ["INFO"], None),
@@ -135,6 +138,7 @@ TURMAS = [
     ("EMP-ADM-02", "ADM", "Assistente Administrativo 02 – Turma para empresa", "T", 20, [0, 2, 4], {}),
     # Wagner Prado: 5 manhãs + 4 tardes = 9 de 10 turnos (teto de 90%)
     ("QUA-ELI-01", "ELI", "Eletricista Instalador 01 – Qualificação", "M", 24, None, {}),
+    ("QUA-INF-01", "INF", "Informática Básica 01 – Qualificação aos sábados", "S", 20, [5], {}),
     ("EMP-MNT-01", "MNT", "Manutenção Elétrica 01 – Turma para empresa", "T", 18, [0, 1, 2, 3], {}),
 ]
 CH_SEM_AJUSTE = {"ELI", "MNT", "NRB"}  # carga já calculada para ocupar o semestre
@@ -180,6 +184,12 @@ HORISTAS = {"BM-1003", "BM-1006", "BM-1012", "BM-1015", "PT-2003", "PT-2005", "P
 
 # nível: básicos só dão aula em AIB e qualificações (inclui turmas para empresa de cursos de qualificação); os demais são técnicos
 BASICOS = {"BM-1011", "BM-1012", "BM-1018", "PT-2011"}
+# UCs transversais: qualquer instrutor da unidade pode dar (não precisam ser marcadas no perfil)
+TRANSVERSAIS = {"INF-BAS", "ADM-ATC"}
+# instrutores que também dão aula aos sábados (09:00–13:00)
+SABADO = {"PT-2007", "PT-2011"}
+# competências marcadas como "em partes" pelo instrutor (dá parte da UC)
+EM_PARTES = {("BM-1009", "AUT-PNE"), ("PT-2003", "LOG-WMS")}
 # turmas 80-20: a sexta é de atividades a distância (EAD), sem aula presencial
 EAD_SEXTA = {"HTC-LOG-21", "HTC-DDS-09"}
 
@@ -240,7 +250,8 @@ def montar(db, ctx, limite_s: float = 120) -> dict:
         for seq, (cod, nome_uc, ch, enc, tps, cert) in enumerate(lista, start=1):
             ch = ajuste(ch, enc)
             uc = UnidadeCurricular(matriz_id=m.id, codigo=cod, nome=nome_uc, carga_horaria_total=ch, encontros_semanais=enc,
-                                   duracao_bloco_periodos=4, sequencia=seq, certificacao_exigida=cert, modulo="Módulo específico")
+                                   duracao_bloco_periodos=4, sequencia=seq, certificacao_exigida=cert, modulo="Módulo específico",
+                                   categoria="transversal" if cod in TRANSVERSAIS else "tecnica")
             db.add(uc)
             db.flush()
             for t in tps:
@@ -262,7 +273,7 @@ def montar(db, ctx, limite_s: float = 120) -> dict:
         for o in outras:
             db.add(InstrutorArea(instrutor_id=i.id, area_id=area[o].id))
         for cuc in comps:
-            db.add(CompetenciaInstrutor(instrutor_id=i.id, uc_id=ucs[cuc].id, nivel="pleno", ativo=True))
+            db.add(CompetenciaInstrutor(instrutor_id=i.id, uc_id=ucs[cuc].id, nivel="parcial" if (mat, cuc) in EM_PARTES else "pleno", ativo=True))
         for cert in certs:
             db.add(HabilitacaoInstrutor(instrutor_id=i.id, nome=cert, ativo=True))
         from app.services.regras_aula import JORNADAS
@@ -270,6 +281,9 @@ def montar(db, ctx, limite_s: float = 120) -> dict:
             t = turno[(u.id, tc)]
             for d in range(5):
                 db.add(DisponibilidadeInstrutor(instrutor_id=i.id, dia_semana=d, hora_inicio=t.hora_inicio, hora_fim=t.hora_fim))
+        if mat in SABADO:
+            sab = turno[(u.id, "S")]
+            db.add(DisponibilidadeInstrutor(instrutor_id=i.id, dia_semana=5, hora_inicio=sab.hora_inicio, hora_fim=sab.hora_fim))
 
     for cod, sigla, nome, tc, alunos, dias, prazos in TURMAS:
         c, m = cursos[sigla]
@@ -350,6 +364,21 @@ def montar(db, ctx, limite_s: float = 120) -> dict:
     obs("PT-2006", "HTC-DDS-09", "DDS-LOP", "sugestao", "Sugiro reservar o Laboratório de Informática 2 nas avaliações práticas: o 1 tem 4 máquinas lentas.",
         "Combinado: as avaliações de Lógica de Programação ficam no Laboratório 2 a partir de 20/10.")
     obs("PT-2004", "HTC-POR-03", "POR-GCT", "horario", "A UC de Gestão de Contêineres tem prazo em 13/11. Se possível, incluir mais um encontro semanal.")
+    db.commit()
+
+    # solicitações dos instrutores pelo portal: duas aguardando o coordenador, uma aprovada e uma recusada
+    from app.models import SolicitacaoInstrutor
+    def solic(mat, tipo, d0, d1, turnos, just, status="pendente", resposta=None):
+        db.add(SolicitacaoInstrutor(instrutor_id=instrutores[mat].id, tipo=tipo, data_inicio=d0, data_fim=d1, turnos=turnos, justificativa=just,
+                                    status=status, resposta=resposta, decidido_por_id=ctx.id if status != "pendente" else None,
+                                    decidido_em=datetime(ANO, 10, 14, 16, 0) if status != "pendente" else None))
+    solic("BM-1002", "folga", date(ANO, 10, 23), date(ANO, 10, 23), [], "Consulta médica agendada (exame de rotina) no período da tarde e da noite.")
+    solic("BM-1001", "substituicao", date(ANO, 10, 28), date(ANO, 10, 29), [],
+          "Vou acompanhar a visita técnica da HTC-ELT-12 à subestação; preciso que alguém assuma minhas outras aulas.")
+    solic("PT-2006", "folga", date(ANO, 10, 30), date(ANO, 10, 30), [turno[(unid["PORTO"].id, "T")].id],
+          "Participação em banca de TCC na faculdade.", "aprovada", "Aprovado. Sem aulas suas nesse turno.")
+    solic("PT-2004", "folga", date(ANO, 11, 6), date(ANO, 11, 6), [], "Compromisso pessoal.", "recusada",
+          "Neste dia há a visita ao terminal com a HTC-POR-03 e não há substituto com NR-29. Podemos ver outra data?")
     db.commit()
 
     casos = pendencias(db, ctx, cen, instrutores, unid, area, turno, cursos, cal)

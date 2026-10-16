@@ -28,6 +28,19 @@ AREAS = [
 CODIGOS_UNIDADES = {c for c, _ in UNIDADES}
 
 
+def _criar_turno(db, u, ordem, cod, nome, aulas, dias):
+    from datetime import time
+
+    from app.models import PeriodoHorario, Turno
+    hm = lambda m: time(m // 60, m % 60)  # noqa: E731
+    t = Turno(unidade_id=u.id, codigo=cod, nome=nome, hora_inicio=hm(aulas[0][0]), hora_fim=hm(aulas[-1][0] + aulas[-1][1]), ordem=ordem, ativo=True)
+    db.add(t)
+    db.flush()
+    for i, (ini, dur) in enumerate(aulas, 1):
+        db.add(PeriodoHorario(unidade_id=u.id, turno_id=t.id, ordem=i, hora_inicio=hm(ini), hora_fim=hm(ini + dur),
+                              dias_semana=list(dias), excepcional=False, ativo=True))
+
+
 def garantir_estrutura_fixa(db) -> dict:
     """Cria (se faltarem) as unidades, as áreas e os turnos padrão das unidades fixas.
     Nunca altera nem remove registros existentes."""
@@ -36,7 +49,7 @@ def garantir_estrutura_fixa(db) -> dict:
     from sqlalchemy import func, select
 
     from app.models import Area, PeriodoHorario, Turno, Unidade
-    from app.services.regras_aula import TURNOS_PADRAO
+    from app.services.regras_aula import TURNO_SABADO, TURNOS_PADRAO
     criados = {"unidades": 0, "areas": 0, "turnos": 0}
     unidades = {}
     for cod, nome in UNIDADES:
@@ -54,8 +67,15 @@ def garantir_estrutura_fixa(db) -> dict:
     hm = lambda m: time(m // 60, m % 60)  # noqa: E731
     for u in unidades.values():
         if db.scalar(select(func.count()).select_from(Turno).where(Turno.unidade_id == u.id)):
+            if not db.scalar(select(Turno).where(Turno.unidade_id == u.id, Turno.codigo == TURNO_SABADO[0])):
+                _criar_turno(db, u, len(TURNOS_PADRAO) + 1, *TURNO_SABADO, [5])  # turno de sábado (migração 0010)
+                criados["turnos"] += 1
             continue
-        for ordem, (cod, nome, aulas) in enumerate(TURNOS_PADRAO, 1):
+        for ordem, (cod, nome, aulas) in enumerate([*TURNOS_PADRAO, TURNO_SABADO], 1):
+            if cod == TURNO_SABADO[0]:
+                _criar_turno(db, u, ordem, cod, nome, aulas, [5])
+                criados["turnos"] += 1
+                continue
             t = Turno(unidade_id=u.id, codigo=cod, nome=nome, hora_inicio=hm(aulas[0][0]), hora_fim=hm(aulas[-1][0] + aulas[-1][1]), ordem=ordem, ativo=True)
             db.add(t)
             db.flush()

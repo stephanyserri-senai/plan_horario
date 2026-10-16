@@ -117,7 +117,7 @@ class Calendario(TimestampMixin, Base):
     nome: Mapped[str] = mapped_column(String(200))
     data_inicio: Mapped[date] = mapped_column(Date)
     data_fim: Mapped[date] = mapped_column(Date)
-    dias_letivos: Mapped[list[int]] = mapped_column(ARRAY(Integer), default=lambda: [0, 1, 2, 3, 4])
+    dias_letivos: Mapped[list[int]] = mapped_column(ARRAY(Integer), default=lambda: [0, 1, 2, 3, 4, 5])  # sábado: só turmas do turno de sábado
     ativo: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
@@ -215,6 +215,7 @@ class UnidadeCurricular(TimestampMixin, Base):
         CheckConstraint("carga_horaria_total > 0"),
         CheckConstraint("duracao_bloco_periodos >= 1"),
         CheckConstraint("encontros_semanais >= 1"),
+        CheckConstraint("categoria in ('tecnica','transversal')", name="ucs_categoria_check"),
     )
     id: Mapped[int] = mapped_column(primary_key=True)
     matriz_id: Mapped[int] = mapped_column(ForeignKey("matrizes_curriculares.id"), index=True)
@@ -236,6 +237,8 @@ class UnidadeCurricular(TimestampMixin, Base):
     aulas_consecutivas: Mapped[bool] = mapped_column(Boolean, default=True)
     restricoes_pedagogicas: Mapped[str | None] = mapped_column(Text)
     prioridade: Mapped[int] = mapped_column(Integer, default=3)
+    # transversal: qualquer instrutor pode dar; técnica: só quem marcou a UC no próprio perfil
+    categoria: Mapped[str] = mapped_column(String(12), default="tecnica", server_default="tecnica")
     ativo: Mapped[bool] = mapped_column(Boolean, default=True)
 
     tipos_ambiente: Mapped[list["TipoAmbiente"]] = relationship(secondary="uc_tipos_ambiente", lazy="selectin")
@@ -426,7 +429,8 @@ class CompetenciaInstrutor(TimestampMixin, Base):
     __tablename__ = "competencias_instrutores"
     __table_args__ = (
         UniqueConstraint("instrutor_id", "uc_id"),
-        CheckConstraint("nivel in ('pleno','supervisionado','em_formacao')"),
+        # pleno = "sim" (ministra a UC); parcial = "em partes"; em_formacao = legado (não habilita)
+        CheckConstraint("nivel in ('pleno','parcial','em_formacao')", name="competencias_instrutores_nivel_check"),
     )
     id: Mapped[int] = mapped_column(primary_key=True)
     instrutor_id: Mapped[int] = mapped_column(ForeignKey("instrutores.id", ondelete="CASCADE"), index=True)

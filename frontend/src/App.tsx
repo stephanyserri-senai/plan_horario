@@ -13,6 +13,8 @@ import Consultas from "./pages/Consultas";
 import Auditoria from "./pages/Auditoria";
 import Cadastro from "./pages/Cadastro";
 import Configuracoes from "./pages/Configuracoes";
+import Regras from "./pages/Regras";
+import Solicitacoes from "./pages/Solicitacoes";
 import Cronograma from "./pages/Cronograma";
 import Dashboard from "./pages/Dashboard";
 import Inicio from "./pages/Inicio";
@@ -40,6 +42,7 @@ const MENU: { grupo: string; itens: Item[] }[] = [
     { para: "/gargalos", rotulo: "Capacidade e gargalos", icone: "⚠", acao: "indicadores.ler" },
     { para: "/indicadores", rotulo: "Indicadores", icone: "📈", acao: "indicadores.ler" },
     { para: "/relatorios", rotulo: "Relatórios", icone: "⎙", acao: "exportacao.executar" },
+    { para: "/solicitacoes", rotulo: "Solicitações dos instrutores", icone: "📝", acao: "solicitacoes.aprovar" },
   ] },
   { grupo: "Cadastros", itens: [
     { para: "/cadastros/turmas", rotulo: "Turmas", icone: "👥", acao: "cadastros.ler" },
@@ -53,6 +56,7 @@ const MENU: { grupo: string; itens: Item[] }[] = [
   ] },
   { grupo: "Administração", itens: [
     { para: "/usuarios", rotulo: "Usuários e permissões", icone: "🔑", acao: "usuarios.gerenciar" },
+    { para: "/regras", rotulo: "Regras do sistema", icone: "📘", acao: "cadastros.ler" },
     { para: "/configuracoes", rotulo: "Configurações", icone: "⚒", acao: "cadastros.ler" },
     { para: "/auditoria", rotulo: "Auditoria", icone: "🕮", acao: "auditoria.ler" },
   ] },
@@ -204,6 +208,8 @@ export default function App() {
             <Route path="/importacao" element={<Importacao />} />
             <Route path="/usuarios" element={<Usuarios />} />
             <Route path="/configuracoes" element={<Configuracoes />} />
+            <Route path="/regras" element={<Regras />} />
+            <Route path="/solicitacoes" element={<Solicitacoes />} />
             <Route path="/auditoria" element={<Auditoria />} />
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>

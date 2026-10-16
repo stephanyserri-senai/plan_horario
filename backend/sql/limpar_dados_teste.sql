@@ -1,8 +1,8 @@
 -- LIMPEZA DOS DADOS DE TESTE — para começar as validações com dados reais.
--- MANTÉM: unidades Beira Mar e Porto, áreas tecnológicas, turnos oficiais (manhã/tarde/noite), configurações
+-- MANTÉM: unidades Beira Mar e Porto, áreas tecnológicas, turnos oficiais (manhã/tarde/noite/sábado), configurações
 --         (pesos, regras de aula, limiares), perfis de acesso, usuários da equipe (administrador, planejador,
 --         observador) e o histórico de auditoria.
--- APAGA:  logins do portal do instrutor (perfil instrutor), observações e notificações dos instrutores,
+-- APAGA:  logins do portal do instrutor (perfil instrutor), observações, notificações e solicitações dos instrutores,
 --         cursos, matrizes, UCs, turmas, instrutores, salas/laboratórios, tipos de sala, recursos, calendários,
 --         feriados, bloqueios, semestres (cenários), aulas, gerações, simulações, importações e exceções;
 --         e qualquer unidade que não seja BEIRA-MAR ou PORTO (com seus turnos).
@@ -57,6 +57,7 @@ BEGIN
     versoes_planejamento'
     || CASE WHEN to_regclass('public.observacoes_instrutor') IS NOT NULL THEN ', observacoes_instrutor' ELSE '' END
     || CASE WHEN to_regclass('public.notificacoes') IS NOT NULL THEN ', notificacoes' ELSE '' END
+    || CASE WHEN to_regclass('public.solicitacoes_instrutor') IS NOT NULL THEN ', solicitacoes_instrutor' ELSE '' END
     || ' RESTART IDENTITY';
   -- instrutores: DELETE (a tabela de usuários, que é mantida, aponta para ela)
   DELETE FROM instrutores;

@@ -3,9 +3,9 @@ import { api, DIAS, qs } from "../api";
 import { useOpcoes } from "../hooks";
 
 type Comp = { uc_id: number; nivel: string };
-type Grupo = { curso_id: number; curso: string; area: string; ucs: { id: number; codigo: string; nome: string; ch: number; certificacao?: string }[] };
+type Grupo = { curso_id: number; curso: string; area: string; ucs: { id: number; codigo: string; nome: string; ch: number; certificacao?: string; categoria?: string }[] };
 
-/** UCs dos cursos das áreas do instrutor, para marcar o que ele ministra (e se é sob supervisão). */
+/** UCs técnicas dos cursos das áreas do instrutor, para marcar o que ele ministra (sim ou em partes); transversais aparecem só para informação. */
 export function CompetenciasUCs({ valores, set, fonte }: { valores: any; set: (v: Comp[]) => void; fonte?: (areas: number[]) => string }) {
   const [grupos, setGrupos] = useState<Grupo[] | null>(null);
   const [filtro, setFiltro] = useState("");
@@ -23,31 +23,36 @@ export function CompetenciasUCs({ valores, set, fonte }: { valores: any; set: (v
   const marcar = (id: number, nivel: string | null) => set([...sel.filter((c) => Number(c.uc_id) !== id), ...(nivel ? [{ uc_id: id, nivel }] : [])]);
   const marcarCurso = (g: Grupo, on: boolean) => {
     const ids = new Set(g.ucs.map((u) => u.id));
-    set([...sel.filter((c) => !ids.has(Number(c.uc_id))), ...(on ? g.ucs.map((u) => ({ uc_id: u.id, nivel: mapa.get(u.id) || "pleno" })) : [])]);
+    set([...sel.filter((c) => !ids.has(Number(c.uc_id))), ...(on ? g.ucs.filter((u) => u.categoria !== "transversal").map((u) => ({ uc_id: u.id, nivel: mapa.get(u.id) || "pleno" })) : [])]);
   };
   const f = filtro.trim().toLowerCase();
   return (
     <fieldset className="painel-campo">
-      <legend>UCs que ministra <small>({sel.length} marcada{sel.length === 1 ? "" : "s"})</small></legend>
+      <legend>UCs técnicas que ministra <small>({sel.length} marcada{sel.length === 1 ? "" : "s"})</small></legend>
+      <p className="sub">Marque as UCs técnicas que você dá: <b>Sim</b> (dá a UC inteira) ou <b>Em partes</b>. As UCs <span className="tag-transversal">transversais</span> não precisam ser marcadas: qualquer instrutor pode dar.</p>
       {!areas.length && !valores.todas_areas ? <p className="sub">Escolha a área do instrutor para ver as UCs dos cursos dela.</p> : grupos === null ? <p className="sub">Carregando UCs…</p> :
         grupos.length === 0 ? <p className="sub">Nenhum curso com UCs cadastrado nesta(s) área(s) ainda.</p> : <>
           {grupos.reduce((n, g) => n + g.ucs.length, 0) > 12 && <input type="search" placeholder="Filtrar UC por código ou nome" aria-label="Filtrar UCs" value={filtro} onChange={(e) => setFiltro(e.target.value)} />}
           {grupos.map((g) => {
             const ucs = g.ucs.filter((u) => !f || `${u.codigo} ${u.nome}`.toLowerCase().includes(f));
             if (!ucs.length) return null;
-            const todas = g.ucs.every((u) => mapa.has(u.id));
+            const todas = g.ucs.every((u) => u.categoria === "transversal" || mapa.has(u.id));
             return (
               <div key={g.curso + g.curso_id} className="grupo-ucs">
                 <div className="grupo-ucs-cab"><b>{g.curso}</b> <small className="mudo">{g.area}</small>
                   <button type="button" className="btn-link" onClick={() => marcarCurso(g, !todas)}>{todas ? "Desmarcar todas" : "Marcar todas"}</button></div>
                 {ucs.map((u) => {
                   const nivel = mapa.get(u.id);
+                  if (u.categoria === "transversal") return (
+                    <div key={u.id} className="linha-uc transversal" title="UC transversal: qualquer instrutor pode dar, não precisa marcar">
+                      <span><span className="tag-transversal">transversal</span> <b>{u.codigo}</b> {u.nome} <small className="mudo">· {u.ch} h · todos podem dar</small></span>
+                    </div>);
                   return (
                     <div key={u.id} className={`linha-uc ${nivel ? "marcada" : ""}`}>
                       <label><input type="checkbox" checked={!!nivel} onChange={(e) => marcar(u.id, e.target.checked ? "pleno" : null)} />
                         <span><b>{u.codigo}</b> {u.nome} <small className="mudo">· {u.ch} h{u.certificacao ? ` · exige ${u.certificacao}` : ""}</small></span></label>
                       {nivel && <select aria-label={`Nível em ${u.codigo}`} value={nivel} onChange={(e) => marcar(u.id, e.target.value)}>
-                        <option value="pleno">Ministra sozinho</option><option value="supervisionado">Sob supervisão</option><option value="em_formacao">Em formação</option></select>}
+                        <option value="pleno">Sim</option><option value="parcial">Em partes</option></select>}
                     </div>
                   );
                 })}

@@ -99,7 +99,11 @@ def explicar_nao_alocacao(db: Session, cenario_id: int, turma_uc_id: int, grupo:
                 amb_livre += bool(rooms_ok)
                 if insts_ok and rooms_ok:
                     viaveis.append({"data": d.isoformat(), "inicio": ini.strftime("%H:%M"), "fim": fim.strftime("%H:%M"),
-                                    "instrutores": [i["nome"] for i in insts_ok], "ambientes": [a["codigo"] for a in rooms_ok]})
+                                    "instrutores": [i["nome"] for i in insts_ok], "ambientes": [a["codigo"] for a in rooms_ok],
+                                    # aceitar a sugestão: aula neste bloco com o primeiro instrutor e a primeira sala livres
+                                    "acao": {"tipo": "alocar_aula", "turma_uc_id": tuc.id, "data": d.isoformat(), "periodo_inicio_id": bloco[0].id,
+                                             "num_periodos": len(bloco), "grupo": grupo, "instrutor_id": insts_ok[0]["id"], "ambiente_id": rooms_ok[0]["id"],
+                                             "rotulo": f"{insts_ok[0]['nome']} · {rooms_ok[0]['codigo']}"}})
     if not elegiveis:
         recurso, problema = "instrutor", f"Não há instrutor habilitado na matriz de competências para {uc.codigo} – {uc.nome} na unidade."
     elif not ambs:
@@ -129,7 +133,7 @@ def explicar_nao_alocacao(db: Session, cenario_id: int, turma_uc_id: int, grupo:
         from app.services import diagnostico_instrutor
         analise_inst = diagnostico_instrutor.analisar(db, cenario_id, tuc.id)
         problema = f"{problema} {analise_inst['resumo']}"
-        alternativas = [{"tipo": s["tipo"], "descricao": s["descricao"]} for s in analise_inst["sugestoes"]] + \
+        alternativas = [{"tipo": s["tipo"], "descricao": s["descricao"], "acao": s.get("acao")} for s in analise_inst["sugestoes"]] + \
                        [a for a in alternativas if a["tipo"] != "instrutores"]
     turnos_alt = [t.nome for t in db.scalars(select(Turno).where(Turno.unidade_id == turma.unidade_id, Turno.id != turma.turno_id))]
     if turnos_alt:

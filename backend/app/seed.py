@@ -37,7 +37,7 @@ CONFIGS = {
 def executar(db, admin_email: str | None = None, admin_senha: str | None = None):
     # Perfis ainda sem configuração recebem as ações padrão. As migrações só acrescentam ações novas
     # (ex.: 0005), então um perfil que só tem essas ações ainda não foi configurado.
-    acrescentadas_por_migracao = {"observacoes.gerenciar", "portal.instrutor"}
+    acrescentadas_por_migracao = {"observacoes.gerenciar", "portal.instrutor", "solicitacoes.aprovar"}
     for perfil, acoes in PADRAO.items():
         atuais = set(db.scalars(select(PermissaoPerfil.acao).where(PermissaoPerfil.perfil == perfil)))
         if atuais <= acrescentadas_por_migracao:

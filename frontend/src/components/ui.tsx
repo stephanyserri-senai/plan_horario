@@ -184,11 +184,17 @@ export function OcorrenciasLista({ ocorrencias }: { ocorrencias: any[] }) {
   );
 }
 
-export function Alternativas({ alt, aplicar }: { alt: any; aplicar?: (a: any) => void }) {
+export function Alternativas({ alt, aplicar, aceitar }: { alt: any; aplicar?: (a: any) => void; aceitar?: (a: any) => Promise<any> }) {
   const vazio = !alt.instrutores?.length && !alt.ambientes?.length && !alt.horarios?.length;
+  // a melhor alternativa: outro instrutor, senão outra sala, senão outro horário
+  const melhor = alt.instrutores?.[0] ? { v: { instrutor_id: alt.instrutores[0].id }, t: `trocar o instrutor por ${alt.instrutores[0].nome}` }
+    : alt.ambientes?.[0] ? { v: { ambiente_id: alt.ambientes[0].id }, t: `usar a sala ${alt.ambientes[0].codigo}` }
+    : alt.horarios?.[0] ? { v: { data: alt.horarios[0].data, periodo_inicio_id: alt.horarios[0].periodo_inicio_id, num_periodos: alt.horarios[0].num_periodos },
+      t: `mudar para ${alt.horarios[0].data.slice(8, 10)}/${alt.horarios[0].data.slice(5, 7)} ${alt.horarios[0].inicio}–${alt.horarios[0].fim}` } : null;
   return (
     <div className="alternativas">
       <h3>Alternativas validadas (calculadas a partir dos cadastros)</h3>
+      {melhor && aceitar && <SugestaoInline texto={melhor.t} aplicar={() => aceitar(melhor.v)} />}
       {vazio && <p>Nenhuma alternativa sem conflito foi encontrada na mesma semana.</p>}
       {alt.instrutores?.length > 0 && <p><b>Instrutores habilitados livres:</b> {alt.instrutores.map((i: any) => (
         <button key={i.id} className="chip" disabled={!aplicar} onClick={() => aplicar?.({ instrutor_id: i.id })}>{i.nome}</button>))}</p>}
@@ -198,6 +204,16 @@ export function Alternativas({ alt, aplicar }: { alt: any; aplicar?: (a: any) =>
         <button key={i} className="chip" disabled={!aplicar} onClick={() => aplicar?.({ data: h.data, periodo_inicio_id: h.periodo_inicio_id, num_periodos: h.num_periodos })}>
           {h.data.slice(8, 10)}/{h.data.slice(5, 7)} {h.inicio}–{h.fim}</button>))}</p>}
     </div>
+  );
+}
+
+function SugestaoInline({ texto, aplicar }: { texto: string; aplicar: () => Promise<any> }) {
+  const [rodando, setRodando] = useState(false);
+  return (
+    <div className="sugestao"><span className="sugestao-ico" aria-hidden="true">💡</span>
+      <div className="sugestao-txt"><b>Sugestão do sistema:</b> {texto} e gravar a aula.</div>
+      <button className="btn btn-primario" disabled={rodando} onClick={async () => { setRodando(true); try { await aplicar(); } finally { setRodando(false); } }}>
+        {rodando ? "Gravando…" : "✔ Aceitar e gravar"}</button></div>
   );
 }
 

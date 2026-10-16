@@ -826,6 +826,11 @@ def painel(cenario_id: int, ctx: Contexto = Depends(requer("alocacoes.ler")), db
         novas = contar_novas(db, ctx.unidades)
         if novas:
             atencao.append({"tipo": "info", "texto": f"{novas} observação(ões) nova(s) enviada(s) por instrutores", "link": "/cadastros/instrutores?aba=observacoes"})
+    if ctx.pode("solicitacoes.aprovar"):
+        from app.services.solicitacoes import pendentes
+        n = pendentes(db, ctx.unidades)
+        if n:
+            atencao.append({"tipo": "alerta", "texto": f"{n} solicitação(ões) de folga/substituição aguardando sua decisão", "link": "/solicitacoes"})
     return {
         "semestre": {"id": cen.id, "nome": cen.nome, "estado": est, "inicio": cen.periodo_inicio.isoformat() if cen.periodo_inicio else None,
                      "fim": cen.periodo_fim.isoformat() if cen.periodo_fim else None},
@@ -838,3 +843,21 @@ def painel(cenario_id: int, ctx: Contexto = Depends(requer("alocacoes.ler")), db
         "atencao": atencao,
         "ultima_geracao": {"status": ex.status, "resultado": ex.status_solver, "em": ex.criado_em.isoformat()} if ex else None,
     }
+
+
+# ============================================================================ sugestões: aceitar e aplicar automaticamente
+@router.post("/sugestoes/aplicar")
+def aplicar_sugestao(d: dict = Body(...), ctx: Contexto = Depends(get_contexto), db: Session = Depends(get_db)):
+    """{cenario_id, acao: {tipo, ...}, motivo?, gerar?}: executa a ação da sugestão (com a validação de sempre)."""
+    from app.services import sugestoes
+    r = sugestoes.aplicar(db, ctx, int(d["cenario_id"]), d.get("acao") or {}, d.get("motivo"), bool(d.get("gerar", True)))
+    db.commit()
+    return r
+
+
+@router.post("/sugestoes/recusar")
+def recusar_sugestao(d: dict = Body(...), ctx: Contexto = Depends(requer("alocacoes.ler")), db: Session = Depends(get_db)):
+    from app.services import sugestoes
+    sugestoes.recusar(db, ctx, d.get("cenario_id"), d.get("acao") or {}, d.get("motivo"))
+    db.commit()
+    return {"ok": True}

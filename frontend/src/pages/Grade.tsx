@@ -208,7 +208,7 @@ export default function Grade() {
       acoes={<>
         {editavel && <button className="btn btn-primario" onClick={() => setForm({ data: iso(semana), turma_id: modo === "turma" ? alvo : "" })}>+ Nova aula</button>}
         {editavel && modo === "turma" && alvo && <button className="btn" onClick={() => setCopiar(true)}>Copiar semana</button>}
-        {turmaSel && pode("cadastros.editar") && <button className="btn" onClick={alternarEad} title="Turmas 80-20: a sexta fica para atividades a distância">
+        {turmaSel && pode("cadastros.editar") && !linhas.some((p) => p.turno_id === turmaSel.turno_id && !p.dias_semana.some((x) => x < 5)) && <button className="btn" onClick={alternarEad} title="Turmas 80-20: a sexta fica para atividades a distância">
           {(turmaSel.dias_ead || []).includes(4) ? "Sexta EAD ✓ (desmarcar)" : "Marcar sexta como EAD"}</button>}
         {podeSubstituir && <button className="btn" onClick={() => setSubstituir({ aula: null })}>🔁 Substituir instrutor</button>}
         {pode("exportacao.executar") && <button className="btn" onClick={() => baixar(`/api/exportar/grade${qs({ cenario_id: cenario.id, formato: "pdf", semana: iso(semana),
@@ -287,7 +287,7 @@ export default function Grade() {
                           onDoubleClick={() => editavel && setForm({ data, periodo_inicio_id: p.id, turma_id: modo === "turma" ? alvo : "", instrutor_id: modo === "instrutor" ? alvo : "", ambiente_id: modo === "ambiente" ? alvo : "" })}>
                         {(i === 0 || linhas[i - 1].turno_id !== p.turno_id) && tagEad(eadNoDia(d, data, p.turno_id))}
                         {lista.map(cartao)}
-                        {lista.length === 0 && continuacao(data, p) && <span className="cont" aria-hidden="true">┆</span>}
+                        {lista.length === 0 && p.dias_semana.includes(d) && continuacao(data, p) && <span className="cont" aria-hidden="true">┆</span>}
                         {ehLivre && lista.length === 0 && <span className="sr">livre</span>}
                       </td>
                     );
@@ -501,7 +501,8 @@ export function FormAula({ inicial, cenarioId, unidadeId, periodos, fechar }: { 
         <textarea rows={2} placeholder="Ex.: instrutor titular afastado; substituição combinada com a coordenação até 30/09." value={justificativa} onChange={(e) => setJustificativa(e.target.value)} />
         <button className="btn" onClick={salvarComExcecao}>Registrar exceção e salvar</button>
       </div>}
-      {erro?.detalhes?.alternativas && <Alternativas alt={erro.detalhes.alternativas} aplicar={aplicarAlternativa} />}
+      {erro?.detalhes?.alternativas && <Alternativas alt={erro.detalhes.alternativas} aplicar={aplicarAlternativa}
+        aceitar={async (alt: any) => { aplicarAlternativa(alt); await enviar(false, { ...alt, ...(alt.periodo_inicio_id ? { hora_inicio: undefined, hora_fim: undefined } : {}) });}} />}
       <div className="rodape-modal">
         <button className="btn" onClick={() => fechar(false)}>Cancelar</button>
         {!f.alocacao_id && !f.recorrente && <button className="btn" onClick={() => enviar(true)}>Validar</button>}

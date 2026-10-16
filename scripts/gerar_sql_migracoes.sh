@@ -51,3 +51,10 @@ echo "Gerado backend/sql/atualizacao_0008.sql"
   ALEMBIC_DATABASE_URL="postgresql+psycopg://usuario:senha@host/banco" python -m alembic upgrade 0008:0009 --sql
 } > sql/atualizacao_0009.sql
 echo "Gerado backend/sql/atualizacao_0009.sql"
+{
+  echo "-- Atualização 0009 -> 0010: perfil COORDENADOR (planejador + aprova solicitações), solicitações de folga/substituição dos instrutores,"
+  echo "-- UC transversal ou técnica, competência 'sim' / 'em partes' (sob supervisão vira em partes) e turno de SÁBADO (09:00–13:00) em cada unidade."
+  echo "-- Não destrutiva. Cole o arquivo inteiro no SQL Editor do Supabase e clique em Run."
+  ALEMBIC_DATABASE_URL="postgresql+psycopg://usuario:senha@host/banco" python -m alembic upgrade 0009:0010 --sql
+} > sql/atualizacao_0010.sql
+echo "Gerado backend/sql/atualizacao_0010.sql"

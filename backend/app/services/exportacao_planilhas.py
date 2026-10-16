@@ -352,8 +352,8 @@ def linhas_cadastro(db: Session, tipo: str, unidades=None) -> list[list]:
             jornada = jornada_dos_codigos(cods) or ""
             comp = db.scalars(select(CompetenciaInstrutor).where(CompetenciaInstrutor.instrutor_id == i.id, CompetenciaInstrutor.ativo.is_(True))).all()
             ucs = {u.id: u.codigo for u in db.scalars(select(UnidadeCurricular).where(UnidadeCurricular.id.in_({c.uc_id for c in comp})))} if comp else {}
-            pleno = sorted({ucs[c.uc_id] for c in comp if c.uc_id in ucs and c.nivel != "supervisionado"})
-            sup = sorted({ucs[c.uc_id] for c in comp if c.uc_id in ucs and c.nivel == "supervisionado"})
+            pleno = sorted({ucs[c.uc_id] for c in comp if c.uc_id in ucs and c.nivel == "pleno"})
+            sup = sorted({ucs[c.uc_id] for c in comp if c.uc_id in ucs and c.nivel == "parcial"})
             cert = [h.nome for h in db.scalars(select(HabilitacaoInstrutor).where(HabilitacaoInstrutor.instrutor_id == i.id, HabilitacaoInstrutor.ativo.is_(True)))]
             res.append([i.matricula, i.nome, i.email, unid.get(i.unidade_id), _areas_de(db, i.area_id, InstrutorArea, "instrutor_id", i.id, i.todas_areas, areas),
                         (i.modalidade or "mensalista").capitalize(), "Básico" if i.nivel == "basico" else "Técnico", float(i.carga_horaria_contratual), float(i.limite_ch_letiva), float(i.max_horas_dia), jornada,
