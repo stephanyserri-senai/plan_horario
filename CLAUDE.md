@@ -10,6 +10,8 @@ UC transversal/técnica, substituição, solicitações, quadro 5:4...) estão e
 `python scripts/gerar_regras_md.py` (um teste confere que o documento está em dia).
 
 ## Convenções
+- Nomenclatura: TURNO é matutino, vespertino ou noturno (e o turno de sábado). Para contar aulas na semana use
+  "dias de aula" (cada dia ocupa um turno inteiro), nunca "turnos por semana".
 - Interface e mensagens em português; nada de dados fictícios fora da demonstração (`backend/app/demo_semestre.py`).
 - Migrações Alembic não destrutivas; para cada migração, gere o SQL do Supabase com `scripts/gerar_sql_migracoes.sh`
   (`backend/sql/atualizacao_NNNN.sql`) e cite-o no SUPABASE.md. O demo (`backend/sql/demo_semestre_completo.sql`)
