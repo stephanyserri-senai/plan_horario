@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { api, dataBR, qs } from "../api";
-import { Badge, Erro, Modal, Tabela, useCarregar } from "../components/ui";
+import { useSearchParams } from "react-router-dom";
+import { api, dataBR } from "../api";
+import { Badge, Erro, Modal, useCarregar } from "../components/ui";
 import { useApp } from "../contexto";
-import { invalidarOpcoes, useOpcoes } from "../hooks";
+import { invalidarOpcoes } from "../hooks";
 import { Formulario, useMeta, type EntMeta } from "./Cadastro";
 import { EpisDoCurso } from "../components/Epis";
 
@@ -20,20 +21,30 @@ type Edicao = { ent: "cursos" | "matrizes" | "ucs"; valores: any; fixos: string[
 export default function EstruturaCurricular() {
   const { pode, aviso } = useApp();
   const metas = useMeta();
-  const [area, setArea] = useState("");
+  // navegação: áreas → cursos da área → curso (versões e UCs); fica no endereço (?area=…&curso=…) para voltar e compartilhar
+  const [sp, setSp] = useSearchParams();
+  const area = sp.get("area") || "";
+  const cursoId = sp.get("curso") ? Number(sp.get("curso")) : null;
+  const ir = (a: string | number | null, c: number | null) => {
+    const n = new URLSearchParams(sp);
+    if (a) n.set("area", String(a)); else n.delete("area");
+    if (c) n.set("curso", String(c)); else n.delete("curso");
+    setSp(n);
+    setVersaoId(null);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
   const [busca, setBusca] = useState("");
-  const [cursoId, setCursoId] = useState<number | null>(null);
   const [versaoId, setVersaoId] = useState<number | null>(null);
   const [edicao, setEdicao] = useState<Edicao | null>(null);
   const [erro, setErro] = useState<any>(null);
-  const arv = useCarregar<any[]>(() => api.get(`/api/estrutura-curricular${qs({ area_id: area })}`), [area]);
+  const arv = useCarregar<any[]>(() => api.get("/api/estrutura-curricular"), []);
   const editavel = pode("cadastros.editar");
-  const todasAreas = useOpcoes("areas") as any[];
 
   const areas = arv.dados || [];
-  const cursos = useMemo(() => areas.flatMap((a: any) => a.cursos.map((c: any) => ({ ...c, area: a })))
-    .filter((c: any) => !busca || `${c.codigo} ${c.nome}`.toLowerCase().includes(busca.toLowerCase())), [areas, busca]);
-  const curso = cursos.find((c: any) => c.id === cursoId) || null;
+  const todosCursos = useMemo(() => areas.flatMap((a: any) => a.cursos.map((c: any) => ({ ...c, area: a }))), [areas]);
+  const cursos = todosCursos.filter((c: any) => !busca || `${c.codigo} ${c.nome}`.toLowerCase().includes(busca.toLowerCase()));
+  const curso = todosCursos.find((c: any) => c.id === cursoId) || null;
+  const areaAtual = areas.find((a: any) => String(a.id) === area) || curso?.area || null;
   const versao = curso?.versoes.find((v: any) => v.id === versaoId) || null;
   // ao trocar de curso, abre a versão vigente (ou a primeira)
   useEffect(() => {
@@ -57,7 +68,7 @@ export default function EstruturaCurricular() {
       else r = await api.put(`/api/cadastros/${edicao.ent}/${corpo.id}`, corpo);
       invalidarOpcoes(edicao.ent);
       aviso(edicao.copiarDe ? "Nova versão criada com as UCs copiadas." : "Registro salvo.");
-      if (edicao.ent === "cursos" && __novo) { setCursoId(r.id); setVersaoId(null); }
+      if (edicao.ent === "cursos" && __novo) ir(r.area_id || area, r.id);
       if (edicao.ent === "matrizes") setVersaoId(r.id);
       setEdicao(null);
       arv.recarregar();
@@ -71,99 +82,139 @@ export default function EstruturaCurricular() {
   };
   const meta = metas.find((m) => m.chave === edicao?.ent);
 
+  const novoCurso = () => { setErro(null); setEdicao({ ent: "cursos", fixos: [], titulo: "Novo curso",
+    valores: { __novo: true, area_id: areaAtual ? areaAtual.id : "", modalidade: "presencial" } }); };
+  const totalUcs = ucs.dados?.ucs.reduce((t: number, u: any) => t + u.carga_horaria_total, 0) || 0;
   return (
-    <div className="cursos-layout">
-      <aside className="cursos-lista">
-        <div className="filtros">
-          <select aria-label="Área" value={area} onChange={(e) => { setArea(e.target.value); setCursoId(null); }}>
-            <option value="">Todas as áreas</option>
-            {todasAreas.map((a: any) => <option key={a.id} value={a.id}>{a.rotulo}</option>)}
-          </select>
-          <input type="search" placeholder="Curso ou sigla" aria-label="Pesquisar curso" value={busca} onChange={(e) => setBusca(e.target.value)} />
+    <div className="cur">
+      <nav className="cur-trilha" aria-label="Caminho">
+        <button className={!areaAtual && !curso ? "atual" : ""} onClick={() => ir(null, null)}>📚 Todas as áreas</button>
+        {areaAtual && <><span aria-hidden="true">›</span><button className={!curso ? "atual" : ""} onClick={() => ir(areaAtual.id, null)}>{icone(areaAtual.nome)} {nomeArea(areaAtual.nome)}</button></>}
+        {curso && <><span aria-hidden="true">›</span><span className="atual">{curso.codigo} – {curso.nome}</span></>}
+        <span className="cur-trilha-acoes">
+          <input type="search" placeholder="🔎 Buscar curso ou sigla em todas as áreas" aria-label="Buscar curso" value={busca} onChange={(e) => setBusca(e.target.value)} />
+          {editavel && <button className="btn btn-primario" onClick={novoCurso}>+ Novo curso</button>}
+        </span>
+      </nav>
+      {arv.carregando && !arv.dados && <p role="status">Carregando…</p>}
+      {arv.erro && <div className="erro-box">{arv.erro}</div>}
+
+      {busca && <div className="cur-grade">
+        {cursos.map((c: any) => <CartaoCurso key={c.id} c={c} abrir={() => { setBusca(""); ir(c.area.id, c.id); }} mostrarArea />)}
+        {!cursos.length && <div className="cur-vazio">Nenhum curso com “{busca}”.</div>}
+      </div>}
+
+      {!busca && !areaAtual && !curso && arv.dados && <>
+        <p className="sub">Escolha a área para ver os cursos; no curso ficam as versões da matriz (uma por tipo de oferta, ex.: AIT ou HTC) e as UCs.</p>
+        <div className="cur-grade">
+          {areas.map((a: any) => {
+            const turmas = a.cursos.reduce((t: number, c: any) => t + c.turmas_ativas.length, 0);
+            const ucsA = a.cursos.reduce((t: number, c: any) => t + (c.versoes[0]?.ucs || 0), 0);
+            return (
+              <button key={a.id} className="cur-area" onClick={() => ir(a.id, null)}>
+                <span className="cur-icone" aria-hidden="true">{icone(a.nome)}</span>
+                <span className="cur-area-nome"><b>{nomeArea(a.nome)}</b><small className="mudo">{a.unidade}</small></span>
+                <span className="cur-nums">
+                  <span><b>{a.cursos.length}</b><small>curso(s)</small></span>
+                  <span><b>{turmas}</b><small>turma(s) ativa(s)</small></span>
+                  <span><b>{a.instrutores}</b><small>instrutor(es)</small></span>
+                </span>
+                <span className="cur-siglas">{a.cursos.slice(0, 6).map((c: any) => <span key={c.id} className="cur-sigla">{c.codigo}</span>)}
+                  {!a.cursos.length && <small className="mudo">sem cursos ainda</small>}{ucsA > 0 && <small className="mudo">{ucsA} UCs</small>}</span>
+              </button>
+            );
+          })}
         </div>
-        {editavel && <button className="btn btn-primario" onClick={() => { setErro(null); setEdicao({ ent: "cursos", fixos: [], titulo: "Novo curso",
-          valores: { __novo: true, area_id: area ? Number(area) : "", modalidade: "presencial" } }); }}>+ Novo curso</button>}
-        {arv.carregando && !arv.dados && <p role="status">Carregando…</p>}
-        {arv.erro && <div className="erro-box">{arv.erro}</div>}
-        {areas.map((a: any) => {
-          const cs = cursos.filter((c: any) => c.area.id === a.id);
-          if (!cs.length) return null;
-          return <div key={a.id} className="cursos-area">
-            <h4>{a.nome}</h4>
-            <ul>{cs.map((c: any) => (
-              <li key={c.id}><button className={c.id === cursoId ? "ativo" : ""} onClick={() => { setCursoId(c.id); setVersaoId(null); }}>
-                <b>{c.codigo}</b> {c.nome}
-                <small className="mudo">{c.versoes.length ? c.versoes.map((v: any) => v.tipo_oferta || "todas as ofertas").join(" · ") : "sem matriz"}</small>
-              </button></li>))}</ul>
-          </div>;
-        })}
-        {arv.dados && cursos.length === 0 && <p className="sub">Nenhum curso {busca ? "com esse nome" : "nesta área"}.</p>}
-      </aside>
+      </>}
 
-      <section className="cursos-detalhe">
-        {!curso && <div className="vazio-painel"><p>Escolha a área e o curso ao lado para ver as versões da matriz e as UCs.</p>
-          <p className="sub">Caminho: área → curso → versão (por tipo de oferta, ex.: AIT ou HTC) → UCs, com classificação e carga horária.</p></div>}
-        {curso && <>
-          <div className="cursos-cab">
-            <div>
-              <small className="mudo">{curso.area.nome}</small>
-              <h3>{curso.codigo} – {curso.nome}</h3>
-              <small className="mudo">{[curso.tipo, curso.modalidade, curso.carga_horaria_total ? `${curso.carga_horaria_total} h no curso` : null].filter(Boolean).join(" · ")}</small>
-            </div>
-            {editavel && <button className="btn" onClick={async () => { setErro(null); setEdicao({ ent: "cursos", fixos: [], titulo: `Editar curso — ${curso.codigo}`, valores: await api.get(`/api/cadastros/cursos/${curso.id}`) }); }}>Editar curso</button>}
+      {!busca && areaAtual && !curso && <>
+        <div className="cur-cab-area">
+          <span className="cur-icone grande" aria-hidden="true">{icone(areaAtual.nome)}</span>
+          <div><h3>{nomeArea(areaAtual.nome)}</h3><small className="mudo">{areaAtual.unidade} · {areaAtual.cursos.length} curso(s) · {areaAtual.instrutores} instrutor(es) na área</small></div>
+        </div>
+        <div className="cur-grade">
+          {areaAtual.cursos.map((c: any) => <CartaoCurso key={c.id} c={c} abrir={() => ir(areaAtual.id, c.id)} />)}
+          {editavel && <button className="cur-curso cur-novo" onClick={novoCurso}><span className="cur-icone">＋</span><b>Novo curso em {nomeArea(areaAtual.nome)}</b>
+            <small className="mudo">Depois crie a matriz e cadastre as UCs aqui mesmo.</small></button>}
+          {!areaAtual.cursos.length && !editavel && <div className="cur-vazio">Nenhum curso nesta área.</div>}
+        </div>
+      </>}
+
+      {!busca && curso && <section className="cur-detalhe">
+        <div className="cur-cab">
+          <span className="cur-sigla grande">{curso.codigo}</span>
+          <div className="cur-cab-txt">
+            <h3>{curso.nome}</h3>
+            <small className="mudo">{[curso.tipo, curso.modalidade].filter(Boolean).join(" · ")}</small>
           </div>
-
-          <div className="versoes" role="tablist" aria-label="Versões da matriz">
-            {curso.versoes.map((v: any) => (
-              <button key={v.id} role="tab" aria-selected={v.id === versaoId} className={`versao ${v.id === versaoId ? "ativa" : ""}`} onClick={() => setVersaoId(v.id)}>
-                <b>{v.tipo_oferta || "Todas as ofertas"}</b> <span>versão {v.versao}</span>
-                <small><Badge tipo={SITUACAO[v.situacao] || "info"}>{v.situacao}</Badge> {v.ucs} UC(s) · {v.ch_total} h{v.turmas ? ` · ${v.turmas} turma(s)` : ""}</small>
-              </button>))}
-            {editavel && <button className="versao versao-nova" onClick={() => { setErro(null); setEdicao(versao
-              ? { ent: "matrizes", fixos: ["curso_id", "matriz_origem_id", "situacao"], titulo: `Nova versão de ${curso.codigo} (copia as UCs da ${rotVersao(versao)})`, copiarDe: versao.id,
-                  valores: { __novo: true, versao: "", tipo_oferta: "", vigencia_inicio: "" } }
-              : { ent: "matrizes", fixos: ["curso_id", "matriz_origem_id"], titulo: `Matriz de ${curso.codigo}`,
-                  valores: { __novo: true, curso_id: curso.id, versao: String(new Date().getFullYear()), situacao: "vigente" } }); }}>
-              + {versao ? "Nova versão" : "Criar a matriz"}
-              <small>{versao ? "copia as UCs da versão aberta; ex.: uma para AIT e outra para HTC" : "depois cadastre as UCs"}</small>
-            </button>}
+          <div className="cur-nums">
+            <span><b>{curso.carga_horaria_total || "—"}</b><small>h no curso</small></span>
+            <span><b>{curso.versoes.length}</b><small>versão(ões)</small></span>
+            <span><b>{curso.turmas_ativas.length}</b><small>turma(s) ativa(s)</small></span>
+            <span><b>{curso.dispensa_epi ? "—" : curso.epis}</b><small>{curso.dispensa_epi ? "não usa EPI" : "EPI(s)"}</small></span>
           </div>
+          {editavel && <button className="btn" onClick={async () => { setErro(null); setEdicao({ ent: "cursos", fixos: [], titulo: `Editar curso — ${curso.codigo}`, valores: await api.get(`/api/cadastros/cursos/${curso.id}`) }); }}>Editar curso</button>}
+        </div>
+        {curso.turmas_ativas.length > 0 && <div className="cur-turmas"><small className="mudo">Turmas em andamento:</small>
+          {curso.turmas_ativas.map((t: string) => <span key={t} className="chip-area">{t}</span>)}</div>}
 
-          {!versao && curso.versoes.length === 0 && <p className="sub">Este curso ainda não tem matriz. Crie a matriz e cadastre as UCs aqui mesmo.</p>}
-          {versao && <>
-            <div className="cursos-barra">
-              <span className="sub">{versao.tipo_oferta ? `Versão própria das turmas ${versao.tipo_oferta}.` : "Vale para todas as ofertas sem versão própria."}
-                {versao.vigencia_inicio ? ` Vigente desde ${dataBR(versao.vigencia_inicio)}.` : ""}
-                {ucs.dados?.em_uso_por_turmas ? ` Usada por ${ucs.dados.em_uso_por_turmas} turma(s).` : ""}</span>
-              <span className="acoes-linha">
-                {editavel && <button className="btn-link" onClick={async () => { setErro(null); setEdicao({ ent: "matrizes", fixos: ["curso_id", "matriz_origem_id"], titulo: `Versão ${versao.versao}`, valores: await api.get(`/api/cadastros/matrizes/${versao.id}`) }); }}>Editar versão</button>}
-                {editavel && <button className="btn btn-primario" onClick={() => abrirUC()}>+ Nova UC</button>}
-              </span>
-            </div>
-            {ucs.erro && <div className="erro-box">{ucs.erro}</div>}
-            <Tabela vazio="Nenhuma UC nesta versão. Use “+ Nova UC”." linhas={ucs.dados?.ucs || []} colunas={[
-              { chave: "sequencia", rotulo: "Ordem", alinhar: "dir" },
-              { chave: "codigo", rotulo: "Código" },
-              { chave: "nome", rotulo: "Unidade curricular" },
-              { chave: "categoria", rotulo: "Classificação", render: (u: any) => u.categoria === "transversal"
-                ? <span title="Qualquer instrutor pode dar"><Badge tipo="info">Transversal</Badge></span>
-                : <span title="Só quem marcou a UC no perfil"><Badge tipo="neutro">Técnica</Badge></span> },
-              { chave: "carga_horaria_total", rotulo: "Carga horária", alinhar: "dir", render: (u: any) => `${u.carga_horaria_total} h` },
-              { chave: "_aulas", rotulo: "Aulas (dia / noite)", alinhar: "dir", render: (u: any) =>
-                <span title="Cada aula vale 55 min de dia e 50 min à noite; o que falta vira outra aula">{aulas(u.carga_horaria_total, 55)} / {aulas(u.carga_horaria_total, 50)}</span> },
-              { chave: "encontros_semanais", rotulo: "Dias/semana", alinhar: "dir" },
-              { chave: "tipos_ambiente", rotulo: "Tipo de sala", render: (u: any) => u.tipos_ambiente.join(", ") || <span className="mudo">qualquer</span> },
-              { chave: "certificacao_exigida", rotulo: "Certificação", render: (u: any) => u.certificacao_exigida || <span className="mudo">—</span> },
-              ...(editavel ? [{ chave: "_acoes", rotulo: "", render: (u: any) => <span className="acoes-linha">
-                <button className="btn-link" onClick={() => abrirUC(u)}>Editar</button>
-                <button className="btn-link" onClick={() => inativarUC(u)}>Retirar</button></span> }] : []),
-            ]} />
-            {ucs.dados?.ucs.length > 0 && <p className="sub">Total: {ucs.dados.ucs.reduce((s: number, u: any) => s + u.carga_horaria_total, 0)} h em {ucs.dados.ucs.length} UC(s) ·{" "}
-              {ucs.dados.ucs.filter((u: any) => u.categoria === "transversal").length} transversal(is), {ucs.dados.ucs.filter((u: any) => u.categoria !== "transversal").length} técnica(s).</p>}
-          </>}
-          <EpisDoCurso cursoId={curso.id} editavel={editavel} />
+        <h4 className="cur-sec">Versões da matriz <small className="mudo">— uma por tipo de oferta quando o currículo muda (ex.: AIT e HTC)</small></h4>
+        <div className="versoes" role="tablist" aria-label="Versões da matriz">
+          {curso.versoes.map((v: any) => (
+            <button key={v.id} role="tab" aria-selected={v.id === versaoId} className={`versao ${v.id === versaoId ? "ativa" : ""}`} onClick={() => setVersaoId(v.id)}>
+              <b>{v.tipo_oferta || "Todas as ofertas"}</b> <span>versão {v.versao}</span>
+              <small><Badge tipo={SITUACAO[v.situacao] || "info"}>{v.situacao}</Badge> {v.ucs} UC(s) · {v.ch_total} h{v.turmas ? ` · ${v.turmas} turma(s)` : ""}</small>
+            </button>))}
+          {editavel && <button className="versao versao-nova" onClick={() => { setErro(null); setEdicao(versao
+            ? { ent: "matrizes", fixos: ["curso_id", "matriz_origem_id", "situacao"], titulo: `Nova versão de ${curso.codigo} (copia as UCs da ${rotVersao(versao)})`, copiarDe: versao.id,
+                valores: { __novo: true, versao: "", tipo_oferta: "", vigencia_inicio: "" } }
+            : { ent: "matrizes", fixos: ["curso_id", "matriz_origem_id"], titulo: `Matriz de ${curso.codigo}`,
+                valores: { __novo: true, curso_id: curso.id, versao: String(new Date().getFullYear()), situacao: "vigente" } }); }}>
+            + {versao ? "Nova versão" : "Criar a matriz"}
+            <small>{versao ? "copia as UCs da versão aberta; ex.: uma para AIT e outra para HTC" : "depois cadastre as UCs"}</small>
+          </button>}
+        </div>
+
+        {!versao && curso.versoes.length === 0 && <div className="cur-vazio">Este curso ainda não tem matriz. Crie a matriz e cadastre as UCs aqui mesmo.</div>}
+        {versao && <>
+          <div className="cursos-barra">
+            <span className="sub">{versao.tipo_oferta ? `Versão própria das turmas ${versao.tipo_oferta}.` : "Vale para todas as ofertas sem versão própria."}
+              {versao.vigencia_inicio ? ` Vigente desde ${dataBR(versao.vigencia_inicio)}.` : ""}
+              {ucs.dados?.em_uso_por_turmas ? ` Usada por ${ucs.dados.em_uso_por_turmas} turma(s).` : ""}</span>
+            <span className="acoes-linha">
+              {editavel && <button className="btn-link" onClick={async () => { setErro(null); setEdicao({ ent: "matrizes", fixos: ["curso_id", "matriz_origem_id"], titulo: `Versão ${versao.versao}`, valores: await api.get(`/api/cadastros/matrizes/${versao.id}`) }); }}>Editar versão</button>}
+              {editavel && <button className="btn btn-primario" onClick={() => abrirUC()}>+ Nova UC</button>}
+            </span>
+          </div>
+          {ucs.erro && <div className="erro-box">{ucs.erro}</div>}
+          {ucs.dados && <div className="ucs-resumo">
+            <span><b>{ucs.dados.ucs.length}</b> UC(s)</span><span><b>{totalUcs}</b> h no total</span>
+            <span><b>{ucs.dados.ucs.filter((u: any) => u.categoria !== "transversal").length}</b> técnica(s)</span>
+            <span><b>{ucs.dados.ucs.filter((u: any) => u.categoria === "transversal").length}</b> transversal(is)</span>
+            <span><b>{ucs.dados.ucs.filter((u: any) => u.certificacao_exigida).length}</b> exigem certificação</span>
+          </div>}
+          <ol className="ucs-lista">
+            {(ucs.dados?.ucs || []).map((u: any) => (
+              <li key={u.id} className="uc-linha">
+                <span className="uc-seq">{u.sequencia}</span>
+                <span className="uc-id"><b>{u.codigo}</b> {u.nome}
+                  <span className="uc-tags">{u.categoria === "transversal"
+                    ? <span title="Qualquer instrutor pode dar"><Badge tipo="info">Transversal</Badge></span>
+                    : <span title="Só quem marcou a UC no perfil"><Badge tipo="neutro">Técnica</Badge></span>}
+                    {u.certificacao_exigida && <span className="chip-area ca-vence">🎓 exige {u.certificacao_exigida}</span>}
+                    <span className="chip-area">🏫 {u.tipos_ambiente.join(", ") || "qualquer sala"}</span></span></span>
+                <span className="uc-ch"><b>{u.carga_horaria_total} h</b>
+                  <span className="barra-pct fina"><span className="barra-pct-v bp-neutro" style={{ width: `${totalUcs ? (100 * u.carga_horaria_total) / totalUcs : 0}%` }} /></span>
+                  <small className="mudo" title="Cada aula vale 55 min de dia e 50 min à noite; o que falta vira outra aula">{aulas(u.carga_horaria_total, 55)} aulas (dia) · {aulas(u.carga_horaria_total, 50)} (noite) · {u.encontros_semanais} dia(s)/sem</small></span>
+                {editavel && <span className="uc-acoes"><button className="btn-link" onClick={() => abrirUC(u)}>Editar</button>
+                  <button className="btn-link" onClick={() => inativarUC(u)}>Retirar</button></span>}
+              </li>
+            ))}
+          </ol>
+          {ucs.dados && !ucs.dados.ucs.length && <div className="cur-vazio">Nenhuma UC nesta versão. Use “+ Nova UC”.</div>}
         </>}
-      </section>
+        <EpisDoCurso cursoId={curso.id} editavel={editavel} />
+      </section>}
 
       <Modal titulo={edicao?.titulo || ""} aberto={!!edicao} fechar={() => setEdicao(null)} largo>
         {edicao && meta && <>
@@ -175,6 +226,29 @@ export default function EstruturaCurricular() {
     </div>
   );
 }
+
+/** Cartão de curso: sigla, nome, tipo, carga, versões da matriz e turmas em andamento. */
+function CartaoCurso({ c, abrir, mostrarArea }: { c: any; abrir: () => void; mostrarArea?: boolean }) {
+  const ucs = c.versoes.reduce((m: number, v: any) => Math.max(m, v.ucs), 0);
+  return (
+    <button className="cur-curso" onClick={abrir}>
+      <span className="cur-curso-topo"><span className="cur-sigla">{c.codigo}</span>
+        {mostrarArea && <small className="mudo">{icone(c.area.nome)} {nomeArea(c.area.nome)}</small>}</span>
+      <b className="cur-curso-nome">{c.nome}</b>
+      <small className="mudo">{[c.tipo, c.modalidade, c.carga_horaria_total ? `${c.carga_horaria_total} h` : null].filter(Boolean).join(" · ")}</small>
+      <span className="cur-versoes">{c.versoes.length ? c.versoes.map((v: any) => <span key={v.id} className={`chip-area ${v.situacao === "vigente" ? "ca-principal" : ""}`}>
+        {v.tipo_oferta || "todas"} · v{v.versao}</span>) : <span className="chip-area ca-vence">sem matriz</span>}</span>
+      <span className="cur-rodape"><span>📘 {ucs} UC(s)</span><span>👥 {c.turmas_ativas.length} turma(s)</span>
+        <span>{c.dispensa_epi ? "🦺 não usa EPI" : `🦺 ${c.epis} EPI(s)`}</span></span>
+    </button>
+  );
+}
+
+const ICONES: [RegExp, string][] = [[/energ|elétr|eletr/i, "⚡"], [/automaç/i, "🤖"], [/automot/i, "🚗"], [/mecatr/i, "🦾"], [/mecân/i, "⚙️"],
+  [/instrument/i, "📟"], [/log[ií]st/i, "📦"], [/porto/i, "⚓"], [/dds|ti\b|inform|sistem/i, "💻"], [/criativ|design|gráf/i, "🎨"], [/gest|admin/i, "📊"],
+  [/química|quimic/i, "🧪"], [/construç|civil/i, "🏗️"], [/alimen/i, "🍞"], [/segur/i, "🦺"]];
+function icone(nome: string) { return (ICONES.find(([r]) => r.test(nome || "")) || [null, "📚"])[1]; }
+function nomeArea(n: string) { return n && n === n.toUpperCase() && !n.includes("/") ? n.charAt(0) + n.slice(1).toLowerCase() : n; }
 
 function rotVersao(v: any) {
   return v ? `versão ${v.versao}${v.tipo_oferta ? ` (${v.tipo_oferta})` : ""}` : "";

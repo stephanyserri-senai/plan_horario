@@ -860,6 +860,21 @@ def estrutura_curricular(area_id: int | None = None, db: Session = Depends(get_d
     por_matriz = {m: (n, int(ch or 0)) for m, n, ch in ucs}
     turmas = dict(db.execute(select(Turma.matriz_id, func.count()).where(Turma.ativo.is_(True), Turma.simulacao_id.is_(None))
                              .group_by(Turma.matriz_id)).all())
+    # para os cartões: turmas em andamento por curso, EPIs do curso e instrutores por área
+    from collections import defaultdict as _dd
+    from app.models import EpiCurso, Instrutor, InstrutorArea, Unidade
+    turmas_curso = _dd(list)
+    for cid, cod in db.execute(select(Turma.curso_id, Turma.codigo).where(Turma.ativo.is_(True), Turma.simulacao_id.is_(None),
+                                                                          Turma.situacao.notin_(["concluida", "cancelada"])).order_by(Turma.codigo)):
+        turmas_curso[cid].append(cod)
+    epis = dict(db.execute(select(EpiCurso.curso_id, func.count()).where(EpiCurso.ativo.is_(True)).group_by(EpiCurso.curso_id)).all())
+    inst_area = _dd(set)
+    for iid, aid in db.execute(select(Instrutor.id, Instrutor.area_id).where(Instrutor.ativo.is_(True), Instrutor.area_id.isnot(None))):
+        inst_area[aid].add(iid)
+    for iid, aid in db.execute(select(InstrutorArea.instrutor_id, InstrutorArea.area_id).join(Instrutor, Instrutor.id == InstrutorArea.instrutor_id)
+                               .where(Instrutor.ativo.is_(True))):
+        inst_area[aid].add(iid)
+    unidades = {u.id: u.nome for u in db.scalars(select(Unidade))}
     res = []
     for a in areas:
         if area_id and a.id != area_id:
@@ -871,8 +886,10 @@ def estrutura_curricular(area_id: int | None = None, db: Session = Depends(get_d
                    "ucs": por_matriz.get(m.id, (0, 0))[0], "ch_total": por_matriz.get(m.id, (0, 0))[1], "turmas": turmas.get(m.id, 0)}
                   for m in matrizes if m.curso_id == c.id]
             cs.append({"id": c.id, "codigo": c.codigo, "nome": c.nome, "tipo": c.tipo, "modalidade": c.modalidade,
-                       "carga_horaria_total": c.carga_horaria_total, "versoes": vs})
-        res.append({"id": a.id, "codigo": a.codigo, "nome": a.nome, "unidade_id": a.unidade_id, "cursos": cs})
+                       "carga_horaria_total": c.carga_horaria_total, "versoes": vs, "turmas_ativas": turmas_curso.get(c.id, []),
+                       "epis": epis.get(c.id, 0), "dispensa_epi": bool(c.dispensa_epi)})
+        res.append({"id": a.id, "codigo": a.codigo, "nome": a.nome, "unidade_id": a.unidade_id, "unidade": unidades.get(a.unidade_id),
+                    "instrutores": len(inst_area.get(a.id, ())), "cursos": cs})
     return res
 
 

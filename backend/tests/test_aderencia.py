@@ -193,3 +193,14 @@ def test_portal_indice_pdi_e_formacao_registrada_pelo_instrutor(db, mundo):
     # índice por área da equipe
     e = c.get("/api/aderencia/equipe", headers=adm).json()
     assert e["por_area"][0]["instrutores"] == 3 and e["por_area"][0]["media"] > 0
+
+
+def test_estrutura_curricular_para_navegar_por_area(db, mundo):
+    m = mundo
+    _mundo_com_area(db, m)
+    c = TestClient(app)
+    arv = c.get("/api/estrutura-curricular", headers=_login(c)).json()
+    a = next(x for x in arv if x["cursos"])
+    cur = a["cursos"][0]
+    assert a["instrutores"] == 3 and a["unidade"] == "Unidade 1"
+    assert sorted(cur["turmas_ativas"]) == ["T1", "T2"] and cur["epis"] == 0 and cur["dispensa_epi"] is False and cur["versoes"][0]["ucs"] == 3
