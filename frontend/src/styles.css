@@ -976,3 +976,22 @@ li.sem-marcador { list-style: none; margin-left: -18px; }
 .resumo-equipe { display: grid; grid-template-columns: minmax(240px, auto) 1fr auto; }
 .re-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); min-width: 0; }
 @media (max-width: 1100px) { .resumo-equipe { grid-template-columns: 1fr; } .re-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.indices-ader { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.ia-area, .ia-geral { display: grid; justify-items: center; gap: 2px; } .ia-area small, .ia-geral small { font-size: .7rem; color: var(--mudo); max-width: 110px; text-align: center; }
+.ocup-perfil { display: grid; gap: 12px; margin-top: 10px; }
+.ocup-turnos { display: grid; gap: 6px; max-width: 520px; } .ocup-turno { grid-template-columns: 60px 1fr 50px; }
+.re-areas { background: var(--superficie); border: 1px solid var(--borda); border-radius: 14px; padding: 10px 14px; margin: 0 0 12px; display: grid; gap: 8px; }
+.re-areas-tit { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.re-areas-lista { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; }
+.re-area-card { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 10px; background: var(--fundo); }
+.re-area-card span { display: grid; min-width: 0; } .re-area-card b { font-size: .85rem; }
+.meu-desenv { display: grid; gap: 10px; }
+.md-cab { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 16px; } .md-cab h2 { margin: 0 0 4px; }
+.md-cab > div:first-child { flex: 1; min-width: 260px; }
+.md-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.registrar-formacao { display: grid; gap: 10px; margin-top: 8px; }
+.rf-cursos { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 10px; }
+.rf-curso { border: 1px solid var(--borda); border-radius: 10px; padding: 8px 10px; display: grid; gap: 4px; align-content: start; }
+.rf-uc { display: flex; gap: 6px; align-items: flex-start; font-size: .85rem; cursor: pointer; }
+.perfil-cab > .indices-ader { flex-direction: row; flex-wrap: nowrap; flex-shrink: 0; }
+@media (max-width: 760px) { .perfil-cab .indices-ader { flex-wrap: wrap; } }

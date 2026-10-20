@@ -162,3 +162,34 @@ def test_resumo_dos_cartoes(db, mundo):
     i2 = c.get(f"/api/instrutores/resumo?cenario_id={m.cen.id}", headers=h).json()[str(m.i2.id)]
     textos = {a["texto"] for a in i2["alertas"]}
     assert "certificação vencida" in textos and any(t.startswith("sem termo de") for t in textos) and i2["termo"]["horas_aula"] is None
+
+
+def test_portal_indice_pdi_e_formacao_registrada_pelo_instrutor(db, mundo):
+    m = mundo
+    _mundo_com_area(db, m)
+    c = TestClient(app)
+    adm = _login(c)
+    assert c.post(f"/api/instrutores/{m.i1.id}/acesso", json={"email": "i1@teste", "senha": "senha-i1-123"}, headers=adm).status_code == 200
+    # a coordenação indica uma ação no PDI do instrutor (a UC C, que ele ainda não dá)
+    cid = m.curso.id
+    assert c.post(f"/api/instrutores/{m.i1.id}/pdi", json={"curso_id": cid, "uc_codigo": "C", "tipo": "uc", "prazo": "2027-03-31"}, headers=adm).json()["incluidos"] == 1
+    h = {"Authorization": "Bearer " + c.post("/api/auth/login", json={"email": "i1@teste", "senha": "senha-i1-123"}).json()["token"]}
+    perfil = c.get("/api/portal/perfil", headers=h).json()
+    assert perfil["aderencia"]["geral"] == 80.0 and perfil["pdi"][0]["uc_codigo"] == "C"
+    pdi = c.get("/api/portal/pdi", headers=h).json()
+    assert pdi["salvo"][0]["situacao"] == "planejado" and pdi["itens"][0]["no_pdi"] is True
+    # o instrutor não edita o PDI nem as competências pela coordenação
+    assert c.put(f"/api/instrutores/{m.i1.id}/competencias", json={"curso_id": cid, "uc_codigo": "C", "nivel": "pleno"}, headers=h).status_code == 403
+    # registra a formação concluída: UC habilitada na hora, item do PDI concluído e observação para a coordenação
+    r = c.post("/api/portal/formacoes", json={"tipo": "curso", "titulo": "Laboratório de UC C", "instituicao": "SENAI-ES", "carga_h": 40,
+                                              "concluido_em": "2026-10-10", "pdi_item_id": pdi["salvo"][0]["id"], "ucs": []}, headers=h)
+    assert r.status_code == 200, r.text
+    assert r.json()["geral"] == 100.0 and r.json()["habilitadas"] == ["C – UC C (lab)"]
+    obs = c.get("/api/observacoes-instrutores", headers=adm).json()
+    assert obs[0]["tipo"] == "formacao" and obs[0]["status"] == "nova" and "Habilitado automaticamente em: C" in obs[0]["texto"]
+    assert c.get(f"/api/instrutores/{m.i1.id}/pdi", headers=adm).json()["salvo"][0]["situacao"] == "concluido"
+    # UC de fora da área dele não pode
+    assert c.post("/api/portal/formacoes", json={"titulo": "Curso X", "ucs": [{"curso_id": 999, "uc_codigo": "Z"}]}, headers=h).status_code == 422
+    # índice por área da equipe
+    e = c.get("/api/aderencia/equipe", headers=adm).json()
+    assert e["por_area"][0]["instrutores"] == 3 and e["por_area"][0]["media"] > 0

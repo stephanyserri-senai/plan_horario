@@ -197,8 +197,10 @@ def catalogo() -> list[dict]:
           "'em partes' metade; sem a certificação exigida a UC ainda não conta; UCs transversais ficam de fora; instrutor básico entra só nos cursos básicos). A aderência à área soma "
           "os cursos da área e a geral soma todas as áreas do instrutor. O que falta vira proposta de PDI (aprender, completar ou certificar), "
           "com prioridade pela demanda das turmas, por quantos outros instrutores já dão a UC e pelo ganho no curso; concluir um item "
-          "pode marcar a UC como 'sim' no perfil.",
-          ["perfil do instrutor", "PDI"])
+          "pode marcar a UC como 'sim' no perfil. O instrutor acompanha o índice (por área e geral), a ocupação e o PDI no portal e registra "
+          "as formações que concluir: as UCs indicadas são habilitadas na hora e a coordenação recebe uma observação para conferir. "
+          "A equipe tem também o índice por área (média dos instrutores que atuam nela).",
+          ["perfil do instrutor", "portal do instrutor", "PDI"])
     # quadro e decisões
     regra("PROPORCAO_5_4", "Quadro e decisões", "aviso", "5 instrutores para 4 turmas",
           f"Referência de {INSTRUTORES_POR_TURMA:g} instrutor por turma. É um aviso, que pesa quando a folga dos instrutores não comporta uma turma nova.",

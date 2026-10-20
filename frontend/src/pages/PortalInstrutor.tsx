@@ -4,6 +4,7 @@ import { CompetenciasUCs, JornadaInstrutor } from "../components/CamposEspeciais
 import Perfil from "../components/Perfil";
 import { Abas, Badge, Campo, Erro, useCarregar } from "../components/ui";
 import { useApp } from "../contexto";
+import { Aderencia, IndicesAderencia, Ocupacao, Pdi } from "../components/PerfilInstrutor";
 
 const TIPOS: [string, string][] = [["sugestao", "Sugestão"], ["dificuldade", "Dificuldade"], ["recurso", "Recurso ou material"], ["horario", "Horário"], ["outro", "Outro"]];
 const STATUS: Record<string, [string, string]> = { nova: ["info", "Enviada"], lida: ["alerta", "Lida pela coordenação"], resolvida: ["ok", "Resolvida"] };
@@ -45,11 +46,13 @@ export default function PortalInstrutor({ trocarSenha }: { trocarSenha: () => vo
             </div>}
           </section>
           <Abas abas={[{ id: "turmas", rotulo: "📅 Minhas turmas e horários" }, { id: "dados", rotulo: "🧑‍🏫 Meus dados e expertise" },
+            { id: "desenv", rotulo: "📈 Meu desenvolvimento" },
             { id: "obs", rotulo: `💬 Minhas observações${respostas ? ` (${respostas} resposta${respostas > 1 ? "s" : ""})` : ""}` },
             { id: "solic", rotulo: `📝 Solicitações${aguardando ? ` (${aguardando} aguardando)` : ""}` },
             { id: "notif", rotulo: `🔔 Notificações${novas ? ` (${novas})` : ""}` }]} ativa={aba} mudar={setAba} />
           {aba === "turmas" && <MinhasTurmas aoEnviar={obs.recarregar} />}
           {aba === "dados" && eu.dados && <MeusDados eu={eu.dados} salvo={eu.recarregar} />}
+          {aba === "desenv" && <MeuDesenvolvimento registrado={() => { obs.recarregar(); eu.recarregar(); }} />}
           {aba === "obs" && <MinhasObservacoes lista={obs.dados} />}
           {aba === "solic" && eu.dados && <MinhasSolicitacoes lista={solic.dados} turnos={eu.dados.turnos} mudou={solic.recarregar} />}
           {aba === "notif" && <Notificacoes lista={notifs.dados} mudou={notifs.recarregar} ir={(a) => { irPara(a); if (a === "dados") eu.recarregar(); if (a === "obs") obs.recarregar(); if (a === "solic") solic.recarregar(); }} />}
@@ -337,6 +340,106 @@ function MinhasSolicitacoes({ lista, turnos, mudou }: { lista: any[] | null; tur
                 {x.status === "pendente" && <button className="btn-link" onClick={() => cancelar(x.id)}>Cancelar</button>}</div>
             </li>))}</ul>}
       </section>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------- meu desenvolvimento
+const TIPOS_FORMACAO: [string, string][] = [["curso", "Curso"], ["aperfeicoamento", "Aperfeiçoamento"], ["certificacao", "Certificação"],
+  ["pos", "Pós-graduação / especialização"], ["outro", "Outra formação"]];
+
+/** O instrutor acompanha o próprio índice de aderência (por área e geral), a ocupação, o PDI indicado pela coordenação
+ * e registra as formações que concluir — as UCs são habilitadas na hora e a coordenação recebe uma observação. */
+function MeuDesenvolvimento({ registrado }: { registrado: () => void }) {
+  const p = useCarregar<any>(() => api.get("/api/portal/perfil"), []);
+  const [sub, setSub] = useState("pdi");
+  const d = p.dados;
+  if (p.carregando && !d) return <p role="status">Carregando…</p>;
+  if (p.erro) return <div className="erro-box">{p.erro}</div>;
+  if (!d) return null;
+  const abertos = d.pdi.filter((x: any) => x.situacao === "planejado" || x.situacao === "em_andamento");
+  return (
+    <div className="card meu-desenv">
+      <div className="md-cab">
+        <div>
+          <h2>Meu índice de aderência</h2>
+          <p className="sub">Quanto da carga horária das UCs técnicas dos cursos da sua área você já pode ministrar. O PDI traz as ações que a coordenação
+            indicou para você chegar a 100%; ao concluir uma formação, registre aqui.</p>
+          <div className="md-chips">
+            <span className="chip-status">{abertos.length} ação(ões) do PDI em aberto</span>
+            {d.semestre && <span className="chip-status">{d.semestre.media_semanal_h} h de aula por semana · {d.semestre.pct_contrato}% do contrato</span>}
+          </div>
+        </div>
+        <IndicesAderencia ad={d.aderencia} />
+      </div>
+      <Abas abas={[{ id: "pdi", rotulo: `🎯 Meu PDI${abertos.length ? ` (${abertos.length})` : ""}` }, { id: "registrar", rotulo: "➕ Registrar formação" },
+        { id: "aderencia", rotulo: "📊 Aderência por curso" }, { id: "ocupacao", rotulo: "⏱ Minha ocupação" }]} ativa={sub} mudar={setSub} />
+      {sub === "pdi" && <Pdi id={d.dados.id} url="/api/portal/pdi" somenteLeitura mudou={p.recarregar} />}
+      {sub === "registrar" && <RegistrarFormacao d={d} feito={() => { p.recarregar(); registrado(); setSub("pdi"); }} />}
+      {sub === "aderencia" && <Aderencia ad={d.aderencia} />}
+      {sub === "ocupacao" && <Ocupacao d={d} />}
+    </div>
+  );
+}
+
+function RegistrarFormacao({ d, feito }: { d: any; feito: () => void }) {
+  const { aviso } = useApp();
+  const [f, setF] = useState<any>({ tipo: "curso", titulo: "", instituicao: "", carga_h: "", concluido_em: iso(new Date()), pdi_item_id: "", ucs: [] as string[],
+    certificacao: "", validade: "", observacao: "" });
+  const [erro, setErro] = useState<any>(null);
+  const [enviando, setEnviando] = useState(false);
+  const abertos = d.pdi.filter((x: any) => x.situacao === "planejado" || x.situacao === "em_andamento");
+  const faltam = d.aderencia.areas.flatMap((a: any) => a.cursos.map((c: any) => ({ ...c, ucs: c.ucs.filter((u: any) => u.situacao !== "sim") })))
+    .filter((c: any) => c.ucs.length);
+  const chave = (c: any, u: any) => `${c.curso_id}|${u.codigo}`;
+  const marcar = (k: string, on: boolean) => setF({ ...f, ucs: on ? [...f.ucs, k] : f.ucs.filter((x: string) => x !== k) });
+  const enviar = async () => {
+    setErro(null); setEnviando(true);
+    try {
+      const r = await api.post("/api/portal/formacoes", { ...f, pdi_item_id: f.pdi_item_id || null,
+        ucs: f.ucs.map((k: string) => { const [curso_id, uc_codigo] = k.split("|"); return { curso_id: Number(curso_id), uc_codigo }; }) });
+      aviso(`Formação registrada. ${r.habilitadas.length ? `Habilitado em ${r.habilitadas.length} UC(s). ` : ""}Seu índice agora é ${String(r.geral).replace(".", ",")}%. A coordenação foi avisada.`);
+      feito();
+    } catch (e) { setErro(e); }
+    setEnviando(false);
+  };
+  return (
+    <div className="registrar-formacao">
+      <p className="sub">Concluiu um curso, aperfeiçoamento ou certificação? Registre aqui: as UCs que você marcar passam a constar como <b>“Sim”</b> no seu
+        perfil na hora (e entram no seu índice), a certificação é registrada e a coordenação recebe uma observação para conferir.</p>
+      <div className="form-grid">
+        <Campo rotulo="Tipo" obrigatorio><select value={f.tipo} onChange={(e) => setF({ ...f, tipo: e.target.value })}>
+          {TIPOS_FORMACAO.map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Campo>
+        <Campo rotulo="Nome do curso ou da formação" obrigatorio><input value={f.titulo} onChange={(e) => setF({ ...f, titulo: e.target.value })} placeholder="ex.: Eletrônica Analógica Aplicada" /></Campo>
+        <Campo rotulo="Instituição"><input value={f.instituicao} onChange={(e) => setF({ ...f, instituicao: e.target.value })} placeholder="ex.: SENAI-ES" /></Campo>
+        <Campo rotulo="Carga horária (h)"><input type="number" min={1} value={f.carga_h} onChange={(e) => setF({ ...f, carga_h: e.target.value })} /></Campo>
+        <Campo rotulo="Concluído em" obrigatorio><input type="date" value={f.concluido_em} max={iso(new Date())} onChange={(e) => setF({ ...f, concluido_em: e.target.value })} /></Campo>
+        {abertos.length > 0 && <Campo rotulo="É de uma ação do meu PDI?" ajuda="O item é marcado como concluído (e a UC dele, habilitada).">
+          <select value={f.pdi_item_id} onChange={(e) => setF({ ...f, pdi_item_id: e.target.value })}>
+            <option value="">Não</option>
+            {abertos.map((x: any) => <option key={x.id} value={x.id}>{x.uc_codigo} – {x.uc_nome}{x.prazo ? ` (prazo ${dataBR(x.prazo)})` : ""}</option>)}
+          </select></Campo>}
+        <Campo rotulo="Certificação obtida" ajuda="ex.: NR-10 (exigida por algumas UCs)"><input value={f.certificacao} onChange={(e) => setF({ ...f, certificacao: e.target.value })} /></Campo>
+        {f.certificacao && <Campo rotulo="Validade da certificação"><input type="date" value={f.validade} onChange={(e) => setF({ ...f, validade: e.target.value })} /></Campo>}
+      </div>
+      <fieldset className="painel-campo">
+        <legend>UCs que passo a ministrar com esta formação</legend>
+        {!faltam.length && <p className="mudo">Você já ministra todas as UCs técnicas dos cursos da sua área. 🎉</p>}
+        <div className="rf-cursos">
+          {faltam.map((c: any) => (
+            <div key={c.curso_id} className="rf-curso"><b>{c.codigo}</b> <small className="mudo">{c.nome}</small>
+              {c.ucs.map((u: any) => (
+                <label key={u.codigo} className="rf-uc"><input type="checkbox" checked={f.ucs.includes(chave(c, u))} onChange={(e) => marcar(chave(c, u), e.target.checked)} />
+                  <span><b>{u.codigo}</b> {u.nome} <small className="mudo">· {u.ch} h{u.situacao === "em_partes" ? " · hoje em partes" : ""}{u.certificacao ? ` · exige ${u.certificacao}` : ""}</small></span></label>
+              ))}
+            </div>
+          ))}
+        </div>
+      </fieldset>
+      <Campo rotulo="Observação para a coordenação (opcional)"><textarea rows={2} value={f.observacao} onChange={(e) => setF({ ...f, observacao: e.target.value })} /></Campo>
+      <Erro erro={erro} />
+      <div className="rodape-modal"><button className="btn btn-primario" disabled={enviando || f.titulo.trim().length < 3 || (!f.ucs.length && !f.certificacao.trim() && !f.pdi_item_id)}
+        onClick={enviar}>{enviando ? "Registrando…" : "Registrar formação"}</button></div>
     </div>
   );
 }

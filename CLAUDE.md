@@ -37,6 +37,9 @@ UC transversal/técnica, substituição, solicitações, quadro 5:4...) estão e
   por curso, área e geral. O que falta vira proposta de PDI (`pdi_itens`); concluir com "habilitar" marca a UC como sim.
   Perfil do instrutor: `GET /api/instrutores/{id}/perfil` (abas: visão geral, competências e certificações — editáveis ali —,
   aderência e PDI). Lista em cartões com `GET /api/instrutores/resumo` (semestre, UCs, certificações, termo, PDI, alertas e ações).
+  O mesmo perfil vai ao portal (`GET /api/portal/perfil`, `/api/portal/pdi`, só leitura); o instrutor registra formações em
+  `POST /api/portal/formacoes`: habilita as UCs na hora (`aderencia.marcar_competencia`), conclui o item do PDI e cria observação
+  tipo `formacao` para a coordenação. Índice por área da equipe em `aderencia.equipe()["por_area"]`.
 - Modalidade: mensalista = jornada semanal fixa (teto de 90%); horista = termo de horas mensal (`termos_horas`, `services/termos.py`:
   horas de aula do mês e, opcional, dias da semana). O termo é ajustável numa urgência com a concordância do instrutor
   (`termos.ajustar`, ação `ajustar_termo`), então aula fora do termo é ALERTA (TERMO_HORAS_MES / TERMO_FORA_DOS_DIAS); o que impede

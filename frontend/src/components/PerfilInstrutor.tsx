@@ -2,6 +2,7 @@ import { type ReactNode, useState } from "react";
 import { api, dataBR, qs } from "../api";
 import { useApp } from "../contexto";
 import { Abas, Badge, Modal, useCarregar } from "./ui";
+import { Colunas } from "./Graficos";
 
 /** Índice de aderência do instrutor: cores e componentes visuais (anel, barra, avatar) e o perfil com visão geral, aderência e PDI. */
 
@@ -38,8 +39,8 @@ export function Anel({ valor, tamanho = 64, rotulo }: { valor: number; tamanho?:
 }
 
 /** Barra de percentual: na aderência a cor segue o índice; "neutra" para progresso e ocupação (vermelha só acima do teto de 90%). */
-export function BarraPct({ valor, fina, neutra }: { valor: number; fina?: boolean; neutra?: boolean }) {
-  const tom = neutra ? (valor > 90 ? "erro" : "neutro") : tomAderencia(valor);
+export function BarraPct({ valor, fina, neutra, distribuicao }: { valor: number; fina?: boolean; neutra?: boolean; distribuicao?: boolean }) {
+  const tom = distribuicao ? "neutro" : neutra ? (valor > 90 ? "erro" : "neutro") : tomAderencia(valor);
   return <span className={`barra-pct ${fina ? "fina" : ""}`}><span className={`barra-pct-v bp-${tom}`} style={{ width: `${Math.min(100, valor)}%` }} /></span>;
 }
 
@@ -121,12 +122,13 @@ export function PerfilInstrutor({ id, fechar, editar }: { id: number | null; fec
               {d.dados.portal ? <Badge tipo="ok">portal ativo</Badge> : <Badge tipo="info">sem acesso ao portal</Badge>}
             </div>
           </div>
-          <div className="perfil-anel"><Anel valor={d.aderencia.geral} tamanho={84} rotulo="Aderência geral" /><small>aderência geral</small></div>
+          <IndicesAderencia ad={d.aderencia} />
           {editar && <button className="btn" onClick={editar}>Editar cadastro</button>}
         </div>
-        <Abas abas={[{ id: "geral", rotulo: "Visão geral" }, { id: "competencias", rotulo: "Competências e certificações" },
+        <Abas abas={[{ id: "geral", rotulo: "Visão geral" }, { id: "ocupacao", rotulo: "Ocupação" }, { id: "competencias", rotulo: "Competências e certificações" },
           { id: "aderencia", rotulo: "Aderência aos cursos" }, { id: "pdi", rotulo: "PDI" }]} ativa={aba} mudar={setAba} />
         {aba === "geral" && <VisaoGeral d={d} />}
+        {aba === "ocupacao" && <Ocupacao d={d} />}
         {aba === "competencias" && <Competencias d={d} mudou={p.recarregar} />}
         {aba === "aderencia" && <Aderencia ad={d.aderencia} />}
         {aba === "pdi" && <Pdi id={d.dados.id} mudou={p.recarregar} />}
@@ -205,7 +207,7 @@ function VisaoGeral({ d }: { d: any }) {
   );
 }
 
-function Aderencia({ ad }: { ad: any }) {
+export function Aderencia({ ad }: { ad: any }) {
   const [aberto, setAberto] = useState<number | null>(null);
   if (!ad.areas.length) return <p className="mudo">O instrutor não tem área definida nem UCs marcadas: cadastre a área para calcular a aderência.</p>;
   return (
@@ -244,12 +246,12 @@ function Aderencia({ ad }: { ad: any }) {
   );
 }
 
-function Pdi({ id, mudou }: { id: number; mudou: () => void }) {
+export function Pdi({ id, mudou, url, somenteLeitura }: { id: number; mudou: () => void; url?: string; somenteLeitura?: boolean }) {
   const { pode, aviso } = useApp();
-  const r = useCarregar<any>(() => api.get(`/api/instrutores/${id}/pdi`), [id]);
+  const r = useCarregar<any>(() => api.get(url || `/api/instrutores/${id}/pdi`), [id, url]);
   const [sel, setSel] = useState<Record<string, boolean>>({});
   const [ocupado, setOcupado] = useState(false);
-  const editavel = pode("cadastros.editar");
+  const editavel = pode("cadastros.editar") && !somenteLeitura;
   const d = r.dados;
   if (r.carregando && !d) return <p role="status">Montando as propostas de PDI…</p>;
   if (r.erro) return <div className="erro-box">{r.erro}</div>;
@@ -298,10 +300,13 @@ function Pdi({ id, mudou }: { id: number; mudou: () => void }) {
               {p.prioridade && <> <Badge tipo={PRIORIDADE[p.prioridade]?.[0] || "info"}>{PRIORIDADE[p.prioridade]?.[1]}</Badge></>}
               {p.atrasado && <> <Badge tipo="bloqueio">prazo vencido</Badge></>}</div>
             <div className="pdi-ctrl">
-              <label className="mudo">prazo <input type="date" value={p.prazo || ""} disabled={!editavel || p.situacao === "concluido"} onChange={(e) => atualizar(p.id, { prazo: e.target.value || null })} /></label>
-              <select aria-label="Situação do item" value={p.situacao} disabled={!editavel || p.situacao === "concluido"} onChange={(e) => atualizar(p.id, { situacao: e.target.value })}>
-                {Object.entries(SITUACAO_PDI).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-              </select>
+              {editavel ? <>
+                <label className="mudo">prazo <input type="date" value={p.prazo || ""} disabled={p.situacao === "concluido"} onChange={(e) => atualizar(p.id, { prazo: e.target.value || null })} /></label>
+                <select aria-label="Situação do item" value={p.situacao} disabled={p.situacao === "concluido"} onChange={(e) => atualizar(p.id, { situacao: e.target.value })}>
+                  {Object.entries(SITUACAO_PDI).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                </select></> : <>
+                {p.prazo && <small className="mudo">prazo {dataBR(p.prazo)}</small>}
+                {p.situacao !== "concluido" && <Badge tipo={p.situacao === "em_andamento" ? "alerta" : p.situacao === "cancelado" ? "neutro" : "info"}>{SITUACAO_PDI[p.situacao]}</Badge>}</>}
               {editavel && p.situacao !== "concluido" && p.situacao !== "cancelado" && <button className="btn btn-primario" onClick={() => {
                 if (confirm(p.tipo === "certificacao" ? `Concluir e registrar a certificação ${p.certificacao} no perfil do instrutor?` : `Concluir e marcar ${p.uc_codigo} como "sim" no perfil do instrutor?`))
                   atualizar(p.id, { situacao: "concluido", habilitar: true }, "Item concluído e perfil atualizado.");
@@ -437,6 +442,60 @@ function Competencias({ d, mudou }: { d: any; mudou: () => void }) {
             {a.fora_do_nivel?.length > 0 && <p className="sub">Fora do nível do instrutor (básico): {a.fora_do_nivel.join(", ")}.</p>}
           </div>
         ))}
+      </section>
+    </div>
+  );
+}
+
+/** Índice de aderência no cabeçalho: um anel por área em que o instrutor atua e o geral (todas as áreas, pela carga horária). */
+export function IndicesAderencia({ ad }: { ad: any }) {
+  return (
+    <div className="indices-ader">
+      {ad.areas.length > 1 && ad.areas.map((a: any) => (
+        <div key={a.area_id} className="ia-area"><Anel valor={a.pct} tamanho={54} rotulo={`Aderência em ${a.area}`} /><small>{capitalizarArea(a.area)}</small></div>
+      ))}
+      <div className="ia-geral"><Anel valor={ad.geral} tamanho={84} rotulo="Aderência geral" />
+        <small>{ad.areas.length > 1 ? "geral (todas as áreas)" : ad.areas.length ? `aderência · ${capitalizarArea(ad.areas[0].area)}` : "aderência geral"}</small></div>
+    </div>
+  );
+}
+
+const capitalizarArea = (t: string) => (t && t === t.toUpperCase() && !t.includes("/") ? t.charAt(0) + t.slice(1).toLowerCase() : t);
+
+/** Ocupação do instrutor no semestre: semana a semana sobre o contrato, pico, turnos e o que fica fora de sala. */
+export function Ocupacao({ d }: { d: any }) {
+  const s = d.semestre;
+  if (!s?.ocupacao) return <p className="mudo">Sem semestre com aulas para mostrar a ocupação.</p>;
+  const o = s.ocupacao;
+  const ag = s.agenda_h || {};
+  const totalTurno = Object.values(o.por_turno).reduce((a: number, b: any) => a + Number(b), 0) as number;
+  const tetoPct = o.carga_semanal ? Math.round((100 * o.limite_letivo) / o.carga_semanal) : 90;
+  return (
+    <div className="ocup-perfil">
+      <div className="perfil-kpis">
+        <div className="pk"><small>Média semanal</small><b>{s.media_semanal_h} h</b><BarraPct valor={s.pct_contrato} fina neutra />
+          <span className="mudo">{pct(s.pct_contrato)} do contrato ({o.carga_semanal} h)</span></div>
+        <div className="pk"><small>Semana mais cheia</small><b>{o.pico ? `${o.pico.horas} h` : "—"}</b>
+          <span className="mudo">{o.pico ? `semana de ${o.pico.semana} · ${pct(o.pico.pct)} do contrato` : ""}</span></div>
+        <div className="pk"><small>Limite de aulas</small><b>{o.limite_letivo} h</b>
+          <span className={o.semanas_acima_teto ? "falta-txt" : "mudo"}>{o.semanas_acima_teto ? `${o.semanas_acima_teto} semana(s) acima` : "nenhuma semana acima"}</span></div>
+        <div className="pk"><small>Fora de sala</small><b>{(ag.PL || 0) + (ag.PJ || 0) + (ag.TR || 0)} h</b>
+          <span className="mudo">PL {ag.PL || 0} · PJ {ag.PJ || 0} · TR {ag.TR || 0}</span></div>
+      </div>
+      <section className="perfil-bloco">
+        <h4>Ocupação semana a semana <small className="mudo">— horas de aula sobre a carga do contrato ({o.carga_semanal} h); limite de aulas do instrutor: {o.limite_letivo} h ({tetoPct}%)</small></h4>
+        <Colunas dados={o.semanas} x="semana" y="pct" nome="% do contrato" altura={220}
+          extraTooltip={(l: any) => <div className="tt-linha"><span className="tt-rotulo">horas de aula</span><b>{l.horas} h</b></div>} />
+      </section>
+      <section className="perfil-bloco">
+        <h4>Aulas por turno</h4>
+        {!totalTurno && <p className="mudo">Sem aulas no semestre.</p>}
+        <div className="ocup-turnos">
+          {Object.entries(o.por_turno).map(([t, hh]: any) => (
+            <div key={t} className="mini-curso ocup-turno"><span>{t}</span><BarraPct valor={totalTurno ? (100 * hh) / totalTurno : 0} distribuicao /><small>{hh} h</small></div>
+          ))}
+        </div>
+        {d.termos && <p className="sub">Horista: termo de {d.termos.atual?.rotulo} {d.termos.atual?.tem_termo ? `com ${d.termos.atual.horas_aula} h de aula` : "ainda não registrado"} (ajustável numa urgência, com a concordância do instrutor).</p>}
       </section>
     </div>
   );

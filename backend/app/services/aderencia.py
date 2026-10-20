@@ -262,4 +262,70 @@ def equipe(db: Session, unidades: set[int] | None = None, area_id: int | None = 
                           "pct_duas_ou_mais": _pct(sum(1 for x in n if x >= 2), len(ucs)), "criticas": criticas})
     cobertura.sort(key=lambda c: (-c["sem_ninguem"], c["pct_duas_ou_mais"], c["area"]))
     media = round(sum(x["geral"] for x in linhas) / len(linhas), 1) if linhas else 0.0
-    return {"instrutores": linhas, "media": media, "cobertura": cobertura}
+    # índice da área: média da aderência, naquela área, dos instrutores que atuam nela (principal ou outras áreas)
+    acum: dict[int, list] = defaultdict(list)
+    for x in linhas:
+        for a in x["areas"]:
+            acum[a["area_id"]].append((a["pct"], a["principal"]))
+    por_area = sorted([{"area_id": aid, "area": base.areas[aid].nome, "media": round(sum(p for p, _ in v) / len(v), 1), "instrutores": len(v),
+                        "principais": sum(1 for _, pr in v if pr), "com_100": sum(1 for p, _ in v if p >= 99.95)}
+                       for aid, v in acum.items() if aid in base.areas], key=lambda a: a["area"])
+    return {"instrutores": linhas, "media": media, "cobertura": cobertura, "por_area": por_area}
+
+
+# ----------------------------------------------------------------------------- habilitar (coordenação ou o próprio instrutor)
+NIVEIS_COMP = {"pleno": "sim", "parcial": "em partes", "nenhum": "não ministra"}
+
+
+def marcar_competencia(db: Session, ctx, inst: Instrutor, curso_id, uc_codigo, nivel: str, origem: str = "api") -> dict:
+    """Marca a UC no perfil (todas as versões da matriz do curso): pleno (sim), parcial (em partes) ou nenhum."""
+    from app.core.errors import EntradaInvalida
+    from app.services import auditoria
+    if nivel not in NIVEIS_COMP:
+        raise EntradaInvalida("Nível: pleno (sim), parcial (em partes) ou nenhum.")
+    base = Base(db)
+    try:
+        uc = base.ucs.get(int(curso_id), {}).get(str(uc_codigo or "").strip())
+    except (TypeError, ValueError):
+        uc = None
+    if uc is None:
+        raise EntradaInvalida("UC não encontrada na matriz do curso.")
+    alteradas = 0
+    for uid in sorted(uc["ids"]):
+        c = db.scalar(select(CompetenciaInstrutor).where(CompetenciaInstrutor.instrutor_id == inst.id, CompetenciaInstrutor.uc_id == uid))
+        antes = auditoria.snapshot(c) if c else None
+        if nivel == "nenhum":
+            if c is None or not c.ativo:
+                continue
+            c.ativo = False
+        elif c is None:
+            c = CompetenciaInstrutor(instrutor_id=inst.id, uc_id=uid, nivel=nivel, ativo=True)
+            db.add(c)
+        else:
+            c.nivel, c.ativo = nivel, True
+        db.flush()
+        auditoria.registrar(db, ctx, "competencia.perfil", "competencias_instrutores", c.id, antes=antes, depois=auditoria.snapshot(c), origem=origem)
+        alteradas += 1
+    return {"uc_codigo": uc["codigo"], "uc_nome": uc["nome"], "nivel": nivel, "rotulo": NIVEIS_COMP[nivel], "alteradas": alteradas}
+
+
+def registrar_certificacao(db: Session, ctx, inst: Instrutor, nome, valido_ate=None, origem: str = "api") -> HabilitacaoInstrutor:
+    """Registra (ou reativa e atualiza a validade de) uma certificação do instrutor."""
+    from app.core.errors import EntradaInvalida
+    from app.services import auditoria
+    nome = str(nome or "").strip()
+    if len(nome) < 2:
+        raise EntradaInvalida("Informe o nome da certificação (ex.: NR-10).")
+    try:
+        validade = date.fromisoformat(valido_ate) if isinstance(valido_ate, str) and valido_ate else (valido_ate or None)
+    except ValueError:
+        raise EntradaInvalida("Validade inválida.")
+    h = db.scalar(select(HabilitacaoInstrutor).where(HabilitacaoInstrutor.instrutor_id == inst.id, func.lower(HabilitacaoInstrutor.nome) == nome.lower()))
+    antes = auditoria.snapshot(h) if h else None
+    if h is None:
+        h = HabilitacaoInstrutor(instrutor_id=inst.id, nome=nome)
+        db.add(h)
+    h.valido_ate, h.ativo = validade, True
+    db.flush()
+    auditoria.registrar(db, ctx, "certificacao.salvar", "habilitacoes_instrutores", h.id, antes=antes, depois=auditoria.snapshot(h), origem=origem)
+    return h

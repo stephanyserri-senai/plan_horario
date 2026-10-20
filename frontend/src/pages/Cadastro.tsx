@@ -534,6 +534,17 @@ function ResumoEquipe({ e, visao, setVisao, itens, r }: { e: any; visao: string;
           <button className={`btn ${visao === "tabela" ? "btn-primario" : ""}`} onClick={() => setVisao("tabela")}>☰ Tabela</button>
         </div>
       </div>
+      {e.por_area?.length > 0 && <div className="re-areas">
+        <span className="re-areas-tit"><b>Aderência por área</b><small className="mudo">média dos instrutores que atuam nela</small></span>
+        <div className="re-areas-lista">
+          {e.por_area.map((a: any) => (
+            <div key={a.area_id} className="re-area-card" title={`${a.instrutores} instrutor(es) · ${a.principais} com a área como principal · ${a.com_100} com 100%`}>
+              <Anel valor={a.media} tamanho={46} rotulo={`Aderência em ${a.area}`} />
+              <span><b>{a.area.includes("/") ? a.area : a.area.charAt(0) + a.area.slice(1).toLowerCase()}</b><small className="mudo">{a.instrutores} instrutor(es){a.com_100 ? ` · ${a.com_100} com 100%` : ""}</small></span>
+            </div>
+          ))}
+        </div>
+      </div>}
       <details className="cobertura">
         <summary>
           <span className="cob-seta" aria-hidden="true">▸</span>

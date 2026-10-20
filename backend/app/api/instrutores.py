@@ -51,10 +51,14 @@ def aderencia_equipe(area_id: int | None = None, ctx: Contexto = Depends(requer(
 
 @router.get("/instrutores/{iid}/perfil")
 def perfil(iid: int, cenario_id: int | None = None, ctx: Contexto = Depends(requer("cadastros.ler")), db: Session = Depends(get_db)):
-    """Visão geral do instrutor: dados, áreas, disponibilidade, certificações, turmas e aulas do semestre, aderência e PDI."""
+    """Visão geral do instrutor: dados, áreas, disponibilidade, certificações, turmas e aulas do semestre, ocupação, aderência e PDI."""
+    return montar_perfil(db, _instrutor(db, ctx, iid), cenario_id, ctx.pode("dados_pessoais.ler"))
+
+
+def montar_perfil(db: Session, inst: Instrutor, cenario_id: int | None, ver_email: bool) -> dict:
+    """O mesmo perfil para a coordenação (lista de instrutores) e para o próprio instrutor (portal)."""
     from app.api.portal import acesso_do_instrutor
     from app.services.agenda_instrutor import TIPO_PARA_SIGLA
-    inst = _instrutor(db, ctx, iid)
     base = aderencia.Base(db)
     unidades = [db.get(Unidade, inst.unidade_id)] + [db.get(Unidade, u) for u in db.scalars(
         select(InstrutorUnidade.unidade_id).where(InstrutorUnidade.instrutor_id == inst.id)) if u != inst.unidade_id]
@@ -68,7 +72,7 @@ def perfil(iid: int, cenario_id: int | None = None, ctx: Contexto = Depends(requ
                                  .order_by(HabilitacaoInstrutor.nome))]
     comps = db.scalars(select(CompetenciaInstrutor.nivel).where(CompetenciaInstrutor.instrutor_id == inst.id, CompetenciaInstrutor.ativo.is_(True))).all()
     dados = {"id": inst.id, "matricula": inst.matricula, "nome": inst.nome,
-             "email": inst.email if ctx.pode("dados_pessoais.ler") else None,
+             "email": inst.email if ver_email else None,
              "unidade": unidades[0].nome if unidades[0] else None, "outras_unidades": [u.nome for u in unidades[1:] if u],
              "area": base.areas[inst.area_id].nome if inst.area_id in base.areas else None,
              "areas": [base.areas[a].nome for a in base.areas_do(inst)], "todas_areas": inst.todas_areas,
@@ -115,7 +119,26 @@ def perfil(iid: int, cenario_id: int | None = None, ctx: Contexto = Depends(requ
                                                    Bloqueio.inicio <= datetime.combine(d1, datetime.max.time()))):
             agenda[TIPO_PARA_SIGLA.get(b.tipo, "outros")] += (b.fim - b.inicio).total_seconds() / 3600
         media = horas / semanas
-        semestre = {"cenario_id": cen.id, "inicio": d0.isoformat(), "fim": d1.isoformat(), "aulas": len(aulas), "horas": round(horas, 1),
+        # ocupação semana a semana (sobre o contrato) e por turno
+        from app.services.regras_aula import limite_letivo_efetivo
+        carga = float(inst.carga_horaria_contratual or 0)
+        por_sem = defaultdict(float)
+        por_turno = defaultdict(float)
+        for a in aulas:
+            if d0 <= a.data <= d1:
+                por_sem[a.data - timedelta(days=a.data.weekday())] += a.minutos_aula / 60
+                por_turno["Manhã" if a.inicio.hour < 12 else "Tarde" if a.inicio.hour < 18 else "Noite"] += a.minutos_aula / 60
+        seg, serie = d0 - timedelta(days=d0.weekday()), []
+        while seg <= d1:
+            h = por_sem.get(seg, 0.0)
+            serie.append({"semana": f"{seg:%d/%m}", "inicio": seg.isoformat(), "horas": round(h, 1), "pct": round(100 * h / carga, 1) if carga else 0,
+                          "passada": seg + timedelta(days=6) < hoje})
+            seg += timedelta(days=7)
+        pico = max(serie, key=lambda x: x["horas"]) if serie else None
+        ocupacao = {"carga_semanal": carga, "limite_letivo": limite_letivo_efetivo(inst), "semanas": serie,
+                    "pico": pico, "por_turno": {k: round(v, 1) for k, v in sorted(por_turno.items(), key=lambda x: ["Manhã", "Tarde", "Noite"].index(x[0]))},
+                    "semanas_acima_teto": sum(1 for x in serie if x["horas"] > limite_letivo_efetivo(inst) + 1e-6)}
+        semestre = {"ocupacao": ocupacao, "cenario_id": cen.id, "inicio": d0.isoformat(), "fim": d1.isoformat(), "aulas": len(aulas), "horas": round(horas, 1),
                     "realizadas": sum(1 for a in aulas if a.data < hoje), "turmas": len({a.turma_id for a in aulas}),
                     "media_semanal_h": round(media, 1), "pct_limite": round(100 * media / float(inst.limite_ch_letiva or 1), 1),
                     "pct_contrato": round(100 * media / float(inst.carga_horaria_contratual or 1), 1),
@@ -343,7 +366,6 @@ def ajustar_termo(iid: int, mes: str, d: dict = Body(...), cenario_id: int | Non
 
 
 # ============================================================================ competências (pelo perfil)
-NIVEIS_COMP = {"pleno": "sim", "parcial": "em partes", "nenhum": "não ministra"}
 
 
 @router.put("/instrutores/{iid}/competencias")
@@ -351,56 +373,16 @@ def marcar_competencia(iid: int, d: dict = Body(...), ctx: Contexto = Depends(re
     """Marca a UC no perfil do instrutor: {"curso_id", "uc_codigo", "nivel": "pleno" | "parcial" | "nenhum"}. Vale para todas as
     versões da matriz do curso (a UC é a mesma pelo código)."""
     inst = _instrutor(db, ctx, iid)
-    nivel = d.get("nivel")
-    if nivel not in NIVEIS_COMP:
-        raise EntradaInvalida("Nível: pleno (sim), parcial (em partes) ou nenhum.")
-    base = aderencia.Base(db)
-    try:
-        uc = base.ucs.get(int(d.get("curso_id")), {}).get(str(d.get("uc_codigo") or "").strip())
-    except (TypeError, ValueError):
-        uc = None
-    if uc is None:
-        raise EntradaInvalida("UC não encontrada na matriz do curso.")
-    alteradas = []
-    for uid in sorted(uc["ids"]):
-        c = db.scalar(select(CompetenciaInstrutor).where(CompetenciaInstrutor.instrutor_id == inst.id, CompetenciaInstrutor.uc_id == uid))
-        antes = auditoria.snapshot(c) if c else None
-        if nivel == "nenhum":
-            if c is None or not c.ativo:
-                continue
-            c.ativo = False
-        elif c is None:
-            c = CompetenciaInstrutor(instrutor_id=inst.id, uc_id=uid, nivel=nivel, ativo=True)
-            db.add(c)
-        else:
-            c.nivel, c.ativo = nivel, True
-        db.flush()
-        auditoria.registrar(db, ctx, "competencia.perfil", "competencias_instrutores", c.id, antes=antes, depois=auditoria.snapshot(c))
-        alteradas.append(uid)
+    r = aderencia.marcar_competencia(db, ctx, inst, d.get("curso_id"), d.get("uc_codigo"), d.get("nivel"))
     db.commit()
-    return {"uc_codigo": uc["codigo"], "nivel": nivel, "rotulo": NIVEIS_COMP[nivel], "alteradas": len(alteradas),
-            "geral": aderencia.indice(db, inst.id, detalhe=False)["geral"]}
+    return {**r, "geral": aderencia.indice(db, inst.id, detalhe=False)["geral"]}
 
 
 @router.put("/instrutores/{iid}/certificacoes")
 def salvar_certificacao(iid: int, d: dict = Body(...), ctx: Contexto = Depends(requer("cadastros.editar")), db: Session = Depends(get_db)):
     """Registra ou atualiza uma certificação/habilitação do instrutor (ex.: NR-10): {"nome", "valido_ate"?}."""
     inst = _instrutor(db, ctx, iid)
-    nome = str(d.get("nome") or "").strip()
-    if len(nome) < 2:
-        raise EntradaInvalida("Informe o nome da certificação (ex.: NR-10).")
-    try:
-        validade = date.fromisoformat(d["valido_ate"]) if d.get("valido_ate") else None
-    except ValueError:
-        raise EntradaInvalida("Validade inválida.")
-    h = db.scalar(select(HabilitacaoInstrutor).where(HabilitacaoInstrutor.instrutor_id == inst.id, func.lower(HabilitacaoInstrutor.nome) == nome.lower()))
-    antes = auditoria.snapshot(h) if h else None
-    if h is None:
-        h = HabilitacaoInstrutor(instrutor_id=inst.id, nome=nome)
-        db.add(h)
-    h.valido_ate, h.ativo = validade, True
-    db.flush()
-    auditoria.registrar(db, ctx, "certificacao.salvar", "habilitacoes_instrutores", h.id, antes=antes, depois=auditoria.snapshot(h))
+    h = aderencia.registrar_certificacao(db, ctx, inst, d.get("nome"), d.get("valido_ate"))
     db.commit()
     return {"id": h.id, "nome": h.nome, "valido_ate": h.valido_ate.isoformat() if h.valido_ate else None,
             "geral": aderencia.indice(db, inst.id, detalhe=False)["geral"]}

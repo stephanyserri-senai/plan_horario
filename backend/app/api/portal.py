@@ -30,7 +30,10 @@ from app.services.agenda_instrutor import TIPO_PARA_SIGLA
 router = APIRouter(prefix="/api", tags=["portal do instrutor"])
 
 DIAS = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"]
-TIPOS_OBS = {"sugestao": "Sugestão", "dificuldade": "Dificuldade", "recurso": "Recurso ou material", "horario": "Horário", "outro": "Outro"}
+TIPOS_OBS = {"sugestao": "Sugestão", "dificuldade": "Dificuldade", "recurso": "Recurso ou material", "horario": "Horário", "outro": "Outro",
+             "formacao": "Nova formação (habilitação automática)"}
+TIPOS_FORMACAO = {"curso": "Curso", "aperfeicoamento": "Aperfeiçoamento", "certificacao": "Certificação", "pos": "Pós-graduação / especialização",
+                  "outro": "Outra formação"}
 
 
 def _meu_instrutor(ctx: Contexto, db: Session) -> Instrutor:
@@ -282,6 +285,95 @@ def enviar_observacao(dados: dict = Body(...), ctx: Contexto = Depends(get_conte
     auditoria.registrar(db, ctx, "portal.observacao", "observacoes_instrutor", o.id, depois={"turma_uc_id": tuc_id, "tipo": tipo}, origem="portal")
     db.commit()
     return _obs(db, o)
+
+
+# ============================================================================ meu desenvolvimento: índice, PDI e formações
+@router.get("/portal/perfil")
+def meu_perfil(ctx: Contexto = Depends(get_contexto), db: Session = Depends(get_db)):
+    """O mesmo perfil que a coordenação vê (ocupação, aderência por curso e área, PDI), do semestre mais recente do instrutor."""
+    from app.api.instrutores import montar_perfil
+    inst = _meu_instrutor(ctx, db)
+    cens = _cenarios_do_instrutor(db, inst)
+    cen = cens[max(cens)][0] if cens else None
+    return montar_perfil(db, inst, cen.id if cen else None, True)
+
+
+@router.get("/portal/pdi")
+def meu_pdi(ctx: Contexto = Depends(get_contexto), db: Session = Depends(get_db)):
+    """As ações indicadas ao instrutor (PDI planejado pela coordenação) e as propostas para chegar a 100% (só leitura)."""
+    from app.api.instrutores import _pdi_salvo
+    from app.services import aderencia
+    inst = _meu_instrutor(ctx, db)
+    return {**aderencia.propostas(db, inst.id), "salvo": _pdi_salvo(db, inst.id)}
+
+
+@router.post("/portal/formacoes")
+def registrar_formacao(d: dict = Body(...), ctx: Contexto = Depends(get_contexto), db: Session = Depends(get_db)):
+    """O instrutor registra uma formação concluída (curso, aperfeiçoamento, certificação...). As UCs indicadas são habilitadas na
+    hora ("sim"), a certificação entra no perfil, o item do PDI vinculado é concluído, e tudo chega à coordenação como observação
+    (tipo nova formação) para conferir — a coordenação pode desfazer pelo perfil do instrutor."""
+    from app.models import PdiItem
+    from app.services import aderencia
+    inst = _meu_instrutor(ctx, db)
+    tipo = d.get("tipo") or "curso"
+    if tipo not in TIPOS_FORMACAO:
+        raise EntradaInvalida("Tipo de formação inválido.")
+    titulo = str(d.get("titulo") or "").strip()
+    if len(titulo) < 3:
+        raise EntradaInvalida("Informe o nome do curso ou da formação.")
+    instituicao = str(d.get("instituicao") or "").strip()
+    try:
+        carga = float(d["carga_h"]) if d.get("carga_h") not in (None, "") else None
+        concluido = date.fromisoformat(d["concluido_em"]) if d.get("concluido_em") else date.today()
+    except (TypeError, ValueError):
+        raise EntradaInvalida("Carga horária ou data de conclusão inválida.")
+    if concluido > date.today():
+        raise EntradaInvalida("A data de conclusão não pode ser futura.")
+    ucs = d.get("ucs") or []
+    pdi_id = d.get("pdi_item_id")
+    item = None
+    if pdi_id:
+        item = db.get(PdiItem, int(pdi_id))
+        if item is None or item.instrutor_id != inst.id or item.situacao not in ("planejado", "em_andamento"):
+            raise EntradaInvalida("Item do PDI não encontrado ou já concluído.")
+        if item.tipo != "certificacao" and not any(str(u.get("uc_codigo")) == item.uc_codigo for u in ucs):
+            ucs = [*ucs, {"curso_id": item.curso_id, "uc_codigo": item.uc_codigo}]
+    cert = str(d.get("certificacao") or (item.certificacao if item is not None and item.tipo == "certificacao" else "") or "").strip()
+    if not ucs and not cert:
+        raise EntradaInvalida("Indique as UCs que passa a ministrar ou a certificação obtida.")
+    # só UCs dos cursos das áreas dele (e do nível dele)
+    permitidas = {(c["curso_id"], u["codigo"]) for a in aderencia.indice(db, inst.id)["areas"] for c in a["cursos"] for u in c["ucs"]}
+    habilitadas = []
+    for u in ucs:
+        chave = (int(u.get("curso_id") or 0), str(u.get("uc_codigo") or ""))
+        if chave not in permitidas:
+            raise EntradaInvalida(f"A UC {chave[1]} não é dos cursos da sua área.")
+        r = aderencia.marcar_competencia(db, ctx, inst, chave[0], chave[1], "pleno", origem="portal")
+        habilitadas.append(f"{r['uc_codigo']} – {r['uc_nome']}")
+    if cert:
+        aderencia.registrar_certificacao(db, ctx, inst, cert, d.get("validade") or None, origem="portal")
+    if item is not None:
+        item.situacao, item.concluido_em = "concluido", concluido
+        item.observacao = ((item.observacao or "") + f"\nConcluído pelo instrutor: {titulo}").strip()
+    partes = [f"{TIPOS_FORMACAO[tipo]}: {titulo}" + (f" ({instituicao})" if instituicao else "") + (f", {carga:g} h" if carga else "")
+              + f", concluído em {concluido:%d/%m/%Y}."]
+    if habilitadas:
+        partes.append("Habilitado automaticamente em: " + "; ".join(habilitadas) + ".")
+    if cert:
+        partes.append(f"Certificação registrada: {cert}" + (f" (validade {d['validade']})" if d.get("validade") else "") + ".")
+    if item is not None:
+        partes.append(f"Item do PDI concluído: {item.uc_codigo} – {item.uc_nome}.")
+    if d.get("observacao"):
+        partes.append(str(d["observacao"]).strip()[:500])
+    o = ObservacaoInstrutor(instrutor_id=inst.id, tipo="formacao", texto=" ".join(partes), status="nova")
+    db.add(o)
+    db.flush()
+    auditoria.registrar(db, ctx, "portal.formacao", "observacoes_instrutor", o.id,
+                        depois={"tipo": tipo, "titulo": titulo, "ucs": habilitadas, "certificacao": cert or None, "pdi_item_id": item.id if item else None},
+                        origem="portal")
+    db.commit()
+    return {"observacao": _obs(db, o), "habilitadas": habilitadas, "certificacao": cert or None,
+            "geral": aderencia.indice(db, inst.id, detalhe=False)["geral"]}
 
 
 @router.get("/observacoes-instrutores")
