@@ -97,6 +97,10 @@ def test_pdi_incluir_e_concluir_habilita(db, mundo):
     assert perfil["aderencia"]["geral"] == 100.0 and perfil["pdi"][0]["situacao"] == "concluido" and perfil["semestre"]["aulas"] == 0
     e = c.get("/api/aderencia/equipe", headers=h).json()
     assert {x["instrutor_id"] for x in e["instrutores"]} >= {m.i1.id, m.i2.id} and e["cobertura"][0]["ucs"] == 3
+    # cobertura: B só tem o I1 e C só o I2 (depois de concluído o PDI, C passa a ter o I1 também)
+    cob = e["cobertura"][0]
+    assert cob["duas_ou_mais"] + cob["um_so"] + cob["sem_ninguem"] == 3
+    assert {(u["uc"], tuple(u["habilitados"])) for u in cob["criticas"]} == {("B", ("Instrutor 1",))}
 
 
 def test_instrutor_basico_so_conta_cursos_basicos(db, mundo):

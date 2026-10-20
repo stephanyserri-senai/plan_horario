@@ -483,24 +483,65 @@ function TurnosPadrao({ aoCriar }: { aoCriar: () => void }) {
   );
 }
 
-/** Topo da lista de instrutores: média de aderência da equipe, cobertura das UCs por área e a troca cartões/tabela. */
+/** Topo da lista de instrutores: média de aderência da equipe, a troca cartões/tabela e a cobertura das UCs por área. */
 function ResumoEquipe({ e, visao, setVisao }: { e: any; visao: string; setVisao: (v: any) => void }) {
+  const umSo = e.cobertura.reduce((t: number, c: any) => t + c.um_so, 0);
+  const ninguem = e.cobertura.reduce((t: number, c: any) => t + c.sem_ninguem, 0);
   return (
-    <div className="resumo-equipe">
-      <div className="re-media"><Anel valor={e.media} tamanho={56} rotulo="Aderência média" /><div><b>Aderência média da equipe</b>
-        <small className="mudo">Clique em um instrutor para ver o perfil, a aderência por curso e o PDI.</small></div></div>
-      <div className="re-cob">
-        {e.cobertura.map((c: any) => (
-          <span key={c.area_id} className="re-area" title={`${c.ucs} UCs técnicas · ${c.pct_duas_ou_mais}% com 2 ou mais instrutores`}>
-            <b>{c.area}</b> {c.sem_ninguem > 0 && <Badge tipo="bloqueio">{c.sem_ninguem} UC sem ninguém</Badge>}
-            {c.um_so > 0 && <Badge tipo="alerta">{c.um_so} com 1 só</Badge>}{!c.sem_ninguem && !c.um_so && <Badge tipo="ok">coberta</Badge>}
+    <>
+      <div className="resumo-equipe">
+        <div className="re-media"><Anel valor={e.media} tamanho={56} rotulo="Aderência média" /><div><b>Aderência média da equipe</b>
+          <small className="mudo">Clique em um instrutor para ver o perfil, a aderência por curso e o PDI.</small></div></div>
+        <div className="re-visao" role="group" aria-label="Forma de exibir">
+          <button className={`btn ${visao === "cartoes" ? "btn-primario" : ""}`} onClick={() => setVisao("cartoes")}>▦ Cartões</button>
+          <button className={`btn ${visao === "tabela" ? "btn-primario" : ""}`} onClick={() => setVisao("tabela")}>☰ Tabela</button>
+        </div>
+      </div>
+      <details className="cobertura">
+        <summary>
+          <span className="cob-seta" aria-hidden="true">▸</span>
+          <b>Cobertura das UCs por área</b>
+          <span className="mudo">quantas UCs técnicas têm instrutor reserva (2 ou mais habilitados)</span>
+          <span className="cob-resumo">
+            {ninguem > 0 && <Badge tipo="bloqueio">{ninguem} UC(s) sem ninguém</Badge>}
+            {umSo > 0 ? <Badge tipo="alerta">{umSo} UC(s) dependem de uma pessoa só</Badge> : !ninguem && <Badge tipo="ok">todas com reserva</Badge>}
           </span>
+        </summary>
+        <p className="sub">Quando só um instrutor pode dar a UC, uma falta, licença ou treinamento dele deixa a turma sem aula. A barra mostra, em cada área,
+          as UCs <span className="leg leg-ok">com reserva</span>, as que <span className="leg leg-um">dependem de 1 pessoa</span> e as
+          <span className="leg leg-zero"> sem ninguém</span>. Clique na área para ver quais UCs e quem as dá — o PDI de cada instrutor sugere quem habilitar.</p>
+        <div className="cob-grade">
+          {e.cobertura.map((c: any) => <AreaCobertura key={c.area_id} c={c} />)}
+        </div>
+      </details>
+    </>
+  );
+}
+
+function AreaCobertura({ c }: { c: any }) {
+  const [aberta, setAberta] = useState(false);
+  const pct = (n: number) => `${(100 * n) / (c.ucs || 1)}%`;
+  const ok = !c.um_so && !c.sem_ninguem;
+  return (
+    <div className={`cob-area ${ok ? "cob-ok" : ""}`}>
+      <button className="cob-cab" onClick={() => setAberta(!aberta)} aria-expanded={aberta} disabled={ok}>
+        <span className="cob-nome"><b>{c.area}</b><small className="mudo">{c.ucs} UC(s) técnica(s)</small></span>
+        <span className="cob-barra" role="img" aria-label={`${c.duas_ou_mais} com reserva, ${c.um_so} com uma pessoa só, ${c.sem_ninguem} sem ninguém`}>
+          <span className="cb-ok" style={{ width: pct(c.duas_ou_mais) }} /><span className="cb-um" style={{ width: pct(c.um_so) }} /><span className="cb-zero" style={{ width: pct(c.sem_ninguem) }} />
+        </span>
+        <span className="cob-txt">{ok ? <span className="ok-txt">✓ todas com reserva</span> : <>
+          {c.sem_ninguem > 0 && <span className="falta-txt">{c.sem_ninguem} sem ninguém</span>}
+          {c.sem_ninguem > 0 && c.um_so > 0 && " · "}
+          {c.um_so > 0 && <span className="alerta-txt">{c.um_so} com 1 só</span>}
+          <span className="mudo"> {aberta ? "▾" : "▸"}</span></>}</span>
+      </button>
+      {aberta && <ul className="cob-ucs">
+        {c.criticas.map((u: any) => (
+          <li key={`${u.curso}-${u.uc}`}><span className={`cb-ponto ${u.habilitados.length ? "cb-um" : "cb-zero"}`} />
+            <span><b>{u.uc}</b> {u.nome} <small className="mudo">({u.curso})</small></span>
+            <small>{u.habilitados.length ? <>só <b>{u.habilitados[0]}</b></> : <span className="falta-txt">ninguém habilitado</span>}</small></li>
         ))}
-      </div>
-      <div className="re-visao" role="group" aria-label="Forma de exibir">
-        <button className={`btn ${visao === "cartoes" ? "btn-primario" : ""}`} onClick={() => setVisao("cartoes")}>▦ Cartões</button>
-        <button className={`btn ${visao === "tabela" ? "btn-primario" : ""}`} onClick={() => setVisao("tabela")}>☰ Tabela</button>
-      </div>
+      </ul>}
     </div>
   );
 }

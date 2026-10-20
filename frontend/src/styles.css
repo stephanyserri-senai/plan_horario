@@ -889,3 +889,29 @@ li.sem-marcador { list-style: none; margin-left: -18px; }
 .termo-ajuste { border: 1px solid var(--alerta); background: var(--alerta-bg); border-radius: 10px; padding: 10px 12px; display: grid; gap: 8px; }
 .concorda { display: flex; align-items: center; gap: 6px; font-weight: 600; }
 .alerta-txt { color: var(--alerta); }
+
+/* ---------- cobertura das UCs por área (página de instrutores) ---------- */
+.resumo-equipe { justify-content: space-between; }
+.cobertura { background: var(--superficie); border: 1px solid var(--borda); border-radius: 14px; padding: 0; margin: 0 0 12px; }
+.cobertura > summary { list-style: none; cursor: pointer; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 12px 14px; }
+.cobertura > summary::-webkit-details-marker { display: none; }
+.cobertura[open] .cob-seta { transform: rotate(90deg); }
+.cob-seta { display: inline-block; transition: transform .15s; color: var(--mudo); }
+.cob-resumo { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; }
+.cobertura > .sub { padding: 0 14px; margin-top: 0; }
+.leg { font-weight: 600; } .leg::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin: 0 4px 0 2px; vertical-align: -1px; }
+.leg-ok::before, .cb-ok { background: var(--ok); } .leg-um::before, .cb-um { background: #d9a227; } .leg-zero::before, .cb-zero { background: var(--erro); }
+.cob-grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 8px; padding: 4px 14px 14px; align-items: start; }
+.cob-area { border: 1px solid var(--borda); border-radius: 10px; }
+.cob-area.cob-ok { opacity: .8; }
+.cob-cab { width: 100%; display: grid; grid-template-columns: minmax(120px, 1.1fr) 1fr auto; gap: 10px; align-items: center; background: none; border: 0;
+  padding: 8px 10px; text-align: left; font: inherit; color: var(--texto); cursor: pointer; border-radius: 10px; }
+.cob-cab:disabled { cursor: default; }
+.cob-cab:not(:disabled):hover { background: var(--fundo); }
+.cob-nome { display: grid; min-width: 0; } .cob-nome b { font-size: .85rem; overflow-wrap: anywhere; }
+.cob-barra { display: flex; height: 10px; border-radius: 999px; overflow: hidden; background: var(--ch-falta); }
+.cob-barra > span { display: block; height: 100%; }
+.cob-txt { font-size: .78rem; white-space: nowrap; }
+.cob-ucs { list-style: none; margin: 0; padding: 4px 10px 10px; display: grid; gap: 6px; border-top: 1px dashed var(--borda); }
+.cob-ucs li { display: grid; grid-template-columns: 10px 1fr auto; gap: 8px; align-items: center; font-size: .82rem; }
+.cb-ponto { width: 10px; height: 10px; border-radius: 50%; }

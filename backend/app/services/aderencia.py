@@ -117,6 +117,10 @@ class Base:
                 n += 1
         return n
 
+    def nomes_habilitados(self, u: dict, cid: int | None = None) -> list[str]:
+        return sorted(inst.nome for iid, inst in self.ativos.items()
+                      if (cid is None or self.no_nivel(inst, cid)) and self.situacao(iid, u)[0] in ("sim", "em_partes"))
+
     def areas_do(self, inst: Instrutor) -> list[int]:
         areas = ([inst.area_id] if inst.area_id else []) + sorted(self.extras[inst.id] - {inst.area_id})
         if inst.todas_areas or not areas:  # atende todas: entra nas áreas onde já tem UC marcada
@@ -246,8 +250,14 @@ def equipe(db: Session, unidades: set[int] | None = None, area_id: int | None = 
         ucs = [(cid, u) for cid in base.cursos if base.cursos[cid].area_id == aid for u in base.ucs.get(cid, {}).values()]
         if not ucs:
             continue
-        n = [base.habilitados(u, 0, cid) for cid, u in ucs]
+        nomes = [base.nomes_habilitados(u, cid) for cid, u in ucs]
+        n = [len(x) for x in nomes]
+        # as UCs frágeis: ninguém pode dar, ou só uma pessoa (uma falta dela deixa a turma sem aula)
+        criticas = sorted([{"curso": base.cursos[cid].codigo, "uc": u["codigo"], "nome": u["nome"], "habilitados": nm}
+                           for (cid, u), nm in zip(ucs, nomes) if len(nm) <= 1], key=lambda x: (len(x["habilitados"]), x["curso"], x["uc"]))
         cobertura.append({"area_id": aid, "area": area.nome, "ucs": len(ucs), "sem_ninguem": sum(1 for x in n if x == 0),
-                          "um_so": sum(1 for x in n if x == 1), "pct_duas_ou_mais": _pct(sum(1 for x in n if x >= 2), len(ucs))})
+                          "um_so": sum(1 for x in n if x == 1), "duas_ou_mais": sum(1 for x in n if x >= 2),
+                          "pct_duas_ou_mais": _pct(sum(1 for x in n if x >= 2), len(ucs)), "criticas": criticas})
+    cobertura.sort(key=lambda c: (-c["sem_ninguem"], c["pct_duas_ou_mais"], c["area"]))
     media = round(sum(x["geral"] for x in linhas) / len(linhas), 1) if linhas else 0.0
     return {"instrutores": linhas, "media": media, "cobertura": cobertura}
