@@ -101,7 +101,10 @@ export default function EstruturaCurricular({ visao = "estrutura" }: { visao?: s
   );
   const editarCurso = async (c: any) => { setErro(null); setEdicao({ ent: "cursos", fixos: [], titulo: `Editar curso — ${c.codigo}`, valores: await api.get(`/api/cadastros/cursos/${c.id}`) }); };
   const editarVersao = async (v: any) => { setErro(null); setEdicao({ ent: "matrizes", fixos: ["curso_id", "matriz_origem_id"], titulo: `Versão ${v.versao}`, valores: await api.get(`/api/cadastros/matrizes/${v.id}`) }); };
-  const listas: PropsLista = { areas, cursos: todosCursos, abrir: ir, editarCurso, editarVersao, editarUC: abrirUC, novoCurso, editavel, rev,
+  // nova UC numa versão vista na lista (fora da navegação do curso)
+  const novaUC = (v: any) => { setErro(null); setEdicao({ ent: "ucs", fixos: ["matriz_id"], titulo: `Nova UC — ${v.curso.codigo} ${rotVersao(v)}`,
+    valores: { __novo: true, matriz_id: v.id, categoria: "tecnica", encontros_semanais: 2, sequencia: (v.ucs || 0) + 1 } }); };
+  const listas: PropsLista = { areas, cursos: todosCursos, abrir: ir, editarCurso, editarVersao, editarUC: abrirUC, novaUC, novoCurso, editavel, rev,
     mudou: () => { arv.recarregar(); setRev((x) => x + 1); } };
   if (visao !== "estrutura") return (
     <div className="cur">
@@ -109,7 +112,6 @@ export default function EstruturaCurricular({ visao = "estrutura" }: { visao?: s
       {arv.erro && <div className="erro-box">{arv.erro}</div>}
       {arv.dados && visao === "cursos" && <ListaCursos {...listas} />}
       {arv.dados && visao === "matrizes" && <ListaVersoes {...listas} />}
-      {arv.dados && visao === "ucs" && <ListaUcs {...listas} />}
       {modal}
     </div>
   );
@@ -274,7 +276,7 @@ function nomeArea(n: string) { return n && n === n.toUpperCase() && !n.includes(
 // ---------------------------------------------------------------------------- listas (mesmo estilo da navegação)
 type PropsLista = {
   areas: any[]; cursos: any[]; abrir: (a: any, c: number | null, v?: number | null) => void; editarCurso: (c: any) => void; editarVersao: (v: any) => void;
-  editarUC: (u?: any) => void; novoCurso: () => void; editavel: boolean; rev: number; mudou: () => void;
+  editarUC: (u?: any) => void; novaUC: (v: any) => void; novoCurso: () => void; editavel: boolean; rev: number; mudou: () => void;
 };
 
 function Chips({ op, valor, mudar }: { op: [string, string][]; valor: string; mudar: (v: string) => void }) {
@@ -343,105 +345,111 @@ function ListaCursos({ areas, cursos, abrir, editarCurso, novoCurso, editavel, r
   );
 }
 
-/** Lista de versões da matriz: curso, tipo de oferta, situação, vigência, UCs e turmas — clique abre a versão no curso. */
-function ListaVersoes({ areas, cursos, abrir, editarVersao, editavel }: PropsLista) {
-  const [q, setQ] = useState("");
-  const [area, setArea] = useState("");
-  const [sit, setSit] = useState("");
-  const versoes = cursos.flatMap((c: any) => c.versoes.map((v: any) => ({ ...v, curso: c })))
-    .filter((v: any) => (!area || String(v.curso.area.id) === area) && (!sit || v.situacao === sit)
-      && (!q || `${v.curso.codigo} ${v.curso.nome} ${v.versao} ${v.tipo_oferta || ""}`.toLowerCase().includes(q.toLowerCase())));
-  return (
-    <>
-      <div className="lst-barra">
-        <input type="search" placeholder="🔎 Curso, versão ou oferta (ex.: HTC)" aria-label="Pesquisar versão" value={q} onChange={(e) => setQ(e.target.value)} />
-        <FiltroArea areas={areas} valor={area} mudar={setArea} />
-        <Chips valor={sit} mudar={setSit} op={[["", "Todas"], ["vigente", "Vigentes"], ["rascunho", "Rascunho"], ["encerrada", "Encerradas"]]} />
-      </div>
-      <p className="sub">Cada curso tem uma matriz e, quando o currículo muda para um tipo de oferta (ex.: AIT ou HTC), uma versão própria. Para criar uma versão,
-        abra o curso e use “+ Nova versão” (copia as UCs).</p>
-      <ul className="lst">
-        {versoes.map((v: any) => (
-          <li key={v.id} className="lst-linha" onClick={() => abrir(v.curso.area.id, v.curso.id, v.id)}>
-            <span className="cur-sigla">{v.curso.codigo}</span>
-            <span className="lst-id"><b>{v.tipo_oferta ? `Versão ${v.tipo_oferta}` : "Todas as ofertas"} · {v.versao}</b><small className="mudo">{v.curso.nome}</small></span>
-            <span><Badge tipo={SITUACAO[v.situacao] || "info"}>{v.situacao}</Badge></span>
-            <span className="mudo lst-peq">{v.vigencia_inicio ? `desde ${dataBR(v.vigencia_inicio)}` : "sem data de vigência"}</span>
-            <span className="lst-nums"><span title="UCs">📘 {v.ucs}</span><span title="Carga horária">⏱ {v.ch_total} h</span><span title="Turmas que usam a versão">👥 {v.turmas}</span></span>
-            <span className="lst-acoes" onClick={(e) => e.stopPropagation()}>
-              {editavel && <button className="btn-link" onClick={() => editarVersao(v)}>Editar</button>}
-              <button className="btn btn-pequeno" onClick={() => abrir(v.curso.area.id, v.curso.id, v.id)}>Abrir ›</button>
-            </span>
-          </li>
-        ))}
-      </ul>
-      {!versoes.length && <div className="cur-vazio">Nenhuma versão com esses filtros.</div>}
-    </>
-  );
-}
-
-/** Lista de UCs de todos os cursos: classificação, carga, sala, certificação, quantos instrutores podem dar e turmas. */
-function ListaUcs({ areas, abrir, editarUC, editavel, rev, mudou }: PropsLista) {
+/** Versões da matriz e as UCs de cada uma: cada versão (por tipo de oferta) tem a sua lista de UCs; abra a versão para ver,
+ * incluir, editar, retirar ou reativar as UCs dela. */
+function ListaVersoes({ areas, cursos, abrir, editarVersao, editarUC, novaUC, editavel, rev, mudou }: PropsLista) {
   const { aviso } = useApp();
   const [q, setQ] = useState("");
   const [area, setArea] = useState("");
   const [filtro, setFiltro] = useState("");
-  const [limite, setLimite] = useState(80);
-  const ativas = filtro !== "retiradas";
-  const r = useCarregar<any[]>(() => api.get(`/api/estrutura-curricular/ucs?ativas=${ativas}`), [ativas, rev]);
-  const todas = r.dados || [];
-  const lista = todas.filter((u: any) => (!area || String(u.area_id) === area)
-    && (!q || `${u.codigo} ${u.nome} ${u.curso} ${u.curso_nome}`.toLowerCase().includes(q.toLowerCase()))
-    && (filtro !== "tecnica" || u.categoria !== "transversal") && (filtro !== "transversal" || u.categoria === "transversal")
-    && (filtro !== "cert" || u.certificacao_exigida) && (filtro !== "fragil" || (u.habilitados != null && u.habilitados <= 1)));
-  const maxCh = Math.max(1, ...lista.map((u: any) => u.carga_horaria_total));
+  const [abertas, setAbertas] = useState<Set<number>>(new Set());
+  const ativas = useCarregar<any[]>(() => api.get("/api/estrutura-curricular/ucs?ativas=true"), [rev]);
+  const retiradas = useCarregar<any[]>(() => api.get("/api/estrutura-curricular/ucs?ativas=false"), [rev]);
+  const porVersao = useMemo(() => {
+    const m: Record<number, { ativas: any[]; retiradas: any[] }> = {};
+    for (const u of ativas.dados || []) (m[u.matriz_id] ||= { ativas: [], retiradas: [] }).ativas.push(u);
+    for (const u of retiradas.dados || []) (m[u.matriz_id] ||= { ativas: [], retiradas: [] }).retiradas.push(u);
+    Object.values(m).forEach((x) => x.ativas.sort((a, b) => a.sequencia - b.sequencia || a.codigo.localeCompare(b.codigo)));
+    return m;
+  }, [ativas.dados, retiradas.dados]);
+  const termo = q.trim().toLowerCase();
+  const casaUC = (u: any) => !!termo && `${u.codigo} ${u.nome}`.toLowerCase().includes(termo);
+  const fragil = (u: any) => u.habilitados != null && u.habilitados <= 1;
+  const versoes = cursos.flatMap((c: any) => c.versoes.map((v: any) => ({ ...v, curso: c })))
+    .filter((v: any) => {
+      const ucs = porVersao[v.id]?.ativas || [];
+      return (!area || String(v.curso.area.id) === area)
+        && (!["vigente", "rascunho", "encerrada"].includes(filtro) || v.situacao === filtro)
+        && (filtro !== "fragil" || ucs.some(fragil)) && (filtro !== "cert" || ucs.some((u: any) => u.certificacao_exigida))
+        && (!termo || `${v.curso.codigo} ${v.curso.nome} ${v.versao} ${v.tipo_oferta || ""}`.toLowerCase().includes(termo) || ucs.some(casaUC));
+    });
+  const aberta = (v: any) => abertas.has(v.id) || (!!termo && (porVersao[v.id]?.ativas || []).some(casaUC)) || filtro === "fragil" || filtro === "cert";
+  const alternar = (id: number) => setAbertas((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const retirar = async (u: any, reativar = false) => {
-    if (!reativar && !confirm(`Retirar a UC ${u.codigo} da versão ${u.versao}${u.tipo_oferta ? ` (${u.tipo_oferta})` : ""} de ${u.curso}? O histórico fica guardado.`)) return;
-    try { await api.post(`/api/cadastros/ucs/${u.id}/${reativar ? "reativar" : "inativar"}`, { motivo: reativar ? undefined : "Retirada da versão da matriz" });
-      invalidarOpcoes("ucs"); aviso(reativar ? "UC de volta à versão." : "UC retirada."); mudou(); }
+    if (!reativar && !confirm(`Retirar a UC ${u.codigo} desta versão? Ela deixa de ser oferecida às turmas novas (o histórico fica guardado).`)) return;
+    try { await api.post(`/api/cadastros/ucs/${u.id}/${reativar ? "reativar" : "inativar"}`, reativar ? {} : { motivo: "Retirada da versão da matriz" });
+      invalidarOpcoes("ucs"); aviso(reativar ? `${u.codigo} de volta à versão.` : `${u.codigo} retirada da versão.`); mudou(); }
     catch (e: any) { aviso(e.message, "erro"); }
   };
-  const fragil = todas.filter((u: any) => u.habilitados != null && u.habilitados <= 1).length;
+  const nFrageis = (ativas.dados || []).filter(fragil).length;
   return (
     <>
       <div className="lst-barra">
-        <input type="search" placeholder="🔎 Código, nome da UC ou curso" aria-label="Pesquisar UC" value={q} onChange={(e) => setQ(e.target.value)} />
+        <input type="search" placeholder="🔎 Curso, versão, oferta ou UC" aria-label="Pesquisar" value={q} onChange={(e) => setQ(e.target.value)} />
         <FiltroArea areas={areas} valor={area} mudar={setArea} />
-        <Chips valor={filtro} mudar={(v) => { setFiltro(v); setLimite(80); }} op={[["", "Todas"], ["tecnica", "Técnicas"], ["transversal", "Transversais"], ["cert", "🎓 Exigem certificação"],
-          ["fragil", `⚠ Com 0 ou 1 instrutor${fragil ? ` (${fragil})` : ""}`], ["retiradas", "Retiradas"]]} />
+        <Chips valor={filtro} mudar={setFiltro} op={[["", "Todas"], ["vigente", "Vigentes"], ["rascunho", "Rascunho"], ["encerrada", "Encerradas"],
+          ["cert", "🎓 Com UC que exige certificação"], ["fragil", `⚠ Com UC de 0 ou 1 instrutor${nFrageis ? ` (${nFrageis})` : ""}`]]} />
       </div>
-      {r.carregando && !r.dados && <p role="status">Carregando…</p>}
-      {r.erro && <div className="erro-box">{r.erro}</div>}
-      {r.dados && ativas && <div className="ucs-resumo"><span><b>{lista.length}</b> UC(s)</span>
-        <span><b>{lista.reduce((t: number, u: any) => t + u.carga_horaria_total, 0)}</b> h</span>
-        <span><b>{lista.filter((u: any) => u.categoria !== "transversal").length}</b> técnica(s)</span>
-        <span><b>{lista.filter((u: any) => u.categoria === "transversal").length}</b> transversal(is)</span>
-        <span><b>{lista.filter((u: any) => u.habilitados === 0).length}</b> sem instrutor habilitado</span></div>}
-      <ol className="ucs-lista">
-        {lista.slice(0, limite).map((u: any) => (
-          <li key={u.id} className={`uc-linha lst-uc ${ativas ? "" : "inativo"}`} onClick={() => ativas && abrir(u.area_id, u.curso_id, u.matriz_id)}>
-            <span className="cur-sigla">{u.curso}</span>
-            <span className="uc-id"><b>{u.codigo}</b> {u.nome}
-              <span className="uc-tags">{u.categoria === "transversal" ? <Badge tipo="info">Transversal</Badge> : <Badge tipo="neutro">Técnica</Badge>}
-                {u.certificacao_exigida && <span className="chip-area ca-vence">🎓 exige {u.certificacao_exigida}</span>}
-                <span className="chip-area">🏫 {u.tipos_ambiente.join(", ") || "qualquer sala"}</span>
-                <span className="chip-area">{u.tipo_oferta ? `versão ${u.tipo_oferta}` : "todas as ofertas"} · v{u.versao}</span></span></span>
-            <span className="uc-ch"><b>{u.carga_horaria_total} h</b>
-              <span className="barra-pct fina"><span className="barra-pct-v bp-neutro" style={{ width: `${(100 * u.carga_horaria_total) / maxCh}%` }} /></span>
-              <small className="mudo">{aulas(u.carga_horaria_total, 55)} aulas (dia) · {aulas(u.carga_horaria_total, 50)} (noite) · {u.encontros_semanais} dia(s)/sem</small></span>
-            <span className="lst-hab">{u.habilitados == null ? <small className="mudo" title="Qualquer instrutor pode dar">👤 qualquer instrutor</small>
-              : <small className={u.habilitados === 0 ? "falta-txt" : u.habilitados === 1 ? "alerta-txt" : "ok-txt"} title="Instrutores que podem dar a UC">
-                👤 {u.habilitados} instrutor(es)</small>}<small className="mudo">👥 {u.turmas} turma(s)</small></span>
-            <span className="uc-acoes" onClick={(e) => e.stopPropagation()}>
-              {ativas && editavel && <button className="btn-link" onClick={() => editarUC(u)}>Editar</button>}
-              {ativas && editavel && <button className="btn-link lst-discreto" onClick={() => retirar(u)}>Retirar</button>}
-              {!ativas && editavel && <button className="btn btn-pequeno" onClick={() => retirar(u, true)}>Reativar</button>}
-            </span>
-          </li>
-        ))}
-      </ol>
-      {lista.length > limite && <button className="btn" onClick={() => setLimite(limite + 120)}>Mostrar mais ({lista.length - limite})</button>}
-      {r.dados && !lista.length && <div className="cur-vazio">Nenhuma UC com esses filtros.</div>}
+      <p className="sub">Cada curso tem uma matriz e, quando o currículo muda para um tipo de oferta (ex.: AIT ou HTC), uma versão própria — cada versão tem a sua
+        lista de UCs. Clique na versão para ver as UCs dela. Para criar uma versão, abra o curso e use “+ Nova versão” (copia as UCs).</p>
+      <ul className="lst">
+        {versoes.map((v: any) => {
+          const grupo = porVersao[v.id] || { ativas: [], retiradas: [] };
+          const ucs = filtro === "fragil" ? grupo.ativas.filter(fragil) : filtro === "cert" ? grupo.ativas.filter((u: any) => u.certificacao_exigida) : grupo.ativas;
+          const maxCh = Math.max(1, ...grupo.ativas.map((u: any) => u.carga_horaria_total));
+          const ab = aberta(v);
+          return (
+            <li key={v.id} className={`lst-versao ${ab ? "aberta" : ""}`}>
+              <div className="lst-linha" onClick={() => alternar(v.id)} role="button" aria-expanded={ab}>
+                <span className="cur-sigla">{v.curso.codigo}</span>
+                <span className="lst-id"><b><span className="lst-seta" aria-hidden="true">{ab ? "▾" : "▸"}</span> {v.tipo_oferta ? `Versão ${v.tipo_oferta}` : "Todas as ofertas"} · {v.versao}</b>
+                  <small className="mudo">{v.curso.nome}</small></span>
+                <span><Badge tipo={SITUACAO[v.situacao] || "info"}>{v.situacao}</Badge></span>
+                <span className="mudo lst-peq">{v.vigencia_inicio ? `desde ${dataBR(v.vigencia_inicio)}` : "sem data de vigência"}</span>
+                <span className="lst-nums"><span title="UCs">📘 {grupo.ativas.length} UC(s)</span><span title="Carga horária">⏱ {v.ch_total} h</span><span title="Turmas que usam a versão">👥 {v.turmas}</span>
+                  {grupo.ativas.some(fragil) && <span className="alerta-txt" title="UCs com 0 ou 1 instrutor habilitado">⚠ {grupo.ativas.filter(fragil).length}</span>}</span>
+                <span className="lst-acoes" onClick={(e) => e.stopPropagation()}>
+                  {editavel && <button className="btn-link" onClick={() => editarVersao(v)}>Editar versão</button>}
+                  <button className="btn btn-pequeno" onClick={() => abrir(v.curso.area.id, v.curso.id, v.id)}>Abrir no curso ›</button>
+                </span>
+              </div>
+              {ab && <div className="lst-versao-ucs">
+                <div className="lst-versao-cab">
+                  <span className="ucs-resumo"><span><b>{grupo.ativas.length}</b> UC(s)</span>
+                    <span><b>{grupo.ativas.reduce((t: number, u: any) => t + u.carga_horaria_total, 0)}</b> h</span>
+                    <span><b>{grupo.ativas.filter((u: any) => u.categoria !== "transversal").length}</b> técnica(s)</span>
+                    <span><b>{grupo.ativas.filter((u: any) => u.categoria === "transversal").length}</b> transversal(is)</span></span>
+                  {editavel && <button className="btn btn-primario btn-pequeno" onClick={() => novaUC(v)}>+ Nova UC nesta versão</button>}
+                </div>
+                <ol className="ucs-lista">
+                  {ucs.map((u: any) => (
+                    <li key={u.id} className="uc-linha lst-uc-v">
+                      <span className="uc-seq">{u.sequencia}</span>
+                      <span className="uc-id"><b>{u.codigo}</b> {u.nome}
+                        <span className="uc-tags">{u.categoria === "transversal" ? <Badge tipo="info">Transversal</Badge> : <Badge tipo="neutro">Técnica</Badge>}
+                          {u.certificacao_exigida && <span className="chip-area ca-vence">🎓 exige {u.certificacao_exigida}</span>}
+                          <span className="chip-area">🏫 {u.tipos_ambiente.join(", ") || "qualquer sala"}</span></span></span>
+                      <span className="uc-ch"><b>{u.carga_horaria_total} h</b>
+                        <span className="barra-pct fina"><span className="barra-pct-v bp-neutro" style={{ width: `${(100 * u.carga_horaria_total) / maxCh}%` }} /></span>
+                        <small className="mudo">{aulas(u.carga_horaria_total, 55)} aulas (dia) · {aulas(u.carga_horaria_total, 50)} (noite) · {u.encontros_semanais} dia(s)/sem</small></span>
+                      <span className="lst-hab">{u.habilitados == null ? <small className="mudo" title="Qualquer instrutor pode dar">👤 qualquer instrutor</small>
+                        : <small className={u.habilitados === 0 ? "falta-txt" : u.habilitados === 1 ? "alerta-txt" : "ok-txt"} title="Instrutores que podem dar a UC">👤 {u.habilitados} instrutor(es)</small>}
+                        <small className="mudo">👥 {u.turmas} turma(s)</small></span>
+                      {editavel && <span className="uc-acoes"><button className="btn-link" onClick={() => editarUC(u)}>Editar</button>
+                        <button className="btn-link lst-discreto" onClick={() => retirar(u)}>Retirar</button></span>}
+                    </li>
+                  ))}
+                </ol>
+                {!ucs.length && <div className="cur-vazio">{grupo.ativas.length ? "Nenhuma UC desta versão com esse filtro." : "Nenhuma UC nesta versão ainda."}</div>}
+                {grupo.retiradas.length > 0 && <details className="lst-retiradas"><summary>UCs retiradas desta versão ({grupo.retiradas.length})</summary>
+                  <ul className="lista-limpa">{grupo.retiradas.map((u: any) => <li key={u.id}><b>{u.codigo}</b> {u.nome} <small className="mudo">· {u.carga_horaria_total} h</small>
+                    {editavel && <button className="btn-link" onClick={() => retirar(u, true)}>Reativar</button>}</li>)}</ul></details>}
+              </div>}
+            </li>
+          );
+        })}
+      </ul>
+      {!versoes.length && <div className="cur-vazio">Nenhuma versão com esses filtros.</div>}
     </>
   );
 }

@@ -1061,3 +1061,15 @@ li.sem-marcador { list-style: none; margin-left: -18px; }
   .lst-linha, .lst-uc { grid-template-columns: 64px 1fr; } .lst-linha > *:nth-child(n+3), .lst-uc > *:nth-child(n+3) { grid-column: 2; }
   .lst-acoes { justify-content: flex-start; }
 }
+/* versões com as UCs dentro */
+.lst-versao { list-style: none; border-radius: 12px; }
+.lst-versao.aberta { border: 1px solid var(--primaria); background: var(--superficie); box-shadow: 0 4px 14px rgba(20, 50, 79, .08); }
+.lst-versao.aberta > .lst-linha { border: 0; border-bottom: 1px solid var(--borda); border-radius: 12px 12px 0 0; box-shadow: none; }
+.lst-seta { color: var(--mudo); display: inline-block; width: 12px; }
+.lst-versao-ucs { padding: 12px; display: grid; gap: 10px; background: var(--fundo); border-radius: 0 0 12px 12px; }
+.lst-versao-cab { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; }
+.lst-versao-cab .ucs-resumo span { background: var(--superficie); }
+.lst-uc-v { grid-template-columns: 36px minmax(240px, 2fr) minmax(180px, 1.1fr) minmax(120px, auto) auto; }
+.lst-retiradas summary { cursor: pointer; color: var(--mudo); font-size: .85rem; }
+.lst-retiradas li { display: flex; gap: 8px; align-items: center; font-size: .85rem; padding: 3px 0; }
+@media (max-width: 900px) { .lst-uc-v { grid-template-columns: 36px 1fr; } .lst-uc-v > *:nth-child(n+3) { grid-column: 2; } }

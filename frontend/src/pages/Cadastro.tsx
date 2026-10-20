@@ -27,7 +27,7 @@ const RELACIONADOS: Record<string, string[]> = {
   // certificações e matriz de competências ficam no perfil de cada instrutor (clique no cartão)
   instrutores: ["instrutores", "observacoes", "disponibilidade_instrutores"],
   ucs: ["ucs", "uc_recursos"],
-  cursos: ["estrutura", "cursos", "matrizes", "ucs"],
+  cursos: ["estrutura", "cursos", "matrizes"],  // as UCs ficam dentro de cada versão da matriz
   ambientes: ["ambientes", "tipos_ambiente", "disponibilidade_ambientes", "recursos_ambientes"],
   recursos: ["recursos", "recursos_ambientes"],
   unidades: ["unidades", "areas", "calendarios", "calendario_excecoes", "bloqueios"],
@@ -43,7 +43,7 @@ const AJUDA: Record<string, string> = {
   disponibilidade_instrutores: "Uma linha por instrutor: os turnos em que pode dar aula em cada dia e a carga conforme a modalidade. Mensalista tem jornada semanal fixa (aulas até 90% dela); horista recebe todo mês um termo de horas, que define as horas de aula do mês e pode mudar. Os turnos e dias se editam no cadastro do instrutor.",
   ucs: "Disciplinas da matriz: carga horária, quantas aulas por semana e o tipo de sala exigido (ex.: laboratório de informática).",
   cursos: "Navegue por área → curso → versão da matriz → UCs. A sigla do curso (ex.: ELT) entra no código das turmas (HTC-ELT-12); cada tipo de oferta pode ter a sua versão da matriz (ex.: AIT ou HTC). As outras abas trazem as listas completas para consulta e edição em lote.",
-  matrizes: "Versões do currículo de cada curso. Use “Nova versão” para copiar uma matriz existente.",
+  matrizes: "Versões da matriz de cada curso e, dentro de cada versão, a lista de UCs dela (cada versão pode ter UCs diferentes).",
   ambientes: "Salas, laboratórios e oficinas: capacidade de alunos, tipo e equipamentos. O sistema só coloca a aula em sala compatível.",
   tipos_ambiente: "Categorias de sala (ex.: sala teórica, laboratório de informática) usadas para casar disciplina e sala.",
   recursos: "Equipamentos e materiais (ex.: projetor, kits). Podem ser exigidos por disciplinas.",
@@ -431,7 +431,7 @@ function FiltroRef({ c, valor, mudar }: { c: CampoMeta; valor: string; mudar: (v
 }
 
 const ROTULO_ABA: Record<string, string> = { disponibilidade_instrutores: "Disponibilidade e termos de horas", observacoes: "💬 Observações dos instrutores", estrutura: "🧭 Navegar por área", epis: "🦺 EPIs das turmas", cursos: "Lista de cursos",
-  matrizes: "Lista de versões", ucs: "Lista de UCs" };
+  matrizes: "Versões e UCs", ucs: "Lista de UCs" };
 
 /** Explica o portal do instrutor e, no login pelo Supabase, convida todos os instrutores com e-mail de uma vez. */
 function AcessosPortal() {
@@ -482,7 +482,7 @@ export default function Cadastro() {
       </div>}
       {aba === "turnos" && <TurnosPadrao aoCriar={() => setVersao((v) => v + 1)} />}
       {ent === "instrutores" && aba === "instrutores" && <AcessosPortal />}
-      {aba === "observacoes" ? <ObservacoesInstrutores /> : aba === "estrutura" ? <EstruturaCurricular /> : ent === "cursos" && ["cursos", "matrizes", "ucs"].includes(aba) ? <EstruturaCurricular key={aba} visao={aba} /> : aba === "epis" ? <ControleEpis /> : aba === "disponibilidade_instrutores" ? <QuadroDisponibilidade /> : <ListaEntidade key={`${aba}-${versao}`} ent={aba} />}
+      {aba === "observacoes" ? <ObservacoesInstrutores /> : aba === "estrutura" ? <EstruturaCurricular /> : ent === "cursos" && ["cursos", "matrizes"].includes(aba) ? <EstruturaCurricular key={aba} visao={aba} /> : aba === "epis" ? <ControleEpis /> : aba === "disponibilidade_instrutores" ? <QuadroDisponibilidade /> : <ListaEntidade key={`${aba}-${versao}`} ent={aba} />}
     </Pagina>
   );
 }
