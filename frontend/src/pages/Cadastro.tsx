@@ -24,7 +24,8 @@ export function useMeta() {
 
 const RELACIONADOS: Record<string, string[]> = {
   turmas: ["turmas", "turma_ucs", "epis"],
-  instrutores: ["instrutores", "observacoes", "habilitacoes", "competencias", "disponibilidade_instrutores"],
+  // certificações e matriz de competências ficam no perfil de cada instrutor (clique no cartão)
+  instrutores: ["instrutores", "observacoes", "disponibilidade_instrutores"],
   ucs: ["ucs", "uc_recursos"],
   cursos: ["estrutura", "cursos", "matrizes", "ucs"],
   ambientes: ["ambientes", "tipos_ambiente", "disponibilidade_ambientes", "recursos_ambientes"],
@@ -37,7 +38,7 @@ const RELACIONADOS: Record<string, string[]> = {
 const AJUDA: Record<string, string> = {
   turmas: "Escolha o curso e digite só o número e o tipo de oferta (HTC, AIT, AIB, EMP…): o código (ex.: HTC-ELT-12), o nome, a área, a unidade e a matriz vêm do curso, e as UCs da matriz entram sozinhas na aba “Turma × UC”. As datas vêm do semestre e podem ser ajustadas ao prazo de cada turma.",
   turma_ucs: "Disciplinas que cada turma vai cursar. Indique aqui instrutor ou sala preferidos, se houver.",
-  instrutores: "No próprio cadastro: escolha a área e marque as UCs que o instrutor ministra (aparecem as UCs dos cursos da área) e os turnos e dias em que pode dar aula. As abas ao lado mostram a visão geral.",
+  instrutores: "Clique no instrutor para abrir o perfil: visão geral, competências e certificações (marque as UCs que ele ministra), aderência aos cursos e PDI. No cadastro ficam a área, a modalidade e os turnos e dias em que pode dar aula.",
   competencias: "Quais unidades curriculares cada instrutor está habilitado a ministrar.",
   disponibilidade_instrutores: "Uma linha por instrutor: os turnos em que pode dar aula em cada dia e a carga conforme a modalidade. Mensalista tem jornada semanal fixa (aulas até 90% dela); horista recebe todo mês um termo de horas, que define as horas de aula do mês e pode mudar. Os turnos e dias se editam no cadastro do instrutor.",
   ucs: "Disciplinas da matriz: carga horária, quantas aulas por semana e o tipo de sala exigido (ex.: laboratório de informática).",

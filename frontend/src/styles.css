@@ -915,3 +915,21 @@ li.sem-marcador { list-style: none; margin-left: -18px; }
 .cob-ucs { list-style: none; margin: 0; padding: 4px 10px 10px; display: grid; gap: 6px; border-top: 1px dashed var(--borda); }
 .cob-ucs li { display: grid; grid-template-columns: 10px 1fr auto; gap: 8px; align-items: center; font-size: .82rem; }
 .cb-ponto { width: 10px; height: 10px; border-radius: 50%; }
+
+/* ---------- perfil: competências e certificações ---------- */
+.comp-perfil { display: grid; gap: 14px; margin-top: 10px; }
+.cert-lista li { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.cert-nova { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; } .cert-nova > input { min-width: 220px; }
+.comp-cab { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; } .comp-cab h4 { margin: 0; }
+.comp-area h5 { margin: 12px 0 6px; font-size: .9rem; }
+.comp-curso { border: 1px solid var(--borda); border-radius: 10px; padding: 8px 10px; margin-bottom: 8px; }
+.comp-curso-cab { margin-bottom: 6px; }
+.comp-uc { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; padding: 4px 0; border-top: 1px dashed var(--borda); font-size: .85rem; }
+.comp-uc:first-child { border-top: 0; }
+.seg { display: inline-flex; border: 1px solid var(--borda); border-radius: 8px; overflow: hidden; flex-shrink: 0; }
+.seg-op { border: 0; background: var(--superficie); color: var(--texto); padding: 4px 10px; font: inherit; font-size: .8rem; cursor: pointer; border-left: 1px solid var(--borda); }
+.seg-op:first-child { border-left: 0; }
+.seg-op:disabled { cursor: default; }
+.seg-op:not(:disabled):hover { background: var(--fundo); }
+.seg-op.on { font-weight: 700; } .seg-op.on-pleno { background: var(--ok-bg); color: var(--ok); } .seg-op.on-parcial { background: var(--alerta-bg); color: var(--alerta); }
+.seg-op.on-nenhum { background: var(--fundo); color: var(--mudo); }

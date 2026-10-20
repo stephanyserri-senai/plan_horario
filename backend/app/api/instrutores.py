@@ -62,7 +62,7 @@ def perfil(iid: int, cenario_id: int | None = None, ctx: Contexto = Depends(requ
     for d in db.scalars(select(DisponibilidadeInstrutor).where(DisponibilidadeInstrutor.instrutor_id == inst.id)
                         .order_by(DisponibilidadeInstrutor.dia_semana, DisponibilidadeInstrutor.hora_inicio)):
         disp[d.dia_semana].append(f"{d.hora_inicio:%H:%M}–{d.hora_fim:%H:%M}")
-    certs = [{"nome": h.nome, "valido_ate": h.valido_ate.isoformat() if h.valido_ate else None,
+    certs = [{"id": h.id, "nome": h.nome, "valido_ate": h.valido_ate.isoformat() if h.valido_ate else None,
               "vencida": bool(h.valido_ate and h.valido_ate < date.today())}
              for h in db.scalars(select(HabilitacaoInstrutor).where(HabilitacaoInstrutor.instrutor_id == inst.id, HabilitacaoInstrutor.ativo.is_(True))
                                  .order_by(HabilitacaoInstrutor.nome))]
@@ -340,3 +340,82 @@ def ajustar_termo(iid: int, mes: str, d: dict = Body(...), cenario_id: int | Non
                            incluir_dias=d.get("incluir_dias"), cenario_id=cenario_id)
     db.commit()
     return r
+
+
+# ============================================================================ competências (pelo perfil)
+NIVEIS_COMP = {"pleno": "sim", "parcial": "em partes", "nenhum": "não ministra"}
+
+
+@router.put("/instrutores/{iid}/competencias")
+def marcar_competencia(iid: int, d: dict = Body(...), ctx: Contexto = Depends(requer("cadastros.editar")), db: Session = Depends(get_db)):
+    """Marca a UC no perfil do instrutor: {"curso_id", "uc_codigo", "nivel": "pleno" | "parcial" | "nenhum"}. Vale para todas as
+    versões da matriz do curso (a UC é a mesma pelo código)."""
+    inst = _instrutor(db, ctx, iid)
+    nivel = d.get("nivel")
+    if nivel not in NIVEIS_COMP:
+        raise EntradaInvalida("Nível: pleno (sim), parcial (em partes) ou nenhum.")
+    base = aderencia.Base(db)
+    try:
+        uc = base.ucs.get(int(d.get("curso_id")), {}).get(str(d.get("uc_codigo") or "").strip())
+    except (TypeError, ValueError):
+        uc = None
+    if uc is None:
+        raise EntradaInvalida("UC não encontrada na matriz do curso.")
+    alteradas = []
+    for uid in sorted(uc["ids"]):
+        c = db.scalar(select(CompetenciaInstrutor).where(CompetenciaInstrutor.instrutor_id == inst.id, CompetenciaInstrutor.uc_id == uid))
+        antes = auditoria.snapshot(c) if c else None
+        if nivel == "nenhum":
+            if c is None or not c.ativo:
+                continue
+            c.ativo = False
+        elif c is None:
+            c = CompetenciaInstrutor(instrutor_id=inst.id, uc_id=uid, nivel=nivel, ativo=True)
+            db.add(c)
+        else:
+            c.nivel, c.ativo = nivel, True
+        db.flush()
+        auditoria.registrar(db, ctx, "competencia.perfil", "competencias_instrutores", c.id, antes=antes, depois=auditoria.snapshot(c))
+        alteradas.append(uid)
+    db.commit()
+    return {"uc_codigo": uc["codigo"], "nivel": nivel, "rotulo": NIVEIS_COMP[nivel], "alteradas": len(alteradas),
+            "geral": aderencia.indice(db, inst.id, detalhe=False)["geral"]}
+
+
+@router.put("/instrutores/{iid}/certificacoes")
+def salvar_certificacao(iid: int, d: dict = Body(...), ctx: Contexto = Depends(requer("cadastros.editar")), db: Session = Depends(get_db)):
+    """Registra ou atualiza uma certificação/habilitação do instrutor (ex.: NR-10): {"nome", "valido_ate"?}."""
+    inst = _instrutor(db, ctx, iid)
+    nome = str(d.get("nome") or "").strip()
+    if len(nome) < 2:
+        raise EntradaInvalida("Informe o nome da certificação (ex.: NR-10).")
+    try:
+        validade = date.fromisoformat(d["valido_ate"]) if d.get("valido_ate") else None
+    except ValueError:
+        raise EntradaInvalida("Validade inválida.")
+    h = db.scalar(select(HabilitacaoInstrutor).where(HabilitacaoInstrutor.instrutor_id == inst.id, func.lower(HabilitacaoInstrutor.nome) == nome.lower()))
+    antes = auditoria.snapshot(h) if h else None
+    if h is None:
+        h = HabilitacaoInstrutor(instrutor_id=inst.id, nome=nome)
+        db.add(h)
+    h.valido_ate, h.ativo = validade, True
+    db.flush()
+    auditoria.registrar(db, ctx, "certificacao.salvar", "habilitacoes_instrutores", h.id, antes=antes, depois=auditoria.snapshot(h))
+    db.commit()
+    return {"id": h.id, "nome": h.nome, "valido_ate": h.valido_ate.isoformat() if h.valido_ate else None,
+            "geral": aderencia.indice(db, inst.id, detalhe=False)["geral"]}
+
+
+@router.post("/instrutores/{iid}/certificacoes/{hid}/retirar")
+def retirar_certificacao(iid: int, hid: int, ctx: Contexto = Depends(requer("cadastros.editar")), db: Session = Depends(get_db)):
+    """Retira a certificação do perfil (fica inativa no histórico; não é apagada)."""
+    inst = _instrutor(db, ctx, iid)
+    h = db.get(HabilitacaoInstrutor, hid)
+    if h is None or h.instrutor_id != inst.id:
+        raise NaoEncontrado("Certificação não encontrada.")
+    antes = auditoria.snapshot(h)
+    h.ativo = False
+    db.flush()
+    auditoria.registrar(db, ctx, "certificacao.retirar", "habilitacoes_instrutores", h.id, antes=antes, depois=auditoria.snapshot(h))
+    db.commit()
+    return {"retirada": h.nome, "geral": aderencia.indice(db, inst.id, detalhe=False)["geral"]}

@@ -96,8 +96,10 @@ export function PerfilInstrutor({ id, fechar, editar }: { id: number | null; fec
           <div className="perfil-anel"><Anel valor={d.aderencia.geral} tamanho={84} rotulo="Aderência geral" /><small>aderência geral</small></div>
           {editar && <button className="btn" onClick={editar}>Editar cadastro</button>}
         </div>
-        <Abas abas={[{ id: "geral", rotulo: "Visão geral" }, { id: "aderencia", rotulo: "Aderência aos cursos" }, { id: "pdi", rotulo: "PDI" }]} ativa={aba} mudar={setAba} />
+        <Abas abas={[{ id: "geral", rotulo: "Visão geral" }, { id: "competencias", rotulo: "Competências e certificações" },
+          { id: "aderencia", rotulo: "Aderência aos cursos" }, { id: "pdi", rotulo: "PDI" }]} ativa={aba} mudar={setAba} />
         {aba === "geral" && <VisaoGeral d={d} />}
+        {aba === "competencias" && <Competencias d={d} mudou={p.recarregar} />}
         {aba === "aderencia" && <Aderencia ad={d.aderencia} />}
         {aba === "pdi" && <Pdi id={d.dados.id} mudou={p.recarregar} />}
       </>}
@@ -303,6 +305,111 @@ function Pdi({ id, mudou }: { id: number; mudou: () => void }) {
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+const NIVEL_COMP: [string, string][] = [["pleno", "Sim"], ["parcial", "Em partes"], ["nenhum", "Não"]];
+
+/** Matriz de competências e certificações do instrutor, editáveis no próprio perfil (antes eram abas separadas). */
+function Competencias({ d, mudou }: { d: any; mudou: () => void }) {
+  const { pode, aviso } = useApp();
+  const editavel = pode("cadastros.editar");
+  const id = d.dados.id;
+  const [ocupado, setOcupado] = useState<string | null>(null);
+  const [nova, setNova] = useState({ nome: "", valido_ate: "" });
+  const [filtro, setFiltro] = useState("");
+  const certs: any[] = d.dados.certificacoes;
+  const temCert = new Set(certs.filter((c) => !c.vencida).map((c) => c.nome.trim().toLowerCase()));
+  const exigidas = Array.from(new Set(d.aderencia.areas.flatMap((a: any) => a.cursos.flatMap((c: any) => c.ucs.map((u: any) => u.certificacao)))
+    .filter((x: any) => x && !temCert.has(String(x).toLowerCase())))) as string[];
+  const marcar = async (curso_id: number, u: any, nivel: string) => {
+    setOcupado(`${curso_id}-${u.codigo}`);
+    try {
+      const r = await api.put(`/api/instrutores/${id}/competencias`, { curso_id, uc_codigo: u.codigo, nivel });
+      aviso(`${u.codigo}: ${r.rotulo}. Aderência geral agora: ${pct(r.geral)}.`);
+      mudou();
+    } catch (e: any) { aviso(e.message, "erro"); }
+    setOcupado(null);
+  };
+  const salvarCert = async (nome: string, valido_ate: string) => {
+    try {
+      const r = await api.put(`/api/instrutores/${id}/certificacoes`, { nome, valido_ate: valido_ate || null });
+      aviso(`Certificação ${r.nome} registrada. Aderência geral: ${pct(r.geral)}.`);
+      setNova({ nome: "", valido_ate: "" });
+      mudou();
+    } catch (e: any) { aviso(e.message, "erro"); }
+  };
+  const retirar = async (c: any) => {
+    if (!confirm(`Retirar a certificação ${c.nome} do perfil? (fica no histórico)`)) return;
+    try { await api.post(`/api/instrutores/${id}/certificacoes/${c.id}/retirar`); aviso(`${c.nome} retirada.`); mudou(); }
+    catch (e: any) { aviso(e.message, "erro"); }
+  };
+  const f = filtro.trim().toLowerCase();
+  return (
+    <div className="comp-perfil">
+      <section className="perfil-bloco">
+        <h4>Certificações e habilitações</h4>
+        {!certs.length && <p className="mudo">Nenhuma certificação registrada.</p>}
+        <ul className="lista-limpa cert-lista">
+          {certs.map((c) => (
+            <li key={c.id}>
+              <Badge tipo={c.vencida ? "bloqueio" : "ok"}>{c.nome}</Badge>
+              {editavel ? <label className="mudo">validade <input type="date" defaultValue={c.valido_ate || ""} onBlur={(e) => {
+                if ((e.target.value || null) !== (c.valido_ate || null)) salvarCert(c.nome, e.target.value);
+              }} /></label> : <small className="mudo">{c.valido_ate ? `até ${dataBR(c.valido_ate)}` : "sem validade"}</small>}
+              {c.vencida && <small className="falta-txt">vencida: as UCs que a exigem não contam</small>}
+              {editavel && <button className="btn-link" onClick={() => retirar(c)}>Retirar</button>}
+            </li>
+          ))}
+        </ul>
+        {exigidas.length > 0 && <p className="sub">Exigidas por UCs das áreas dele e ainda não registradas: {exigidas.map((x) =>
+          editavel ? <button key={x} className="chip" onClick={() => setNova({ nome: x, valido_ate: "" })}>+ {x}</button> : <b key={x}>{x} </b>)}</p>}
+        {editavel && <div className="cert-nova">
+          <input placeholder="Nova certificação (ex.: NR-10)" aria-label="Nome da certificação" value={nova.nome} onChange={(e) => setNova({ ...nova, nome: e.target.value })} />
+          <label className="mudo">validade <input type="date" value={nova.valido_ate} onChange={(e) => setNova({ ...nova, valido_ate: e.target.value })} /></label>
+          <button className="btn btn-primario" disabled={nova.nome.trim().length < 2} onClick={() => salvarCert(nova.nome.trim(), nova.valido_ate)}>Registrar</button>
+        </div>}
+      </section>
+      <section className="perfil-bloco">
+        <div className="comp-cab"><h4>Matriz de competências <small className="mudo">— UCs técnicas dos cursos da(s) área(s) dele</small></h4>
+          <input type="search" placeholder="Filtrar UC ou curso" aria-label="Filtrar UCs" value={filtro} onChange={(e) => setFiltro(e.target.value)} /></div>
+        <p className="sub">Sim = ministra a UC; Em partes = ministra com alerta (vale metade no índice); Não = não ministra. Vale para todas as versões da
+          matriz do curso. UCs transversais não precisam de marcação (qualquer instrutor pode dar).</p>
+        {!d.aderencia.areas.length && <p className="mudo">Cadastre a área do instrutor para ver as UCs.</p>}
+        {d.aderencia.areas.map((a: any) => (
+          <div key={a.area_id} className="comp-area">
+            <h5>{a.area} {a.principal && <small className="mudo">· área principal</small>}</h5>
+            {a.cursos.map((c: any) => {
+              const ucs = c.ucs.filter((u: any) => !f || `${c.codigo} ${c.nome} ${u.codigo} ${u.nome}`.toLowerCase().includes(f));
+              if (!ucs.length) return null;
+              return (
+                <div key={c.curso_id} className="comp-curso">
+                  <div className="comp-curso-cab"><b>{c.codigo}</b> <small className="mudo">{c.nome}</small> <span className="mudo">· {c.ucs_sim}/{c.ucs_total} UCs · {pct(c.pct)}</span></div>
+                  <ul className="lista-limpa">
+                    {ucs.map((u: any) => {
+                      const atual = u.marcado || "nenhum";
+                      return (
+                        <li key={u.codigo} className="comp-uc">
+                          <span><b>{u.codigo}</b> {u.nome} <small className="mudo">· {u.ch} h{u.certificacao ? ` · exige ${u.certificacao}` : ""}</small>
+                            {u.situacao === "sem_certificacao" && <small className="falta-txt"> · falta a certificação {u.certificacao}</small>}</span>
+                          <span className="seg" role="group" aria-label={`Competência em ${u.codigo}`}>
+                            {NIVEL_COMP.map(([k, rot]) => (
+                              <button key={k} className={`seg-op ${atual === k ? `on on-${k}` : ""}`} disabled={!editavel || ocupado === `${c.curso_id}-${u.codigo}` || atual === k}
+                                aria-pressed={atual === k} onClick={() => marcar(c.curso_id, u, k)}>{rot}</button>
+                            ))}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              );
+            })}
+            {a.fora_do_nivel?.length > 0 && <p className="sub">Fora do nível do instrutor (básico): {a.fora_do_nivel.join(", ")}.</p>}
+          </div>
+        ))}
+      </section>
     </div>
   );
 }

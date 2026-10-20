@@ -116,3 +116,30 @@ def test_instrutor_basico_so_conta_cursos_basicos(db, mundo):
     db.get(Curso, m.curso.id).tipo = "Qualificação profissional"
     db.commit()
     assert aderencia.indice(db, m.i1.id)["geral"] == 80.0
+
+
+def test_competencias_e_certificacoes_pelo_perfil(db, mundo):
+    m = mundo
+    _mundo_com_area(db, m)
+    db.get(UnidadeCurricular, m.uc_c.id).certificacao_exigida = "NR-10"
+    db.commit()
+    c = TestClient(app)
+    h = _login(c)
+    cid = m.curso.id
+    # I3 não dá nada: marca A como sim e B em partes → (40 + 20) / 100
+    assert c.put(f"/api/instrutores/{m.i3.id}/competencias", json={"curso_id": cid, "uc_codigo": "A", "nivel": "pleno"}, headers=h).status_code == 200
+    r = c.put(f"/api/instrutores/{m.i3.id}/competencias", json={"curso_id": cid, "uc_codigo": "B", "nivel": "parcial"}, headers=h).json()
+    assert r["geral"] == 60.0
+    # C exige NR-10: marcada sem a certificação não conta; registrada a certificação, conta
+    assert c.put(f"/api/instrutores/{m.i3.id}/competencias", json={"curso_id": cid, "uc_codigo": "C", "nivel": "pleno"}, headers=h).json()["geral"] == 60.0
+    x = c.put(f"/api/instrutores/{m.i3.id}/certificacoes", json={"nome": "NR-10", "valido_ate": "2027-12-31"}, headers=h).json()
+    assert x["geral"] == 80.0
+    perfil = c.get(f"/api/instrutores/{m.i3.id}/perfil", headers=h).json()
+    cert = perfil["dados"]["certificacoes"][0]
+    assert cert["nome"] == "NR-10" and cert["id"]
+    uc_b = next(u for u in perfil["aderencia"]["areas"][0]["cursos"][0]["ucs"] if u["codigo"] == "B")
+    assert uc_b["marcado"] == "parcial"
+    # retirar a certificação não apaga (fica inativa) e o índice volta; "não" desmarca a UC
+    assert c.post(f"/api/instrutores/{m.i3.id}/certificacoes/{cert['id']}/retirar", headers=h).json()["geral"] == 60.0
+    assert c.put(f"/api/instrutores/{m.i3.id}/competencias", json={"curso_id": cid, "uc_codigo": "A", "nivel": "nenhum"}, headers=h).json()["geral"] == 20.0
+    assert c.put(f"/api/instrutores/{m.i3.id}/competencias", json={"curso_id": cid, "uc_codigo": "X", "nivel": "pleno"}, headers=h).status_code == 422

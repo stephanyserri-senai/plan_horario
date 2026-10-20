@@ -134,7 +134,9 @@ def _curso(base: Base, inst: Instrutor, cid: int) -> dict:
     ucs, feito, total = [], 0.0, 0
     for u in sorted(base.ucs[cid].values(), key=lambda x: x["codigo"]):
         sit, peso = base.situacao(inst.id, u)
-        ucs.append({"codigo": u["codigo"], "nome": u["nome"], "ch": u["ch"], "situacao": sit, "rotulo": ROTULO[sit], "certificacao": u["cert"]})
+        marcado = max((base.comp[inst.id].get(i, 0) for i in u["ids"]), default=0)
+        ucs.append({"codigo": u["codigo"], "nome": u["nome"], "ch": u["ch"], "situacao": sit, "rotulo": ROTULO[sit], "certificacao": u["cert"],
+                    "marcado": "pleno" if marcado >= 1 else "parcial" if marcado else None})
         feito += peso * u["ch"]
         total += u["ch"]
     return {"curso_id": cid, "codigo": c.codigo, "nome": c.nome, "pct": _pct(feito, total), "ch_total": total, "ch_apta": round(feito, 1),
