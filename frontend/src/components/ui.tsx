@@ -238,7 +238,7 @@ const ROTULOS: Record<string, string> = {
   bloqueios: "Bloqueios", alertas: "Alertas", janelas: "Janelas (horários vagos entre aulas)", turma: "Turma", uc: "Unidade curricular",
   data: "Data", inicio: "Início", fim: "Fim", data_limite: "Prazo", risco: "Risco", capacidade_restante_estimada_h: "Capacidade restante estimada (h)",
   cenario_id: "Cenário", valor: "Valor", unidade: "Unidade de medida", pontuacao_total: "Pontuação total (menor é melhor)",
-  alto: "Risco alto", medio: "Risco médio", baixo: "Risco baixo", sem_risco: "Sem risco", demanda_h: "Demanda (h/semana)", capacidade_h: "Capacidade (h/semana)",
+  alto: "Risco alto", medio: "Risco médio", baixo: "Risco baixo", sem_risco: "Sem risco", ead: "EAD (fora da grade)", demanda_h: "Demanda (h/semana)", capacidade_h: "Capacidade (h/semana)",
   viabilidade_estimada: "Viabilidade estimada", aulas_criadas: "Aulas criadas", turmas_ucs: "Turmas × UCs", mudancas: "Mudanças",
   instrutor_id: "Instrutor", ambiente_id: "Sala/laboratório", grupo: "Grupo", descricao: "Descrição", tipo: "Tipo",
 };

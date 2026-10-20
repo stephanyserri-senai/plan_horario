@@ -1073,3 +1073,10 @@ li.sem-marcador { list-style: none; margin-left: -18px; }
 .lst-retiradas summary { cursor: pointer; color: var(--mudo); font-size: .85rem; }
 .lst-retiradas li { display: flex; gap: 8px; align-items: center; font-size: .85rem; padding: 3px 0; }
 @media (max-width: 900px) { .lst-uc-v { grid-template-columns: 36px 1fr; } .lst-uc-v > *:nth-child(n+3) { grid-column: 2; } }
+
+/* versão da matriz: em cadastro (lista editável) ou cadastrada (lista fixa); UC EAD */
+.versao-aviso { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  padding: 10px 14px; border-radius: 10px; margin: 8px 0 10px; font-size: .9rem; line-height: 1.4; }
+.versao-aviso.aberta { background: var(--alerta-bg); border: 1px solid var(--borda); color: var(--alerta); }
+.versao-aviso.fechada { background: var(--info-bg); border: 1px solid var(--borda); color: var(--info); }
+.chip-area.ca-ead { background: var(--info-bg); color: var(--info); font-weight: 600; }

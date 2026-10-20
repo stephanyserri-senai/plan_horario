@@ -182,6 +182,7 @@ class Curso(TimestampMixin, Base):
     area_id: Mapped[int | None] = mapped_column(ForeignKey("areas.id"), index=True)
     turnos_possiveis: Mapped[str | None] = mapped_column(String(200))
     dispensa_epi: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))  # curso que não exige EPI
+    preve_ead: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))  # o curso tem UCs a distância
     situacao: Mapped[str] = mapped_column(String(20), default="ativo")
     ativo: Mapped[bool] = mapped_column(Boolean, default=True)
 
@@ -219,6 +220,7 @@ class UnidadeCurricular(TimestampMixin, Base):
         CheckConstraint("duracao_bloco_periodos >= 1"),
         CheckConstraint("encontros_semanais >= 1"),
         CheckConstraint("categoria in ('tecnica','transversal')", name="ucs_categoria_check"),
+        CheckConstraint("modalidade in ('presencial','ead')", name="ucs_modalidade_check"),
     )
     id: Mapped[int] = mapped_column(primary_key=True)
     matriz_id: Mapped[int] = mapped_column(ForeignKey("matrizes_curriculares.id"), index=True)
@@ -242,6 +244,8 @@ class UnidadeCurricular(TimestampMixin, Base):
     prioridade: Mapped[int] = mapped_column(Integer, default=3)
     # transversal: qualquer instrutor pode dar; técnica: só quem marcou a UC no próprio perfil
     categoria: Mapped[str] = mapped_column(String(12), default="tecnica", server_default="tecnica")
+    # presencial (na grade) ou EAD (a distância: não entra na grade nem ocupa sala); EAD só em curso que prevê EAD
+    modalidade: Mapped[str] = mapped_column(String(12), default="presencial", server_default="presencial")
     ativo: Mapped[bool] = mapped_column(Boolean, default=True)
 
     tipos_ambiente: Mapped[list["TipoAmbiente"]] = relationship(secondary="uc_tipos_ambiente", lazy="selectin")

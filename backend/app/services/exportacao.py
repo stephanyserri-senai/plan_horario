@@ -153,7 +153,7 @@ VALORES = {"tipo": {"deficit_capacidade_total": "Falta de salas (todos os turnos
                     "indisponibilidade_equipamentos": "Falta de equipamentos", "inviabilidade_calendario": "Prazo / calendário"},
            "situacao": {"programada": "Programada", "realizada": "Realizada", "cancelada": "Cancelada", "operacional": "Operacional",
                         "manutencao": "Manutenção", "interditado": "Interditado"},
-           "risco_atraso": {"sem_risco": "Sem risco", "baixo": "Baixo", "medio": "Médio", "alto": "Alto"},
+           "risco_atraso": {"sem_risco": "Sem risco", "baixo": "Baixo", "medio": "Médio", "alto": "Alto", "ead": "EAD (fora da grade)"},
            "estado_planejamento": {"programada_integralmente": "Toda programada", "parcialmente_programada": "Parcialmente programada",
                                    "em_execucao": "Em execução", "pendente_alocacao": "Sem horário", "concluida": "Concluída",
                                    "cancelada": "Cancelada", "prevista": "Prevista", "ofertada": "Ofertada"},

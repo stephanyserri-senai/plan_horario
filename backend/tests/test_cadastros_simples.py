@@ -26,7 +26,7 @@ def test_cadastros_preenchem_campos_repetidos(db, mundo):
     assert r.status_code == 200, r.text
     curso = r.json()
     assert curso["unidade_id"] == bm.id
-    mat = c.post("/api/cadastros/matrizes", json={"curso_id": curso["id"], "versao": "2026.1", "situacao": "vigente"}, headers=h).json()
+    mat = c.post("/api/cadastros/matrizes", json={"curso_id": curso["id"], "versao": "2026.1", "situacao": "rascunho"}, headers=h).json()
     uc = c.post("/api/cadastros/ucs", json={"matriz_id": mat["id"], "codigo": "FEL", "nome": "Fundamentos de Eletricidade", "carga_horaria_total": 40}, headers=h)
     assert uc.status_code == 200, uc.text
     uc = uc.json()

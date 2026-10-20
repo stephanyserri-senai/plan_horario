@@ -867,6 +867,7 @@ def _confirmar_estrutura(db: Session, ctx, imp: Importacao, itens: list[dict]) -
     rel = {"criados": 0, "atualizados": 0, "sem_alteracao": 0, "cursos": 0, "matrizes": 0}
     por_matriz: dict[int, dict[str, int]] = {}
     prereqs = []
+    criadas: set[int] = set()
     for it in itens:
         if it["acao"] == "erro":
             continue
@@ -889,9 +890,22 @@ def _confirmar_estrutura(db: Session, ctx, imp: Importacao, itens: list[dict]) -
             db.add(mat)
             db.flush()
             rel["matrizes"] += 1
+            criadas.add(mat.id)
         dados = dict(it["dados"])
         dados["matriz_id"] = mat.id
         uc = db.scalars(select(UnidadeCurricular).where(UnidadeCurricular.matriz_id == mat.id, func.lower(UnidadeCurricular.codigo) == dados["codigo"].lower())).first()
+        # versão já cadastrada (de antes desta importação): a lista de UCs é fixa — não inclui UC nem muda nome, carga ou modalidade
+        if mat.id not in criadas and mat.situacao != "rascunho":
+            fixos = [k for k in ("codigo", "nome", "carga_horaria_total", "modalidade", "categoria")
+                     if k in dados and uc is not None and getattr(uc, k) != dados[k]]
+            if uc is None or fixos:
+                rel.setdefault("avisos", []).append(
+                    f"linha {it['linha']}: a versão {mat.versao} de {curso.codigo} já está cadastrada (lista de UCs fixa); "
+                    + ("a UC não foi incluída" if uc is None else f"{', '.join(fixos)} não foi(ram) alterado(s)") + " — crie uma nova versão.")
+                if uc is None:
+                    continue
+                for k in fixos:
+                    dados.pop(k)
         if uc is None:
             uc = UnidadeCurricular(**dados)
             db.add(uc)

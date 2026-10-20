@@ -56,10 +56,38 @@ export default function EstruturaCurricular({ visao = "estrutura" }: { visao?: s
   }, [curso?.id, curso?.versoes.length]);
   const ucs = useCarregar<any>(() => versaoId ? api.get(`/api/estrutura-curricular/versoes/${versaoId}`) : Promise.resolve(null), [versaoId]);
 
+  // a versão (e o curso) de uma UC: define se a lista está fixa e se o curso prevê EAD
+  const versaoDe = (mid: number) => {
+    for (const c of todosCursos) { const v = c.versoes.find((x: any) => x.id === mid); if (v) return { c, v }; }
+    return null;
+  };
+  const fixosUC = (mid: number) => {
+    const x = versaoDe(mid);
+    const f = ["matriz_id"];
+    if (!x?.c.preve_ead) f.push("modalidade");
+    if (x && x.v.situacao !== "rascunho") f.push(...CAMPOS_LISTA_UC);
+    return f;
+  };
   const abrirUC = async (u?: any) => {
     setErro(null);
-    const valores = u ? await api.get(`/api/cadastros/ucs/${u.id}`) : { __novo: true, matriz_id: versaoId, categoria: "tecnica", encontros_semanais: 2, sequencia: (ucs.dados?.ucs.length || 0) + 1 };
-    setEdicao({ ent: "ucs", valores, fixos: ["matriz_id"], titulo: u ? `Editar UC — ${u.codigo}` : `Nova UC — ${curso.codigo} ${rotVersao(versao)}` });
+    const mid = u ? u.matriz_id ?? versaoId : versaoId;
+    const valores = u ? await api.get(`/api/cadastros/ucs/${u.id}`)
+      : { __novo: true, matriz_id: versaoId, categoria: "tecnica", modalidade: "presencial", encontros_semanais: 2, sequencia: (ucs.dados?.ucs.length || 0) + 1 };
+    const vx = versaoDe(valores.matriz_id ?? mid);
+    const fechada = !!vx && vx.v.situacao !== "rascunho";
+    setEdicao({ ent: "ucs", valores, fixos: fixosUC(valores.matriz_id ?? mid),
+      titulo: u ? `Editar UC — ${u.codigo}${fechada ? " (versão cadastrada: nome, carga e modalidade fixos)" : ""}` : `Nova UC — ${curso.codigo} ${rotVersao(versao)}` });
+  };
+  // conclui o cadastro da versão: a lista de UCs fica fixa (mudanças só numa nova versão)
+  const concluirVersao = async (v: any) => {
+    if (!confirm(`Concluir o cadastro da versão ${v.versao}${v.tipo_oferta ? ` (${v.tipo_oferta})` : ""}? Depois disso a lista de UCs, com nome, carga horária e modalidade, `
+      + "fica fixa; para mudar será preciso criar uma nova versão.")) return;
+    try {
+      const atual = await api.get(`/api/cadastros/matrizes/${v.id}`);
+      await api.put(`/api/cadastros/matrizes/${v.id}`, { ...atual, situacao: "vigente" });
+      invalidarOpcoes("matrizes"); aviso("Versão cadastrada: a lista de UCs está fixa.");
+      arv.recarregar(); ucs.recarregar(); setRev((x) => x + 1);
+    } catch (e: any) { aviso(e.message, "erro"); }
   };
   const salvar = async () => {
     if (!edicao) return;
@@ -102,9 +130,9 @@ export default function EstruturaCurricular({ visao = "estrutura" }: { visao?: s
   const editarCurso = async (c: any) => { setErro(null); setEdicao({ ent: "cursos", fixos: [], titulo: `Editar curso — ${c.codigo}`, valores: await api.get(`/api/cadastros/cursos/${c.id}`) }); };
   const editarVersao = async (v: any) => { setErro(null); setEdicao({ ent: "matrizes", fixos: ["curso_id", "matriz_origem_id"], titulo: `Versão ${v.versao}`, valores: await api.get(`/api/cadastros/matrizes/${v.id}`) }); };
   // nova UC numa versão vista na lista (fora da navegação do curso)
-  const novaUC = (v: any) => { setErro(null); setEdicao({ ent: "ucs", fixos: ["matriz_id"], titulo: `Nova UC — ${v.curso.codigo} ${rotVersao(v)}`,
-    valores: { __novo: true, matriz_id: v.id, categoria: "tecnica", encontros_semanais: 2, sequencia: (v.ucs || 0) + 1 } }); };
-  const listas: PropsLista = { areas, cursos: todosCursos, abrir: ir, editarCurso, editarVersao, editarUC: abrirUC, novaUC, novoCurso, editavel, rev,
+  const novaUC = (v: any) => { setErro(null); setEdicao({ ent: "ucs", fixos: fixosUC(v.id), titulo: `Nova UC — ${v.curso.codigo} ${rotVersao(v)}`,
+    valores: { __novo: true, matriz_id: v.id, categoria: "tecnica", modalidade: "presencial", encontros_semanais: 2, sequencia: (v.ucs || 0) + 1 } }); };
+  const listas: PropsLista = { areas, cursos: todosCursos, abrir: ir, editarCurso, editarVersao, editarUC: abrirUC, novaUC, novoCurso, concluirVersao, editavel, rev,
     mudou: () => { arv.recarregar(); setRev((x) => x + 1); } };
   if (visao !== "estrutura") return (
     <div className="cur">
@@ -198,10 +226,10 @@ export default function EstruturaCurricular({ visao = "estrutura" }: { visao?: s
           {editavel && <button className="versao versao-nova" onClick={() => { setErro(null); setEdicao(versao
             ? { ent: "matrizes", fixos: ["curso_id", "matriz_origem_id", "situacao"], titulo: `Nova versão de ${curso.codigo} (copia as UCs da ${rotVersao(versao)})`, copiarDe: versao.id,
                 valores: { __novo: true, versao: "", tipo_oferta: "", vigencia_inicio: "" } }
-            : { ent: "matrizes", fixos: ["curso_id", "matriz_origem_id"], titulo: `Matriz de ${curso.codigo}`,
-                valores: { __novo: true, curso_id: curso.id, versao: String(new Date().getFullYear()), situacao: "vigente" } }); }}>
+            : { ent: "matrizes", fixos: ["curso_id", "matriz_origem_id", "situacao"], titulo: `Matriz de ${curso.codigo}`,
+                valores: { __novo: true, curso_id: curso.id, versao: String(new Date().getFullYear()), situacao: "rascunho" } }); }}>
             + {versao ? "Nova versão" : "Criar a matriz"}
-            <small>{versao ? "copia as UCs da versão aberta; ex.: uma para AIT e outra para HTC" : "depois cadastre as UCs"}</small>
+            <small>{versao ? "copia as UCs da versão aberta; ex.: uma para AIT e outra para HTC" : "depois cadastre as UCs e conclua o cadastro"}</small>
           </button>}
         </div>
 
@@ -213,15 +241,17 @@ export default function EstruturaCurricular({ visao = "estrutura" }: { visao?: s
               {ucs.dados?.em_uso_por_turmas ? ` Usada por ${ucs.dados.em_uso_por_turmas} turma(s).` : ""}</span>
             <span className="acoes-linha">
               {editavel && <button className="btn-link" onClick={async () => { setErro(null); setEdicao({ ent: "matrizes", fixos: ["curso_id", "matriz_origem_id"], titulo: `Versão ${versao.versao}`, valores: await api.get(`/api/cadastros/matrizes/${versao.id}`) }); }}>Editar versão</button>}
-              {editavel && <button className="btn btn-primario" onClick={() => abrirUC()}>+ Nova UC</button>}
+              {editavel && versao.situacao === "rascunho" && <button className="btn btn-primario" onClick={() => abrirUC()}>+ Nova UC</button>}
             </span>
           </div>
+          <AvisoVersao v={versao} editavel={editavel} concluir={() => concluirVersao(versao)} />
           {ucs.erro && <div className="erro-box">{ucs.erro}</div>}
           {ucs.dados && <div className="ucs-resumo">
             <span><b>{ucs.dados.ucs.length}</b> UC(s)</span><span><b>{totalUcs}</b> h no total</span>
             <span><b>{ucs.dados.ucs.filter((u: any) => u.categoria !== "transversal").length}</b> técnica(s)</span>
             <span><b>{ucs.dados.ucs.filter((u: any) => u.categoria === "transversal").length}</b> transversal(is)</span>
             <span><b>{ucs.dados.ucs.filter((u: any) => u.certificacao_exigida).length}</b> exigem certificação</span>
+            {curso.preve_ead && <span><b>{ucs.dados.ucs.filter((u: any) => u.modalidade === "ead").length}</b> EAD</span>}
           </div>}
           <ol className="ucs-lista">
             {(ucs.dados?.ucs || []).map((u: any) => (
@@ -232,22 +262,46 @@ export default function EstruturaCurricular({ visao = "estrutura" }: { visao?: s
                     ? <span title="Qualquer instrutor pode dar"><Badge tipo="info">Transversal</Badge></span>
                     : <span title="Só quem marcou a UC no perfil"><Badge tipo="neutro">Técnica</Badge></span>}
                     {u.certificacao_exigida && <span className="chip-area ca-vence">🎓 exige {u.certificacao_exigida}</span>}
-                    <span className="chip-area">🏫 {u.tipos_ambiente.join(", ") || "qualquer sala"}</span></span></span>
+                    <Modalidade u={u} /></span></span>
                 <span className="uc-ch"><b>{u.carga_horaria_total} h</b>
                   <span className="barra-pct fina"><span className="barra-pct-v bp-neutro" style={{ width: `${totalUcs ? (100 * u.carga_horaria_total) / totalUcs : 0}%` }} /></span>
                   <small className="mudo" title="Cada aula vale 55 min de dia e 50 min à noite; o que falta vira outra aula">{aulas(u.carga_horaria_total, 55)} aulas (dia) · {aulas(u.carga_horaria_total, 50)} (noite) · {u.encontros_semanais} dia(s)/sem</small></span>
                 {editavel && <span className="uc-acoes"><button className="btn-link" onClick={() => abrirUC(u)}>Editar</button>
-                  <button className="btn-link" onClick={() => inativarUC(u)}>Retirar</button></span>}
+                  {versao.situacao === "rascunho" && <button className="btn-link" onClick={() => inativarUC(u)}>Retirar</button>}</span>}
               </li>
             ))}
           </ol>
-          {ucs.dados && !ucs.dados.ucs.length && <div className="cur-vazio">Nenhuma UC nesta versão. Use “+ Nova UC”.</div>}
+          {ucs.dados && !ucs.dados.ucs.length && <div className="cur-vazio">Nenhuma UC nesta versão.{versao.situacao === "rascunho" ? " Use “+ Nova UC”." : ""}</div>}
         </>}
         <EpisDoCurso cursoId={curso.id} editavel={editavel} />
       </section>}
       {modal}
     </div>
   );
+}
+
+/** Campos que formam a lista de UCs de uma versão: ficam fixos depois que a versão é cadastrada. */
+const CAMPOS_LISTA_UC = ["codigo", "nome", "carga_horaria_total", "modalidade", "categoria"];
+
+/** Presencial (com as salas aceitas) ou EAD (cursada a distância, fora da grade). */
+function Modalidade({ u }: { u: any }) {
+  return u.modalidade === "ead"
+    ? <span className="chip-area ca-ead" title="Cursada a distância: não entra na grade nem ocupa sala ou instrutor">💻 EAD</span>
+    : <span className="chip-area" title="Presencial: salas aceitas">🏫 Presencial · {u.tipos_ambiente.join(", ") || "qualquer sala"}</span>;
+}
+
+/** Situação da lista de UCs: em cadastro (editável, com “Concluir”) ou cadastrada (fixa). */
+function AvisoVersao({ v, editavel, concluir }: { v: any; editavel: boolean; concluir: () => void }) {
+  if (v.situacao === "rascunho") return (
+    <div className="versao-aviso aberta">
+      <span>✏️ <b>Versão em cadastro.</b> Inclua, edite ou retire as UCs (nome, carga horária e se é presencial ou EAD). Ao concluir, a lista fica fixa.</span>
+      {editavel && <button className="btn btn-pequeno btn-primario" onClick={concluir}>Concluir cadastro da versão</button>}
+    </div>);
+  return (
+    <div className="versao-aviso fechada">
+      <span>🔒 <b>Versão cadastrada: a lista de UCs é fixa.</b> Para incluir, retirar ou mudar nome, carga ou modalidade de uma UC, crie uma
+        nova versão (ela copia as UCs desta). Salas, certificação, dias por semana e ordem ainda podem ser ajustados.</span>
+    </div>);
 }
 
 /** Cartão de curso: sigla, nome, tipo, carga, versões da matriz e turmas em andamento. */
@@ -276,7 +330,7 @@ function nomeArea(n: string) { return n && n === n.toUpperCase() && !n.includes(
 // ---------------------------------------------------------------------------- listas (mesmo estilo da navegação)
 type PropsLista = {
   areas: any[]; cursos: any[]; abrir: (a: any, c: number | null, v?: number | null) => void; editarCurso: (c: any) => void; editarVersao: (v: any) => void;
-  editarUC: (u?: any) => void; novaUC: (v: any) => void; novoCurso: () => void; editavel: boolean; rev: number; mudou: () => void;
+  editarUC: (u?: any) => void; novaUC: (v: any) => void; novoCurso: () => void; concluirVersao: (v: any) => void; editavel: boolean; rev: number; mudou: () => void;
 };
 
 function Chips({ op, valor, mudar }: { op: [string, string][]; valor: string; mudar: (v: string) => void }) {
@@ -347,7 +401,7 @@ function ListaCursos({ areas, cursos, abrir, editarCurso, novoCurso, editavel, r
 
 /** Versões da matriz e as UCs de cada uma: cada versão (por tipo de oferta) tem a sua lista de UCs; abra a versão para ver,
  * incluir, editar, retirar ou reativar as UCs dela. */
-function ListaVersoes({ areas, cursos, abrir, editarVersao, editarUC, novaUC, editavel, rev, mudou }: PropsLista) {
+function ListaVersoes({ areas, cursos, abrir, editarVersao, editarUC, novaUC, concluirVersao, editavel, rev, mudou }: PropsLista) {
   const { aviso } = useApp();
   const [q, setQ] = useState("");
   const [area, setArea] = useState("");
@@ -404,7 +458,7 @@ function ListaVersoes({ areas, cursos, abrir, editarVersao, editarUC, novaUC, ed
                 <span className="cur-sigla">{v.curso.codigo}</span>
                 <span className="lst-id"><b><span className="lst-seta" aria-hidden="true">{ab ? "▾" : "▸"}</span> {v.tipo_oferta ? `Versão ${v.tipo_oferta}` : "Todas as ofertas"} · {v.versao}</b>
                   <small className="mudo">{v.curso.nome}</small></span>
-                <span><Badge tipo={SITUACAO[v.situacao] || "info"}>{v.situacao}</Badge></span>
+                <span><Badge tipo={SITUACAO[v.situacao] || "info"}>{v.situacao}</Badge>{v.situacao !== "rascunho" && <span title="Versão cadastrada: lista de UCs fixa"> 🔒</span>}</span>
                 <span className="mudo lst-peq">{v.vigencia_inicio ? `desde ${dataBR(v.vigencia_inicio)}` : "sem data de vigência"}</span>
                 <span className="lst-nums"><span title="UCs">📘 {grupo.ativas.length} UC(s)</span><span title="Carga horária">⏱ {v.ch_total} h</span><span title="Turmas que usam a versão">👥 {v.turmas}</span>
                   {grupo.ativas.some(fragil) && <span className="alerta-txt" title="UCs com 0 ou 1 instrutor habilitado">⚠ {grupo.ativas.filter(fragil).length}</span>}</span>
@@ -419,8 +473,9 @@ function ListaVersoes({ areas, cursos, abrir, editarVersao, editarUC, novaUC, ed
                     <span><b>{grupo.ativas.reduce((t: number, u: any) => t + u.carga_horaria_total, 0)}</b> h</span>
                     <span><b>{grupo.ativas.filter((u: any) => u.categoria !== "transversal").length}</b> técnica(s)</span>
                     <span><b>{grupo.ativas.filter((u: any) => u.categoria === "transversal").length}</b> transversal(is)</span></span>
-                  {editavel && <button className="btn btn-primario btn-pequeno" onClick={() => novaUC(v)}>+ Nova UC nesta versão</button>}
+                  {editavel && v.situacao === "rascunho" && <button className="btn btn-primario btn-pequeno" onClick={() => novaUC(v)}>+ Nova UC nesta versão</button>}
                 </div>
+                <AvisoVersao v={v} editavel={editavel} concluir={() => concluirVersao(v)} />
                 <ol className="ucs-lista">
                   {ucs.map((u: any) => (
                     <li key={u.id} className="uc-linha lst-uc-v">
@@ -428,7 +483,7 @@ function ListaVersoes({ areas, cursos, abrir, editarVersao, editarUC, novaUC, ed
                       <span className="uc-id"><b>{u.codigo}</b> {u.nome}
                         <span className="uc-tags">{u.categoria === "transversal" ? <Badge tipo="info">Transversal</Badge> : <Badge tipo="neutro">Técnica</Badge>}
                           {u.certificacao_exigida && <span className="chip-area ca-vence">🎓 exige {u.certificacao_exigida}</span>}
-                          <span className="chip-area">🏫 {u.tipos_ambiente.join(", ") || "qualquer sala"}</span></span></span>
+                          <Modalidade u={u} /></span></span>
                       <span className="uc-ch"><b>{u.carga_horaria_total} h</b>
                         <span className="barra-pct fina"><span className="barra-pct-v bp-neutro" style={{ width: `${(100 * u.carga_horaria_total) / maxCh}%` }} /></span>
                         <small className="mudo">{aulas(u.carga_horaria_total, 55)} aulas (dia) · {aulas(u.carga_horaria_total, 50)} (noite) · {u.encontros_semanais} dia(s)/sem</small></span>
@@ -436,14 +491,14 @@ function ListaVersoes({ areas, cursos, abrir, editarVersao, editarUC, novaUC, ed
                         : <small className={u.habilitados === 0 ? "falta-txt" : u.habilitados === 1 ? "alerta-txt" : "ok-txt"} title="Instrutores que podem dar a UC">👤 {u.habilitados} instrutor(es)</small>}
                         <small className="mudo">👥 {u.turmas} turma(s)</small></span>
                       {editavel && <span className="uc-acoes"><button className="btn-link" onClick={() => editarUC(u)}>Editar</button>
-                        <button className="btn-link lst-discreto" onClick={() => retirar(u)}>Retirar</button></span>}
+                        {v.situacao === "rascunho" && <button className="btn-link lst-discreto" onClick={() => retirar(u)}>Retirar</button>}</span>}
                     </li>
                   ))}
                 </ol>
                 {!ucs.length && <div className="cur-vazio">{grupo.ativas.length ? "Nenhuma UC desta versão com esse filtro." : "Nenhuma UC nesta versão ainda."}</div>}
                 {grupo.retiradas.length > 0 && <details className="lst-retiradas"><summary>UCs retiradas desta versão ({grupo.retiradas.length})</summary>
                   <ul className="lista-limpa">{grupo.retiradas.map((u: any) => <li key={u.id}><b>{u.codigo}</b> {u.nome} <small className="mudo">· {u.carga_horaria_total} h</small>
-                    {editavel && <button className="btn-link" onClick={() => retirar(u, true)}>Reativar</button>}</li>)}</ul></details>}
+                    {editavel && v.situacao === "rascunho" && <button className="btn-link" onClick={() => retirar(u, true)}>Reativar</button>}</li>)}</ul></details>}
               </div>}
             </li>
           );

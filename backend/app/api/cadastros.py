@@ -145,6 +145,28 @@ FIXA_MSG = ("As unidades (Beira Mar e Porto) e as áreas tecnológicas são fixa
             "excluídas, inativadas nem renomeadas pelo sistema.")
 
 
+# campos que definem a lista de UCs da versão: depois que a versão é cadastrada (sai do rascunho), não mudam
+CAMPOS_LISTA_UC = {"codigo", "nome", "carga_horaria_total", "modalidade", "categoria", "matriz_id"}
+
+
+def _regras_uc(db: Session, obj, dados: dict, novo: bool):
+    """Cada versão da matriz tem a sua lista de UCs (nome, carga horária, presencial ou EAD). Em rascunho a lista é montada;
+    cadastrada (vigente ou encerrada), fica fixa — para mudar, cria-se uma nova versão. EAD só em curso que prevê EAD."""
+    m = db.get(MatrizCurricular, dados.get("matriz_id") or obj.matriz_id)
+    if m is None:
+        return
+    if m.situacao != "rascunho":
+        mexe = novo or any(k in dados and getattr(obj, k, None) != dados[k] for k in CAMPOS_LISTA_UC)
+        if mexe:
+            raise ConflitoValidacao(f"A versão {m.versao}{f' ({m.tipo_oferta})' if m.tipo_oferta else ''} já está cadastrada: a lista de UCs dela é fixa "
+                                    "(nome, carga horária, presencial/EAD). Para mudar, crie uma nova versão — ela copia as UCs e pode ser ajustada "
+                                    "antes de ser cadastrada.", codigo="VERSAO_CADASTRADA")
+    if (dados.get("modalidade") or getattr(obj, "modalidade", "presencial")) == "ead":
+        curso = db.get(Curso, m.curso_id)
+        if curso is not None and not curso.preve_ead:
+            raise ConflitoValidacao(f"O curso {curso.codigo} não prevê EAD: marque “O curso prevê UCs EAD” no cadastro do curso para ter UC a distância.")
+
+
 def _regras_especificas(db: Session, ent: str, obj, dados: dict, novo: bool):
     """Regras de integridade de negócio dos cadastros."""
     cfg = ENTIDADES[ent]
@@ -173,6 +195,16 @@ def _regras_especificas(db: Session, ent: str, obj, dados: dict, novo: bool):
             elif unidade_id and int(unidade_id) != area.unidade_id:
                 un = db.get(Unidade, area.unidade_id)
                 raise ConflitoValidacao(f"A área {area.nome} pertence à {un.nome if un else 'outra unidade'}; escolha uma área da mesma unidade do cadastro.")
+    if ent == "ucs":
+        _regras_uc(db, obj, dados, novo)
+    if ent == "cursos" and not novo and dados.get("preve_ead") is False and obj.preve_ead:
+        n_ead = db.scalar(select(func.count()).select_from(UnidadeCurricular).join(MatrizCurricular, MatrizCurricular.id == UnidadeCurricular.matriz_id)
+                          .where(MatrizCurricular.curso_id == obj.id, UnidadeCurricular.ativo.is_(True), UnidadeCurricular.modalidade == "ead"))
+        if n_ead:
+            raise ConflitoValidacao(f"O curso tem {n_ead} UC(s) EAD nas versões da matriz: para deixar de prever EAD, crie uma versão com essas UCs presenciais.")
+    if ent == "matrizes" and not novo and obj.situacao != "rascunho" and dados.get("situacao") == "rascunho":
+        raise ConflitoValidacao("Uma versão cadastrada não volta para rascunho: a lista de UCs dela é fixa. Crie uma nova versão (copia as UCs).",
+                                codigo="VERSAO_CADASTRADA")
     if ent == "ucs" and not novo:
         em_uso = db.scalar(select(func.count()).select_from(Turma).where(Turma.matriz_id == obj.matriz_id, Turma.simulacao_id.is_(None)))
         estruturais = {"carga_horaria_total", "codigo", "matriz_id", "duracao_bloco_periodos", "ch_teorica", "ch_pratica"}
@@ -769,6 +801,11 @@ def _ativo(ent, id_, valor, motivo, db, ctx):
     if obj is None or not hasattr(obj, "ativo"):
         raise NaoEncontrado("Registro não encontrado ou não inativável.")
     _verificar_escopo(ctx, ent, obj)
+    if ent == "ucs":
+        m = db.get(MatrizCurricular, obj.matriz_id)
+        if m is not None and m.situacao != "rascunho":
+            raise ConflitoValidacao(f"A versão {m.versao}{f' ({m.tipo_oferta})' if m.tipo_oferta else ''} já está cadastrada: não dá para retirar nem "
+                                    "devolver UCs. Crie uma nova versão (copia as UCs) e ajuste a lista nela.", codigo="VERSAO_CADASTRADA")
     obj.ativo = valor
     _avisar_instrutor(db, ctx, ent, obj, ["ativo"] if ent == "instrutores" else None, "reativou" if valor else "inativou")
     auditoria.registrar(db, ctx, "cadastro.reativar" if valor else "cadastro.inativar", cfg["model"].__tablename__, getattr(obj, "id", id_),
@@ -887,7 +924,7 @@ def estrutura_curricular(area_id: int | None = None, db: Session = Depends(get_d
                   for m in matrizes if m.curso_id == c.id]
             cs.append({"id": c.id, "codigo": c.codigo, "nome": c.nome, "tipo": c.tipo, "modalidade": c.modalidade,
                        "carga_horaria_total": c.carga_horaria_total, "versoes": vs, "turmas_ativas": turmas_curso.get(c.id, []),
-                       "epis": epis.get(c.id, 0), "dispensa_epi": bool(c.dispensa_epi)})
+                       "epis": epis.get(c.id, 0), "dispensa_epi": bool(c.dispensa_epi), "preve_ead": bool(c.preve_ead)})
         res.append({"id": a.id, "codigo": a.codigo, "nome": a.nome, "unidade_id": a.unidade_id, "unidade": unidades.get(a.unidade_id),
                     "instrutores": len(inst_area.get(a.id, ())), "cursos": cs})
     return res
@@ -923,10 +960,11 @@ def todas_as_ucs(ativas: bool = True, db: Session = Depends(get_db), ctx: Contex
         if u.categoria != "transversal":
             info = base.ucs.get(c.id, {}).get(u.codigo)
             hab = base.habilitados(info, 0, c.id) if info else 0
-        res.append({"id": u.id, "codigo": u.codigo, "nome": u.nome, "categoria": u.categoria, "carga_horaria_total": u.carga_horaria_total,
+        res.append({"id": u.id, "codigo": u.codigo, "nome": u.nome, "categoria": u.categoria, "modalidade": u.modalidade,
+                    "carga_horaria_total": u.carga_horaria_total,
                     "encontros_semanais": u.encontros_semanais, "sequencia": u.sequencia, "certificacao_exigida": u.certificacao_exigida,
                     "tipos_ambiente": [t.nome for t in u.tipos_ambiente], "matriz_id": u.matriz_id, "versao": m.versao, "tipo_oferta": m.tipo_oferta,
-                    "situacao_versao": m.situacao, "curso_id": c.id, "curso": c.codigo, "curso_nome": c.nome,
+                    "situacao_versao": m.situacao, "preve_ead": bool(c.preve_ead), "curso_id": c.id, "curso": c.codigo, "curso_nome": c.nome,
                     "area_id": c.area_id, "area": a.nome if a else None, "habilitados": hab, "turmas": turmas_uc.get(u.id, 0)})
     return res
 
@@ -943,7 +981,8 @@ def ucs_da_versao(mid: int, db: Session = Depends(get_db), ctx: Contexto = Depen
                      .order_by(UnidadeCurricular.sequencia, UnidadeCurricular.codigo)).all()
     em_uso = db.scalar(select(func.count()).select_from(Turma).where(Turma.matriz_id == mid, Turma.simulacao_id.is_(None)))
     return {"versao": serializar(m, "matrizes", ctx), "em_uso_por_turmas": em_uso,
-            "ucs": [{"id": u.id, "codigo": u.codigo, "nome": u.nome, "categoria": u.categoria, "carga_horaria_total": u.carga_horaria_total,
+            "ucs": [{"id": u.id, "codigo": u.codigo, "nome": u.nome, "categoria": u.categoria, "modalidade": u.modalidade,
+                     "carga_horaria_total": u.carga_horaria_total,
                      "encontros_semanais": u.encontros_semanais, "sequencia": u.sequencia, "certificacao_exigida": u.certificacao_exigida,
                      "tipos_ambiente_ids": [t.id for t in u.tipos_ambiente], "tipos_ambiente": [t.nome for t in u.tipos_ambiente]} for u in ucs]}
 
@@ -957,7 +996,9 @@ def nova_versao_matriz(id_: int, dados: dict = Body(...), db: Session = Depends(
     if m is None:
         raise NaoEncontrado("Matriz não encontrada.")
     tipo = (dados.get("tipo_oferta", m.tipo_oferta) or "").strip().upper() or None
-    nova = MatrizCurricular(curso_id=m.curso_id, versao=dados["versao"], vigencia_inicio=dados.get("vigencia_inicio"), situacao="rascunho",
+    if not str(dados.get("versao") or "").strip():
+        raise EntradaInvalida("Informe o nome da nova versão (ex.: 2027 ou 2027-AIT).")
+    nova = MatrizCurricular(curso_id=m.curso_id, versao=str(dados["versao"]).strip(), vigencia_inicio=dados.get("vigencia_inicio") or None, situacao="rascunho",
                             tipo_oferta=tipo, matriz_origem_id=m.id)
     try:
         db.add(nova)

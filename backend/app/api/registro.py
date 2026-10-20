@@ -39,7 +39,7 @@ ENTIDADES: dict[str, dict] = {
                  "opcoes": {"situacao": ["rascunho", "vigente", "encerrada"], "tipo_oferta": ["HTC", "AIT", "AIB", "QUA", "PFP", "EMP", "APE", "ESP"]}},
     "ucs": {"model": UnidadeCurricular, "rotulo": "Unidades curriculares", "grupo": "Acadêmico", "label": "{codigo} – {nome}",
             "busca": ["codigo", "nome", "competencias"], "extras": {"tipos_ambiente_ids": {"tipo": "multiref", "ref": "tipos_ambiente", "rotulo": "Tipos de ambiente aceitos"}},
-            "opcoes": {"categoria": ["tecnica", "transversal"]}},
+            "opcoes": {"categoria": ["tecnica", "transversal"], "modalidade": ["presencial", "ead"]}},
     "uc_prerequisitos": {"model": UCPrerequisito, "rotulo": "Pré-requisitos de UCs", "grupo": "Acadêmico", "label": "{uc_id}", "busca": [], "pk": ["uc_id", "prerequisito_id"]},
     "uc_recursos": {"model": UCRecurso, "rotulo": "Equipamentos exigidos por UC", "grupo": "Acadêmico", "label": "{recurso_tipo}", "busca": ["recurso_tipo"],
                     "pk": ["uc_id", "recurso_tipo"]},
@@ -88,20 +88,22 @@ TIPOS_OFERTA = [
 # preenchido automaticamente a partir de outro cadastro (não aparece). Entidades sem entrada
 # mostram todos os campos.
 FORMULARIOS: dict[str, dict] = {
-    "cursos": {"principais": ["codigo", "nome", "area_id", "modalidade", "tipo", "carga_horaria_total"],
+    "cursos": {"principais": ["codigo", "nome", "area_id", "modalidade", "tipo", "carga_horaria_total", "preve_ead"],
                "avancados": ["situacao", "turnos_possiveis"],
-               "rotulos": {"codigo": "Sigla do curso (ex.: ELT)", "area_id": "Área", "tipo": "Tipo de curso"},
-               "ajuda": {"codigo": "Usada no código das turmas: tipo de oferta + sigla + número = HTC-ELT-12.",
+               "rotulos": {"codigo": "Sigla do curso (ex.: ELT)", "area_id": "Área", "tipo": "Tipo de curso", "preve_ead": "O curso prevê UCs EAD?"},
+               "ajuda": {"preve_ead": "Marque se a matriz tem UCs a distância: só assim a UC pode ser marcada como EAD (fica fora da grade).",
+                         "codigo": "Usada no código das turmas: tipo de oferta + sigla + número = HTC-ELT-12.",
                          "area_id": "A unidade é a da área."}},
     "matrizes": {"principais": ["curso_id", "versao", "tipo_oferta", "vigencia_inicio", "situacao"], "avancados": ["matriz_origem_id"],
                  "rotulos": {"tipo_oferta": "Tipo de oferta (versão personalizada)"},
                  "ajuda": {"tipo_oferta": "Ex.: HTC ou AIT, quando o curso tem currículo próprio para cada oferta. Vazio = vale para todas."}},
-    "ucs": {"principais": ["matriz_id", "codigo", "nome", "categoria", "carga_horaria_total", "encontros_semanais", "tipos_ambiente_ids", "sequencia", "certificacao_exigida"],
+    "ucs": {"principais": ["matriz_id", "codigo", "nome", "carga_horaria_total", "modalidade", "categoria", "encontros_semanais", "tipos_ambiente_ids", "sequencia", "certificacao_exigida"],
             "avancados": ["modulo", "ch_teorica", "ch_pratica", "capacidade_min", "capacidade_max", "divide_grupos", "prioridade", "competencias", "restricoes_pedagogicas"],
             "rotulos": {"encontros_semanais": "Dias de aula por semana", "sequencia": "Ordem na matriz", "certificacao_exigida": "Certificação exigida do instrutor",
-                        "categoria": "Categoria da UC"},
+                        "categoria": "Categoria da UC", "modalidade": "Presencial ou EAD"},
             "ajuda": {"carga_horaria_total": "Em horas. Cada aula vale o tempo real (55 min de dia, 50 min à noite) e cada dia de aula ocupa o turno "
                                                "inteiro (4 aulas); o que falta vira outra aula. Ex.: UC de 20 h no matutino = 22 aulas.",
+                      "modalidade": "Só para cursos que preveem EAD. UC EAD é cursada a distância: não entra na grade nem ocupa sala ou instrutor.",
                       "categoria": "Transversal: qualquer instrutor pode dar (não precisa marcar no perfil). Técnica: só os instrutores que "
                                    "marcaram a UC no próprio perfil (sim ou em partes)."}},
     "ambientes": {"principais": ["codigo", "nome", "unidade_id", "tipo_ambiente_id", "todas_areas", "area_id", "areas_ids", "capacidade_fisica", "predio", "acessivel", "situacao"],

@@ -10,6 +10,11 @@ Gerado por `scripts/gerar_regras_md.py` a partir de `backend/app/services/regras
 - **Turma PFP (manhã e tarde)** (`TURMA_PFP`, obrigatória): Turma PFP tem aula de manhã e de tarde: 08:00–12:00 e 13:00–17:00 (almoço 12:00–13:00). Cada metade é um turno inteiro: a manhã e a tarde podem ter UCs e instrutores diferentes. Na grade, as aulas aparecem nas linhas da manhã e da tarde (o limiar de horário aceita o início às 08:00 e às 13:00). Quem é da manhã dá o bloco 08–12; quem é da tarde, o 13–17. _Onde: cadastro de turmas, importação, gerador, validação, grade._
 - **Dia EAD (turma 80-20)** (`TURMA_EAD`, obrigatória): O dia EAD (normalmente a sexta) não tem aula presencial: sai dos dias de aula, aparece na grade com a etiqueta EAD e a validação bloqueia aula nele. _Onde: cadastro, gerador, validação, grade, exportações._
 
+## Matriz curricular
+
+- **Lista de UCs fixa na versão cadastrada** (`VERSAO_CADASTRADA`, obrigatória): Cada versão da matriz tem a sua própria lista de UCs (nome, carga horária e se é presencial ou EAD). Enquanto a versão está em rascunho, as UCs podem ser incluídas, alteradas ou retiradas; depois de cadastrada (vigente ou encerrada), a lista fica fixa e não volta a rascunho. Para mudar, cria-se uma nova versão, que copia as UCs. Salas, certificação, dias por semana e ordem continuam ajustáveis. _Onde: cadastro de UCs, versões da matriz._
+- **UC presencial ou EAD** (`UC_EAD`, obrigatória): Toda UC é presencial ou EAD. A opção EAD só existe nos cursos marcados como “prevê UCs EAD” (no cadastro do curso). A UC EAD é cursada a distância: não entra na geração da grade nem na demanda de instrutores e salas, e aparece no acompanhamento como “EAD (fora da grade)”. _Onde: cadastro de UCs, gerador, riscos, acompanhamento._
+
 ## Aulas e turnos
 
 - **Turnos oficiais** (`TURNOS`, obrigatória): Turnos: Manhã 07:30–11:30; Tarde 13:30–17:30; Noite 18:30–22:00; Sábado 09:00–13:00. _Onde: estrutura fixa._

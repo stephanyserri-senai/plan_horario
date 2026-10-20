@@ -335,7 +335,9 @@ def turmas_ucs(db: Session, cenario_id: int, data_referencia: date | None = None
         dias_letivos = sum(1 for d in _datas(inicio_restante, limite) if d.weekday() in (turma.dias_possiveis or []) and cal.dia_letivo(turma, d)[0]) if inicio_restante <= limite else 0
         semanas_rest = dias_letivos / max(len(turma.dias_possiveis or [1]), 1)
         capacidade_h = semanas_rest * uc.encontros_semanais * info["horas_por_encontro"]
-        if info["restante_h"] <= 0.01:
+        if getattr(uc, "modalidade", "presencial") == "ead":
+            risco = "ead"  # a distância: fora da grade presencial, não conta como atraso
+        elif info["restante_h"] <= 0.01:
             risco = "sem_risco"
         elif info["restante_h"] > capacidade_h:
             risco = "alto"
@@ -355,7 +357,7 @@ def turmas_ucs(db: Session, cenario_id: int, data_referencia: date | None = None
             "percentual_programado": round(100 * (info["realizada_h"] + info["programada_h"]) / info["total_h"], 1) if info["total_h"] else 0.0,
             "encontros_planejados": len(aulas), "distribuicao_semanal_h": dict(dist),
             "ambientes_utilizados": sorted({a.ambiente_id for a in aulas if a.ambiente_id}),
-            "capacidade_restante_estimada_h": round(capacidade_h, 1), "risco_atraso": risco,
+            "capacidade_restante_estimada_h": round(capacidade_h, 1), "risco_atraso": risco, "modalidade": getattr(uc, "modalidade", "presencial"),
             "sem_instrutor_elegivel": not elegiveis, "aulas_sem_instrutor": sum(1 for a in aulas if not a.instrutor_id),
             "aulas_sem_ambiente": sum(1 for a in aulas if not a.ambiente_id),
         })

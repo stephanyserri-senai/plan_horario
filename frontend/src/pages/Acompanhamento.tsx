@@ -11,7 +11,7 @@ import { BarraOcupacao, GraficoSerie, QuadroInstrutores } from "../components/Oc
 import { useApp } from "../contexto";
 
 const RISCO: Record<string, [string, string]> = {
-  alto: ["bloqueio", "risco alto"], medio: ["alerta", "risco médio"], baixo: ["info", "risco baixo"], sem_risco: ["ok", "em dia"],
+  alto: ["bloqueio", "risco alto"], medio: ["alerta", "risco médio"], baixo: ["info", "risco baixo"], sem_risco: ["ok", "em dia"], ead: ["info", "EAD (fora da grade)"],
 };
 const n1 = (v: number) => (Number(v) || 0).toLocaleString("pt-BR", { maximumFractionDigits: 1 });
 

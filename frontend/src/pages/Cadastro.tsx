@@ -71,7 +71,8 @@ function CelulaRef({ ent, id }: { ent: string; id: any }) {
 // rótulos amigáveis de valores de listas (o banco guarda o código)
 const VALOR_ENUM: Record<string, string> = { tecnico: "Técnico (todas as modalidades)", basico: "Básico (só AIB e qualificações)",
   mensalista: "Mensalista", horista: "Horista", em_formacao: "Em formação (legado)", ferias: "Férias", manutencao: "Manutenção",
-  pleno: "Sim", parcial: "Em partes", tecnica: "Técnica (só quem marcou no perfil)", transversal: "Transversal (qualquer instrutor)" };
+  pleno: "Sim", parcial: "Em partes", tecnica: "Técnica (só quem marcou no perfil)", transversal: "Transversal (qualquer instrutor)",
+  presencial: "Presencial", ead: "EAD (a distância, fora da grade)" };
 const rotEnum = (o: any) => VALOR_ENUM[o] ?? o;
 const CURTO: Record<string, string> = { tecnico: "Técnico", basico: "Básico", tecnica: "Técnica", transversal: "Transversal" };  // na lista, o rótulo curto
 

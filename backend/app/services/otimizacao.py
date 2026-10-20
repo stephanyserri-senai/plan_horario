@@ -164,6 +164,8 @@ def turma_ucs_do_escopo(db: Session, cenario: CenarioPlanejamento, escopo: dict)
     q = select(TurmaUC).join(Turma).where(TurmaUC.ativo.is_(True), Turma.ativo.is_(True),
                                           TurmaUC.situacao.notin_(["concluida", "cancelada"]),
                                           Turma.situacao.notin_(["concluida", "cancelada"]))
+    # UC EAD é cursada a distância: não entra na grade presencial nem ocupa sala ou instrutor em sala
+    q = q.where(TurmaUC.uc_id.notin_(select(UnidadeCurricular.id).where(UnidadeCurricular.modalidade == "ead")))
     q = q.where((Turma.simulacao_id.is_(None)) | (Turma.simulacao_id == sim_id)) if sim_id else q.where(Turma.simulacao_id.is_(None))
     if cenario.unidade_id:
         q = q.where(Turma.unidade_id == cenario.unidade_id)

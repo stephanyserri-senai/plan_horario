@@ -59,7 +59,7 @@ def test_area_obrigatoria_e_da_mesma_unidade(db, cli, mundo):
     # curso sem unidade assume a unidade da área; turma herda a área do curso
     c = cli.post("/api/cadastros/cursos", json={"codigo": "CX", "nome": "Curso X", "area_id": autom.id, "situacao": "ativo", "ativo": True}).json()
     assert c["unidade_id"] == beira.id
-    mat = cli.post("/api/cadastros/matrizes", json={"curso_id": c["id"], "versao": "1", "situacao": "vigente", "ativo": True}).json()
+    mat = cli.post("/api/cadastros/matrizes", json={"curso_id": c["id"], "versao": "1", "situacao": "rascunho", "ativo": True}).json()
     t = cli.post("/api/cadastros/turmas", json={"codigo": "TX", "nome": "Turma X", "curso_id": c["id"], "matriz_id": mat["id"], "unidade_id": beira.id,
                                               "qtd_alunos": 20, "data_inicio": "2026-08-03", "data_fim": "2026-12-18", "dias_possiveis": [0, 1, 2, 3, 4],
                                               "num_grupos": 1, "prioridade": 3, "necessidades_acessibilidade": False, "situacao": "planejada", "ativo": True})

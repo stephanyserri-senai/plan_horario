@@ -118,6 +118,16 @@ def catalogo() -> list[dict]:
     regra("TURMA_EAD", "Turmas e dias", "obrigatoria", "Dia EAD (turma 80-20)",
           "O dia EAD (normalmente a sexta) não tem aula presencial: sai dos dias de aula, aparece na grade com a etiqueta EAD e a validação bloqueia aula nele.",
           ["cadastro", "gerador", "validação", "grade", "exportações"])
+    # matriz curricular
+    regra("VERSAO_CADASTRADA", "Matriz curricular", "obrigatoria", "Lista de UCs fixa na versão cadastrada",
+          "Cada versão da matriz tem a sua própria lista de UCs (nome, carga horária e se é presencial ou EAD). Enquanto a versão está "
+          "em rascunho, as UCs podem ser incluídas, alteradas ou retiradas; depois de cadastrada (vigente ou encerrada), a lista fica fixa "
+          "e não volta a rascunho. Para mudar, cria-se uma nova versão, que copia as UCs. Salas, certificação, dias por semana e ordem "
+          "continuam ajustáveis.", ["cadastro de UCs", "versões da matriz"])
+    regra("UC_EAD", "Matriz curricular", "obrigatoria", "UC presencial ou EAD",
+          "Toda UC é presencial ou EAD. A opção EAD só existe nos cursos marcados como “prevê UCs EAD” (no cadastro do curso). "
+          "A UC EAD é cursada a distância: não entra na geração da grade nem na demanda de instrutores e salas, e aparece no "
+          "acompanhamento como “EAD (fora da grade)”.", ["cadastro de UCs", "gerador", "riscos", "acompanhamento"])
     # aulas
     regra("TURNOS", "Aulas e turnos", "obrigatoria", "Turnos oficiais", f"Turnos: {turnos}.", ["estrutura fixa"])
     regra("TURNO_INTEIRO", "Aulas e turnos", "obrigatoria", "Turno inteiro",
