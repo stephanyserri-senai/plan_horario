@@ -26,7 +26,7 @@ from app.models import (Alocacao, Ambiente, Bloqueio, CenarioPlanejamento, Compe
 from app.services import auditoria
 from app.services.validacao import AulaProposta, BaseDados, possui_bloqueio, validar_aula
 
-RESOLVIVEIS = {"sem_recurso", "instrutor_ausente", "sala_indisponivel", "nao_letivo", "dependencia", "prazo", "capacidade"}
+RESOLVIVEIS = {"sem_recurso", "instrutor_ausente", "sala_indisponivel", "nao_letivo", "dependencia", "prazo", "capacidade", "termo_horas"}
 LINKS = {"solicitacoes": "/solicitacoes", "epis": "/epis", "sobrecarga": "/consultas", "padrao_dias": "/cadastros/turmas",
          "capacidade": "/simulador"}
 ESTADOS_AJUSTE = ("em_elaboracao", "em_validacao", "aguardando_aprovacao", "aprovado", "publicado")
@@ -412,6 +412,26 @@ def sugerir(db: Session, cenario_id: int, codigo: str, unidades=None, hoje: date
                     it.update(_prazo(db, cen, t, cod_uc, float(x.get("demanda_h") or 0), float(x.get("oferta_h") or 0), None, hoje))
             else:
                 it["motivo_sem"] = "Sem correção automática: veja as alternativas (o simulador mostra o impacto)."
+            itens.append(it)
+    elif codigo == "termo_horas":
+        import math
+        from app.services import termos
+        casos = termos.pendencias(db, cenario_id, unidades, hoje, cen.periodo_fim or hoje + timedelta(days=120))
+        total = len(casos)
+        for k, x in enumerate(casos[:LIMITE]):
+            it = {"id": f"t{k}", "caso": f"{x['instrutor']} · {x['mes']}", "detalhe": f"{x['problema']} · {x['programadas_h']:g} h programadas".replace(".", ","),
+                  "alternativas": ["ou passe as aulas excedentes a outro instrutor (substituição na grade)"]}
+            base = {"tipo": "ajustar_termo", "instrutor_id": x["_instrutor_id"], "mes": x["_mes"], "requer_concordancia": True}
+            if x.get("_dias_fora"):
+                dias = ", ".join(termos.DIAS_NOME[d] for d in x["_dias_fora"] if d < 6)
+                it.update({"sugestao": f"Incluir {dias} no termo de {x['mes']} (urgência, com a concordância do instrutor)",
+                           "acao": {**base, "incluir_dias": x["_dias_fora"], "motivo": f"Aulas programadas em {dias}, fora do termo"}})
+            else:
+                novo = math.ceil(x["programadas_h"])
+                verbo = "Registrar o termo" if x["termo_h"] is None else "Ajustar o termo"
+                it.update({"sugestao": f"{verbo} de {x['mes']} para {novo} h de aula (as aulas já programadas), com a concordância do instrutor",
+                           "acao": {**base, "horas_aula": novo, "motivo": "Termo ajustado às aulas programadas" if x["termo_h"] is not None
+                                    else "Termo do mês registrado pelas aulas programadas"}})
             itens.append(it)
     return {"codigo": codigo, "automatico": True, "itens": itens, "total": total, "mostrando": len(itens),
             "com_sugestao": sum(1 for i in itens if i.get("acao")), "estado_semestre": cen.estado}

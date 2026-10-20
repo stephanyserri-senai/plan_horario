@@ -34,7 +34,7 @@ from app.services import auditoria
 PERMISSOES = {"habilitar_instrutor": "cadastros.editar", "passar_uc": "alocacoes.editar", "adiar_uc": "cadastros.editar",
               "alocar_aula": "alocacoes.editar", "substituir": "alocacoes.editar", "trocar_sala": "alocacoes.editar",
               "remarcar": "alocacoes.editar", "gerar_turma": "otimizacao.executar", "reposicao_sabado": "alocacoes.editar",
-              "passar_proximo_semestre": "cadastros.editar"}
+              "passar_proximo_semestre": "cadastros.editar", "ajustar_termo": "cadastros.editar"}
 EDITAVEIS = ("em_elaboracao", "em_validacao")
 
 
@@ -142,6 +142,17 @@ def aplicar(db: Session, ctx, cenario_id: int, acao: dict, motivo: str | None = 
         from app.services import resolucoes
         r = resolucoes.proximo_semestre(db, ctx, acao["turma_uc_id"])
         res["mensagem"] = f"O restante da UC passa para {r['semestre']} (prazo {date.fromisoformat(r['prazo']):%d/%m/%Y})."
+        gerar = False
+    elif tipo == "ajustar_termo":
+        # termo de horas do horista: ajuste por urgência, só com a concordância do instrutor (confirmada ao aceitar)
+        from app.services import termos
+        inst = db.get(Instrutor, int(acao["instrutor_id"]))
+        if inst is None:
+            raise NaoEncontrado("Instrutor não encontrado.")
+        ctx.exigir_unidade(inst.unidade_id)
+        r = termos.ajustar(db, ctx, inst, acao["mes"], acao.get("motivo") or motivo or "", bool(acao.get("concordancia")),
+                           horas_aula=acao.get("horas_aula"), incluir_dias=acao.get("incluir_dias"), cenario_id=cenario_id)
+        res["mensagem"] = f"Termo de {r['rotulo']} de {inst.nome} ajustado: {r['ajuste']}"
         gerar = False
     elif tipo == "gerar_turma":
         db.add(RegistroDecisao(tipo="sugestao", cenario_id=cenario_id, usuario_id=ctx.id, motivo=motivo, dados={"acao": acao, "aceita": True}))

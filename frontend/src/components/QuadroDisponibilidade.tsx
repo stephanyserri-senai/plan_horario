@@ -28,7 +28,7 @@ export default function QuadroDisponibilidade() {
         <div className="qd-mod"><span className="modalidade modalidade-mensalista">Mensalista</span>
           <small><b>{d?.resumo.mensalistas ?? "—"}</b> instrutor(es) · jornada semanal fixa (ex.: 40 h), aulas até 90% dela</small></div>
         <div className="qd-mod"><span className="modalidade modalidade-horista">Horista</span>
-          <small><b>{d?.resumo.horistas ?? "—"}</b> instrutor(es) · termo de horas a cada mês: define as horas de aula do mês e pode mudar</small></div>
+          <small><b>{d?.resumo.horistas ?? "—"}</b> instrutor(es) · termo de horas a cada mês (ajustável numa urgência, com a concordância do instrutor)</small></div>
         {d?.resumo.horistas_sem_termo > 0 && <Badge tipo="alerta">{d.resumo.horistas_sem_termo} horista(s) sem termo de {d.rotulo_mes}</Badge>}
         {d?.resumo.sem_disponibilidade > 0 && <Badge tipo="bloqueio">{d.resumo.sem_disponibilidade} sem disponibilidade</Badge>}
       </div>
@@ -90,9 +90,10 @@ function Carga({ l, rotuloMes }: { l: any; rotuloMes: string }) {
   );
   return (
     <div className="qd-c">
-      <span><b>{h(t.horas_aula)}</b> <small className="mudo">no termo de {t.rotulo}{t.horas_outras ? ` + ${h(t.horas_outras)} outras` : ""}</small></span>
-      {t.programadas_h != null && <><BarraPct valor={t.pct} fina neutra /><small className={t.excedente_h ? "falta-txt" : "mudo"}>
-        {h(t.programadas_h)} programadas{t.excedente_h ? ` · ${h(t.excedente_h)} acima do termo` : ` · ${h(t.livre_h)} livres`}</small></>}
+      <span><b>{h(t.horas_aula)}</b> <small className="mudo">no termo de {t.rotulo}{t.horas_outras ? ` + ${h(t.horas_outras)} outras` : ""}
+        {t.dias_semana?.length ? ` · ${t.dias_semana.map((x: number) => DIAS_CURTOS[x]).join(", ")}` : ""}</small></span>
+      {t.programadas_h != null && <><BarraPct valor={t.pct} fina neutra /><small className={t.excedente_h ? "alerta-txt" : "mudo"}>
+        {h(t.programadas_h)} programadas{t.excedente_h ? ` · ${h(t.excedente_h)} acima do termo (ajustável)` : ` · ${h(t.livre_h)} livres`}</small></>}
       {l.termos_no_semestre && l.termos_no_semestre.com_termo < l.termos_no_semestre.meses &&
         <small className="mudo">{l.termos_no_semestre.com_termo} de {l.termos_no_semestre.meses} meses do semestre com termo</small>}
     </div>
@@ -104,9 +105,10 @@ export function TermosHorista({ inst, fechar }: { inst: any | null; fechar: () =
   const { cenario, pode, aviso } = useApp();
   const r = useCarregar<any>(() => (inst ? api.get(`/api/instrutores/${inst.id}/termos${qs({ cenario_id: cenario?.id })}`) : Promise.resolve(null)), [inst?.id, cenario?.id]);
   const [edit, setEdit] = useState<Record<string, any>>({});
+  const [ajuste, setAjuste] = useState<any | null>(null);
   const editavel = pode("cadastros.editar");
   const salvar = async (m: any) => {
-    const v = { horas_aula: m.horas_aula, horas_outras: m.horas_outras || 0, observacao: m.observacao || "", ...edit[m.mes] };
+    const v = { horas_aula: m.horas_aula, horas_outras: m.horas_outras || 0, observacao: m.observacao || "", dias_semana: m.dias_semana || [], ...edit[m.mes] };
     if (v.horas_aula === undefined || v.horas_aula === "") { aviso("Informe as horas de aula do termo.", "erro"); return; }
     try {
       const x = await api.put(`/api/instrutores/${inst.id}/termos/${m.mes}${qs({ cenario_id: cenario?.id })}`, v);
@@ -115,13 +117,24 @@ export function TermosHorista({ inst, fechar }: { inst: any | null; fechar: () =
       r.recarregar();
     } catch (e: any) { aviso(e.message, "erro"); }
   };
+  const ajustar = async () => {
+    try {
+      const x = await api.post(`/api/instrutores/${inst.id}/termos/${ajuste.mes}/ajuste${qs({ cenario_id: cenario?.id })}`,
+        { horas_aula: ajuste.horas_aula === "" ? null : ajuste.horas_aula, incluir_dias: ajuste.incluir_dias, motivo: ajuste.motivo, concordancia: ajuste.concordancia });
+      aviso(`Termo de ${x.rotulo} ajustado. ${x.ajuste}`);
+      setAjuste(null);
+      r.recarregar();
+    } catch (e: any) { aviso(e.message, "erro"); }
+  };
   const campo = (m: any, k: string) => (edit[m.mes]?.[k] ?? m[k] ?? "");
   const mudar = (m: any, k: string, v: any) => setEdit((e) => ({ ...e, [m.mes]: { ...e[m.mes], [k]: v } }));
+  const dias = (m: any): number[] => edit[m.mes]?.dias_semana ?? m.dias_semana ?? [];
   return (
     <Modal titulo={`Termos de horas — ${inst?.nome || ""}`} aberto={!!inst} fechar={fechar} largo>
-      <p className="sub">O horista recebe todo mês um termo de horas, que define as horas de aula que ele assume naquele mês (e outras ocupações,
-        se houver). O termo pode mudar de um mês para outro: com ele, as aulas do mês não passam das horas do termo (a validação bloqueia) e a ocupação é
-        medida sobre o termo. Sem termo, vale o limite semanal do cadastro.</p>
+      <p className="sub">O horista recebe todo mês um termo de horas: as horas de aula que ele assume naquele mês (e outras ocupações) e, se for o caso,
+        os dias da semana. O termo é <b>adaptável</b>: numa urgência — alguém num dia ou num total de horas fora do termo — ele pode ser ajustado,
+        desde que o instrutor concorde. Por isso aula fora do termo é alerta, não bloqueio; o que impede é já estar ocupado e a carga máxima do
+        contrato. Na simulação e na previsão de turmas o termo não conta.</p>
       {r.carregando && !r.dados && <p role="status">Carregando…</p>}
       {r.erro && <div className="erro-box">{r.erro}</div>}
       {r.dados && <div className="termos-lista">
@@ -130,12 +143,18 @@ export function TermosHorista({ inst, fechar }: { inst: any | null; fechar: () =
           return (
             <div key={m.mes} className={`termo-mes ${m.tem_termo ? "" : "sem"}`}>
               <div className="termo-cab"><b>{m.rotulo}</b>{!m.tem_termo && <Badge tipo="alerta">sem termo</Badge>}
-                {m.excedente_h > 0 && <Badge tipo="bloqueio">{h(m.excedente_h)} acima do termo</Badge>}</div>
+                {m.excedente_h > 0 && <Badge tipo="alerta">{h(m.excedente_h)} acima do termo</Badge>}
+                {editavel && <button className="btn-link termo-urg" onClick={() => setAjuste({ mes: m.mes, rotulo: m.rotulo, horas_aula: m.tem_termo ? m.horas_aula : "",
+                  dias_termo: m.dias_semana || [], incluir_dias: [], motivo: "", concordancia: false })}>⚡ Ajuste por urgência</button>}</div>
               <div className="termo-campos">
                 <label>Horas de aula no mês<input type="number" min={0} max={220} step={0.5} value={campo(m, "horas_aula")} disabled={!editavel}
                   onChange={(e) => mudar(m, "horas_aula", e.target.value)} /></label>
                 <label>Outras ocupações (h)<input type="number" min={0} max={220} step={0.5} value={campo(m, "horas_outras")} disabled={!editavel}
                   onChange={(e) => mudar(m, "horas_outras", e.target.value)} /></label>
+                <fieldset className="termo-dias"><legend>Dias do termo <small className="mudo">(nenhum = qualquer dia)</small></legend>
+                  {DIAS_CURTOS.map((nome, k) => <label key={k} className="dia-chk"><input type="checkbox" disabled={!editavel} checked={dias(m).includes(k)}
+                    onChange={(e) => mudar(m, "dias_semana", e.target.checked ? [...dias(m), k].sort() : dias(m).filter((x) => x !== k))} />{nome}</label>)}
+                </fieldset>
                 <label className="termo-obs">Observação<input value={campo(m, "observacao")} disabled={!editavel} placeholder="ex.: turmas e UCs do termo"
                   onChange={(e) => mudar(m, "observacao", e.target.value)} /></label>
                 {editavel && <button className={`btn ${sujo ? "btn-primario" : ""}`} disabled={!sujo} onClick={() => salvar(m)}>{m.tem_termo ? "Salvar alteração" : "Registrar termo"}</button>}
@@ -143,6 +162,25 @@ export function TermosHorista({ inst, fechar }: { inst: any | null; fechar: () =
               {m.programadas_h != null && <div className="termo-prog">
                 {m.tem_termo && <BarraPct valor={m.pct} fina neutra />}
                 <small className="mudo">{h(m.programadas_h)} de aula programadas no mês{m.tem_termo ? ` · ${m.pct}% do termo` : ""}</small>
+              </div>}
+              {ajuste?.mes === m.mes && <div className="termo-ajuste">
+                <b>⚡ Ajuste por urgência — {m.rotulo}</b>
+                <div className="termo-campos">
+                  <label>Novas horas de aula no mês<input type="number" min={0} max={220} step={0.5} value={ajuste.horas_aula}
+                    onChange={(e) => setAjuste({ ...ajuste, horas_aula: e.target.value })} /></label>
+                  {ajuste.dias_termo.length > 0 && <fieldset className="termo-dias"><legend>Incluir dia(s) fora do termo</legend>
+                    {DIAS_CURTOS.map((nome, k) => ajuste.dias_termo.includes(k) ? null : <label key={k} className="dia-chk"><input type="checkbox" checked={ajuste.incluir_dias.includes(k)}
+                      onChange={(e) => setAjuste({ ...ajuste, incluir_dias: e.target.checked ? [...ajuste.incluir_dias, k] : ajuste.incluir_dias.filter((x: number) => x !== k) })} />{nome}</label>)}
+                  </fieldset>}
+                  <label className="termo-obs">Motivo (a urgência)<input value={ajuste.motivo} placeholder="ex.: substituição da turma HTC-ELT-12 em 12/11"
+                    onChange={(e) => setAjuste({ ...ajuste, motivo: e.target.value })} /></label>
+                </div>
+                <label className="concorda"><input type="checkbox" checked={ajuste.concordancia} onChange={(e) => setAjuste({ ...ajuste, concordancia: e.target.checked })} />
+                  {inst?.nome} concordou com o ajuste do termo</label>
+                <div className="acoes-linha">
+                  <button className="btn" onClick={() => setAjuste(null)}>Cancelar</button>
+                  <button className="btn btn-primario" disabled={!ajuste.concordancia || ajuste.motivo.trim().length < 5} onClick={ajustar}>Ajustar o termo</button>
+                </div>
               </div>}
             </div>
           );

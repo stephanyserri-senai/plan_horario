@@ -94,7 +94,7 @@ export default function Substituicao({ cenarioId, publicado, aula, fechar }: { c
             {xs.map((i) => (
               <label key={i.id} className={`sub-cand ${sub === i.id ? "marcada" : ""} ${g === "indisponivel" ? "desabilitado" : ""}`}>
                 <input type="radio" name="substituto" checked={sub === i.id} onChange={() => { setSub(i.id); setPrevia(null); }} />
-                <span><b>{i.nome}</b> {presenca(i)} <small className="mudo">{i.area || "sem área"}{i.ministra_uc ? " · ministra a UC" : ""}{i.outra_unidade ? " · outra unidade" : ""}
+                <span><b>{i.nome}</b> {presenca(i)} {i.ajustar_termo && <span className="tag-presenca" title="Horista fora do termo de horas do mês: pode assumir se concordar com o ajuste do termo">⏱ ajustar o termo (com a concordância dele)</span>} <small className="mudo">{i.area || "sem área"}{i.ministra_uc ? " · ministra a UC" : ""}{i.outra_unidade ? " · outra unidade" : ""}
                   {g === "parcial" ? ` · livre em ${i.dias_livres} de ${i.dias_avaliados} dias` : ""}</small>
                   {i.motivos.length > 0 && <small className="sub-motivos">{i.motivos.join(" · ")}</small>}</span>
               </label>))}

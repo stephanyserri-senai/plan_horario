@@ -1535,5 +1535,11 @@ END $$;
 
 UPDATE alembic_version SET version_num='0017' WHERE alembic_version.version_num = '0016';
 
+-- Running upgrade 0017 -> 0018
+
+ALTER TABLE termos_horas ADD COLUMN dias_semana INTEGER[];
+
+UPDATE alembic_version SET version_num='0018' WHERE alembic_version.version_num = '0017';
+
 COMMIT;
 

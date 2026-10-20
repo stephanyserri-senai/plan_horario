@@ -568,15 +568,19 @@ def validar_aula(b: BaseDados, a: AulaProposta, ignorar: set[int] | None = None)
             regra90 = " = 90% da jornada; o restante fica para planejamento" if lim < float(instrutor.limite_ch_letiva) - 1e-6 else ""
             add(BLOQUEIO, "LIMITE_SEMANAL", f"{instrutor.nome} somaria {min_sem / 60:.1f} h letivas na semana (limite {lim:.1f} h{regra90}).", "instrutor", instrutor.id)
         if instrutor.modalidade == "horista":
-            # horista: o termo de horas do mês define as horas de aula que ele assume naquele mês
-            from app.services.termos import fim_do_mes, mes_de, rotulo_mes
+            # horista: o termo de horas do mês define as horas (e os dias) previstas; é ajustável numa urgência, com a
+            # concordância do instrutor — por isso é alerta. O que impede é estar ocupado e o limite do contrato (acima).
+            from app.services.termos import DIAS_NOME, fim_do_mes, mes_de, rotulo_mes
             termo = b.termo_mes(instrutor.id, mes_de(d))
             if termo is not None:
                 do_mes = [s for s in b.sessoes_instrutor_periodo(instrutor.id, mes_de(d), fim_do_mes(d)) if s.id not in ignorar]
                 min_mes = sum(s.minutos_aula for s in do_mes) + a.minutos_aula
                 if min_mes > float(termo.horas_aula) * 60 + 1e-6:
-                    add(BLOQUEIO, "TERMO_HORAS_MES", f"{instrutor.nome} (horista) somaria {min_mes / 60:.1f} h de aula em {rotulo_mes(mes_de(d))}; "
-                                                     f"o termo de horas do mês é de {float(termo.horas_aula):g} h.", "instrutor", instrutor.id)
+                    add(ALERTA, "TERMO_HORAS_MES", f"{instrutor.nome} (horista) somaria {min_mes / 60:.1f} h de aula em {rotulo_mes(mes_de(d))}, acima do termo "
+                                                   f"({float(termo.horas_aula):g} h): ajuste o termo com a concordância do instrutor.", "instrutor", instrutor.id)
+                if termo.dias_semana and dia not in termo.dias_semana and dia < 6:
+                    add(ALERTA, "TERMO_FORA_DOS_DIAS", f"{DIAS_NOME[dia].capitalize()} não está no termo de {rotulo_mes(mes_de(d))} de {instrutor.nome}: "
+                                                       "inclua o dia no termo, com a concordância do instrutor.", "instrutor", instrutor.id)
         descanso = timedelta(hours=float(instrutor.intervalo_minimo_h or 0))
         if descanso:
             for s in b.sessoes_instrutor(instrutor.id, d - timedelta(days=1)):

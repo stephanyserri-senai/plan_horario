@@ -181,21 +181,16 @@ def ranking(db: Session, cenario_id: int, d0: date, d1: date, unidades=None, lim
     horas, semanas = _horas_por_instrutor(db, cenario_id, d0, d1, [i.id for i in insts])
     n = _n_semanas(d0, d1)
     areas = {a.id: a.nome for a in db.scalars(select(Area))}
-    from app.services import termos as termos_svc
-    termos = termos_svc.termos_do(db, [i.id for i in insts if i.modalidade == "horista"], d0, d1)
     linhas = []
     for i in insts:
-        # mensalista: jornada semanal fixa (teto 90%); horista com termo: as horas de aula do termo do mês (teto 100%)
-        carga, pelo_termo = termos_svc.capacidade_semanal(i, d0, d1, termos.get(i.id))
+        # horista ou mensalista: a ocupação é medida sobre a carga máxima do contrato (o termo do horista é ajustável)
+        carga = float(i.carga_horaria_contratual or 0)
         media = horas[i.id] / n
         pct = 100 * media / carga if carga else 0
         pico = max(semanas[i.id].values(), default=0)
-        teto = 100.0 if pelo_termo else OCUPACAO_MAXIMA * 100
-        linhas.append({"id": i.id, "nome": i.nome, "area": areas.get(i.area_id), "modalidade": i.modalidade, "carga_h": round(carga, 1),
-                       "base": "termo de horas" if pelo_termo else "jornada semanal", "teto_pct": teto,
+        linhas.append({"id": i.id, "nome": i.nome, "area": areas.get(i.area_id), "modalidade": i.modalidade, "carga_h": carga,
                        "aula_media_semana_h": round(media, 1), "maior_semana_h": round(pico, 1), "ocupacao_pct": round(pct, 1),
-                       "pico_pct": round(100 * pico / carga, 1) if carga else 0,
-                       "faixa": ("acima_teto" if pct > 100 + 1e-6 else "ideal" if pct >= 70 else faixa(pct)) if pelo_termo else faixa(pct)})
+                       "pico_pct": round(100 * pico / carga, 1) if carga else 0, "faixa": faixa(pct)})
     linhas.sort(key=lambda x: -x["ocupacao_pct"])
     amb = indicadores.ocupacao_ambientes(db, cenario_id, d0, d1, unidades_permitidas=unidades)
     salas = sorted([{"id": a["ambiente_id"], "codigo": a["codigo"], "nome": a["nome"], "tipo": a["tipo"], "horas_ocupadas": a["horas_ocupadas"],

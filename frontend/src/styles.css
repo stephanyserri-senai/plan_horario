@@ -882,3 +882,10 @@ li.sem-marcador { list-style: none; margin-left: -18px; }
 :root[data-theme="dark"] .tq-N { background: #2c2552; color: #c2b6ff; } :root[data-theme="dark"] .tq-S { background: #173527; color: #6fd3a0; }
 .cap { text-transform: capitalize; }
 .qd-disp { white-space: nowrap; }
+.termo-dias { border: 0; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
+.termo-dias legend { font-size: .78rem; color: var(--mudo); padding: 0; margin-bottom: 3px; width: 100%; }
+.dia-chk { display: inline-flex !important; align-items: center; gap: 3px; color: var(--texto) !important; font-size: .82rem !important; }
+.termo-urg { margin-left: auto; text-decoration: none; }
+.termo-ajuste { border: 1px solid var(--alerta); background: var(--alerta-bg); border-radius: 10px; padding: 10px 12px; display: grid; gap: 8px; }
+.concorda { display: flex; align-items: center; gap: 6px; font-weight: 600; }
+.alerta-txt { color: var(--alerta); }

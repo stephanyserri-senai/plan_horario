@@ -143,12 +143,13 @@ def catalogo() -> list[dict]:
     regra("MODALIDADE", "Instrutores", "obrigatoria", "Mensalista e horista",
           "Mensalista tem as horas garantidas (aula, PL, PJ ou TR); horista não (turno sem aula pode ser dispensa). A modalidade não depende do turno.",
           ["cadastro", "agenda do instrutor"])
-    regra("TERMO_HORAS", "Instrutores", "obrigatoria", "Termo de horas do horista",
-          "Mensalista tem jornada semanal fixa (ex.: 40 h), com aulas até 90% dela. Horista recebe todo mês um termo de horas, que define as "
-          "horas de aula que assume naquele mês (e outras ocupações) e pode mudar de um mês para outro. Com termo, as aulas do mês não passam "
-          "das horas do termo (validação e gerador) e a ocupação é medida sobre ele; sem termo do mês, vale o limite semanal do cadastro e o "
-          "caso aparece em Riscos, assim como aulas acima de um termo que diminuiu.",
-          ["disponibilidade e termos", "validação", "gerador", "ocupação", "riscos"])
+    regra("TERMO_HORAS", "Instrutores", "aviso", "Termo de horas do horista (ajustável)",
+          "Mensalista tem jornada semanal fixa (ex.: 40 h), com aulas até 90% dela. Horista recebe todo mês um termo de horas: as horas de "
+          "aula do mês (e outras ocupações) e, se for o caso, os dias da semana. O termo é adaptável: numa urgência (alguém num dia ou num "
+          "total de horas fora do termo) ele é ajustado, desde que o instrutor concorde — o ajuste fica registrado com o motivo. Por isso aula "
+          "fora do termo é alerta; o que impede, para horista e mensalista, é já estar ocupado e a carga máxima do contrato. A geração do "
+          "semestre procura manter o horista dentro do termo; a simulação e a previsão de turmas não olham o termo.",
+          ["disponibilidade e termos", "validação", "gerador", "simulador", "riscos", "substituição"])
     regra("NIVEL", "Instrutores", "obrigatoria", "Nível básico ou técnico",
           f"Instrutor BÁSICO só dá aula em aprendizagem industrial básica e qualificações ({', '.join(sorted(OFERTAS_BASICAS))}); TÉCNICO, em todas as modalidades "
           f"(inclusive {', '.join(sorted(OFERTAS_TECNICAS))}). Sem exceção.", ["gerador", "validação", "substituição", "quadro"])

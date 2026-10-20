@@ -112,11 +112,12 @@ def candidatos(db: Session, cenario_id: int, aulas: list[Alocacao], max_dias: in
     for i in db.scalars(select(Instrutor).where(Instrutor.ativo.is_(True), Instrutor.situacao == "ativo")):
         if i.id in atuais:
             continue
-        bloqueados, precisa_exc, motivos, presenca = 0, False, [], set()
+        bloqueados, precisa_exc, motivos, presenca, termo = 0, False, [], set(), False
         for bl in amostra:
             oc = validar_aula(b, AulaProposta(turma_uc_id=bl["turma_uc_id"], inicio=bl["inicio"], fim=bl["fim"], minutos_aula=bl["minutos"],
                                               grupo=bl["grupo"], instrutor_id=i.id, origem="substituicao"), ignorar)
             proprios = [o for o in oc if o.recurso_tipo == "instrutor" and o.severidade == "bloqueio"]
+            fora_termo = [o for o in oc if o.regra in ("TERMO_HORAS_MES", "TERMO_FORA_DOS_DIAS")]
             impeditivos = [o for o in proprios if o.regra not in EXCECIONAVEIS]
             if impeditivos:
                 bloqueados += 1
@@ -128,6 +129,9 @@ def candidatos(db: Session, cenario_id: int, aulas: list[Alocacao], max_dias: in
                 motivos.append(falta)
                 continue
             presenca.add(RESERVAS[r.tipo] if r else "vazio")
+            if fora_termo:  # horista fora do termo: pode, se ele concordar em ajustar o termo
+                termo = True
+                motivos += [o.descricao for o in fora_termo]
             if proprios:  # só outra área / sem a UC: assume com exceção justificada
                 precisa_exc = True
                 motivos += [o.descricao for o in proprios]
@@ -140,7 +144,7 @@ def candidatos(db: Session, cenario_id: int, aulas: list[Alocacao], max_dias: in
                     "ministra_uc": bool(comps.get(i.id, set()) & ucs), "outra_unidade": i.unidade_id not in unidades,
                     # PL/PJ = está na escola; vazio = precisa ser acionado com antecedência
                     "presenca": sorted(presenca, key=["PL", "PJ", "vazio"].index), "na_escola": bool(presenca) and "vazio" not in presenca,
-                    "motivos": list(dict.fromkeys(motivos))[:4]})
+                    "ajustar_termo": termo, "motivos": list(dict.fromkeys(motivos))[:4]})
     ordem = {"recomendado": 0, "excecao": 1, "parcial": 2, "indisponivel": 3}
     res.sort(key=lambda x: (ordem[x["grupo"]], not x["na_escola"], x["outra_unidade"], not x["ministra_uc"], -x["dias_livres"], x["nome"]))
     return {"aulas": len(aulas), "dias": len(blocos), "dias_avaliados": len(amostra), "instrutores": res,

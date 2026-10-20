@@ -113,7 +113,7 @@ def analisar(db: Session, cenario_id: int, unidades=None, hoje: date | None = No
     # 7) instrutores acima do teto de 90% em alguma semana
     rk = analise_ocupacao.ranking(db, cenario_id, hoje, fim, unidades, limite=500)
     sobre = [{"instrutor": i["nome"], "media_pct": i["ocupacao_pct"], "pico_pct": i["pico_pct"], "maior_semana_h": i["maior_semana_h"]}
-             for i in rk["instrutores_mais"] if i["pico_pct"] > i.get("teto_pct", 90) + 1e-6 and i.get("base") != "termo de horas"]
+             for i in rk["instrutores_mais"] if i["pico_pct"] > 90 + 1e-6]
     riscos.append(_risco("sobrecarga", "Instrutores acima do teto de 90% em alguma semana", "media", sobre,
                          "Na semana mais cheia o instrutor passa de 90% da jornada com aula (sem turno de planejamento): risco de desgaste e de não ter quem substitua.",
                          "Redistribua aulas para quem tem folga (ranking de ocupação em Consultas).", "/consultas"))
@@ -121,10 +121,10 @@ def analisar(db: Session, cenario_id: int, unidades=None, hoje: date | None = No
     # 7b) horistas: aula num mês sem termo de horas, ou acima do termo do mês
     from app.services import termos as termos_svc
     termo = termos_svc.pendencias(db, cenario_id, unidades, hoje, fim)
-    riscos.append(_risco("termo_horas", "Horistas sem termo do mês ou acima do termo", "alta" if any(t["termo_h"] is not None for t in termo) else "media",
-                         termo, "O horista recebe todo mês um termo de horas, que define as horas de aula dele no mês. Sem o termo, vale só o limite "
-                         "semanal do cadastro; com o termo menor do que o programado, há aulas que ele não pode assumir.",
-                         "Registre ou ajuste o termo do mês (Instrutores → Disponibilidade e termos) ou passe as aulas excedentes para outro instrutor.",
+    riscos.append(_risco("termo_horas", "Horistas sem termo do mês ou fora do termo", "media", termo,
+                         "O horista recebe todo mês um termo de horas (horas de aula do mês e, se for o caso, os dias). O termo é ajustável: "
+                         "numa urgência ele pode ser mudado, desde que o instrutor concorde. Sem termo, vale o limite semanal do contrato.",
+                         "Abra o risco: a sugestão ajusta o termo do mês (confirme a concordância do instrutor) ou registre o termo que falta.",
                          "/cadastros/instrutores?aba=disponibilidade_instrutores"))
 
     # 8) falta de capacidade (salas, laboratórios ou instrutores compatíveis)

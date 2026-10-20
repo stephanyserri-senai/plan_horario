@@ -36,10 +36,11 @@ UC transversal/técnica, substituição, solicitações, quadro 5:4...) estão e
   (sim = 1, em partes = 0,5, sem a certificação exigida = 0; transversais fora; versões da matriz juntas pelo código da UC),
   por curso, área e geral. O que falta vira proposta de PDI (`pdi_itens`); concluir com "habilitar" marca a UC como sim.
   Perfil do instrutor: `GET /api/instrutores/{id}/perfil` (lista de instrutores em cartões, clique abre o perfil).
-- Modalidade: mensalista = jornada semanal fixa (teto de 90%); horista = termo de horas mensal (`termos_horas`, `services/termos.py`):
-  as aulas do mês não passam do termo (validação TERMO_HORAS_MES; o gerador usa o limite semanal correspondente) e a ocupação é
-  medida sobre o termo; sem termo vale o limite semanal do cadastro (risco `termo_horas`). Aba "Disponibilidade e termos de horas":
-  uma linha por instrutor (`GET /api/instrutores/disponibilidade`).
+- Modalidade: mensalista = jornada semanal fixa (teto de 90%); horista = termo de horas mensal (`termos_horas`, `services/termos.py`:
+  horas de aula do mês e, opcional, dias da semana). O termo é ajustável numa urgência com a concordância do instrutor
+  (`termos.ajustar`, ação `ajustar_termo`), então aula fora do termo é ALERTA (TERMO_HORAS_MES / TERMO_FORA_DOS_DIAS); o que impede
+  é estar ocupado e a carga máxima do contrato. A geração do semestre procura manter o horista no termo; simulação e previsão de
+  turmas ignoram o termo; a ocupação é medida sobre o contrato. Aba "Disponibilidade e termos de horas": uma linha por instrutor.
 - Riscos: `services/resolucoes.sugerir` dá uma correção por caso (acao para `services/sugestoes.aplicar`); trocar sala e
   remarcar valem também com o horário publicado (ajuste operacional, como a substituição).
 

@@ -323,6 +323,20 @@ def salvar_termo(iid: int, mes: str, d: dict = Body(...), cenario_id: int | None
     """Registra ou altera o termo de horas do mês (AAAA-MM): {"horas_aula", "horas_outras"?, "observacao"?}."""
     from app.services import termos as termos_svc
     inst = _instrutor(db, ctx, iid)
-    r = termos_svc.salvar(db, ctx, inst, mes, d.get("horas_aula"), d.get("horas_outras") or 0, d.get("observacao"), cenario_id)
+    r = termos_svc.salvar(db, ctx, inst, mes, d.get("horas_aula"), d.get("horas_outras") or 0, d.get("observacao"), cenario_id,
+                          dias_semana=d.get("dias_semana"))
+    db.commit()
+    return r
+
+
+@router.post("/instrutores/{iid}/termos/{mes}/ajuste")
+def ajustar_termo(iid: int, mes: str, d: dict = Body(...), cenario_id: int | None = None, ctx: Contexto = Depends(requer("cadastros.editar")),
+                  db: Session = Depends(get_db)):
+    """Ajuste do termo por urgência: {"horas_aula"?, "incluir_dias"?, "motivo", "concordancia": true}. Sem a concordância do
+    instrutor, o ajuste é recusado."""
+    from app.services import termos as termos_svc
+    inst = _instrutor(db, ctx, iid)
+    r = termos_svc.ajustar(db, ctx, inst, mes, d.get("motivo") or "", bool(d.get("concordancia")), horas_aula=d.get("horas_aula"),
+                           incluir_dias=d.get("incluir_dias"), cenario_id=cenario_id)
     db.commit()
     return r

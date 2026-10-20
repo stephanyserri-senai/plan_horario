@@ -165,9 +165,9 @@ function VisaoGeral({ d }: { d: any }) {
             <ul className="lista-limpa disp">
               {d.termos.meses.map((m: any) => <li key={m.mes}><b className="cap">{m.rotulo}</b>{" "}
                 {m.tem_termo ? <small>{m.horas_aula} h de aula{m.horas_outras ? ` + ${m.horas_outras} h outras` : ""}{m.programadas_h != null ? ` · ${m.programadas_h} h programadas` : ""}</small>
-                  : <Badge tipo="alerta">sem termo</Badge>}{m.excedente_h > 0 && <> <Badge tipo="bloqueio">{m.excedente_h} h acima</Badge></>}</li>)}
+                  : <Badge tipo="alerta">sem termo</Badge>}{m.excedente_h > 0 && <> <Badge tipo="alerta">{m.excedente_h} h acima (ajustável)</Badge></>}</li>)}
             </ul>
-            <p className="sub">Horista: as horas de aula de cada mês vêm do termo, que pode mudar mês a mês.</p>
+            <p className="sub">Horista: as horas de aula de cada mês vêm do termo, ajustável numa urgência com a concordância do instrutor. O limite real é a carga do contrato.</p>
           </> : <p className="sub">Mensalista: jornada fixa de {d.dados.carga_contratual} h/semana · aulas até {d.dados.limite_letivo} h (teto de 90%)</p>}
         </section>
       </div>

@@ -14,7 +14,7 @@ const COLUNAS: Record<string, string> = {
 };
 const DATAS = new Set(["data", "prazo", "de", "ate"]);
 // riscos que o sistema resolve sugerindo uma correção por caso; os outros levam à página certa
-const RESOLVIVEIS = new Set(["sem_recurso", "instrutor_ausente", "sala_indisponivel", "nao_letivo", "dependencia", "prazo", "capacidade"]);
+const RESOLVIVEIS = new Set(["sem_recurso", "instrutor_ausente", "sala_indisponivel", "nao_letivo", "dependencia", "prazo", "capacidade", "termo_horas"]);
 const PAGINA: Record<string, [string, string]> = {
   solicitacoes: ["/solicitacoes", "Abrir as solicitações"], epis: ["/epis", "Abrir o controle de EPIs"],
   sobrecarga: ["/consultas", "Ver o ranking de ocupação"], termo_horas: ["/cadastros/instrutores?aba=disponibilidade_instrutores", "Abrir disponibilidade e termos"], padrao_dias: ["/cadastros/turmas", "Abrir o cadastro de turmas"],
@@ -72,7 +72,7 @@ function Risco({ x, aberto, alternar, mudou, cenarioId }: { x: any; aberto: bool
         <p>{x.descricao}</p>
         <p className="sub"><b>O que fazer:</b> {x.o_que_fazer}</p>
         {resolvivel ? <Sugestoes codigo={x.codigo} cenarioId={cenarioId} mudou={mudou} /> : <>
-          <Tabela colunas={Object.keys(x.itens[0] || {}).map((c) => ({ chave: c, rotulo: COLUNAS[c] || c, render: DATAS.has(c) ? (l: any) => dataBR(l[c]) : undefined }))}
+          <Tabela colunas={Object.keys(x.itens[0] || {}).filter((c) => !c.startsWith("_")).map((c) => ({ chave: c, rotulo: COLUNAS[c] || c, render: DATAS.has(c) ? (l: any) => dataBR(l[c]) : undefined }))}
             linhas={x.itens} chave={(_l: any, k: number) => k} />
           {x.quantidade > x.itens.length && <p className="sub">Mostrando {x.itens.length} de {x.quantidade}.</p>}
           {PAGINA[x.codigo] && <Link className="btn btn-primario" to={PAGINA[x.codigo][0]}>{PAGINA[x.codigo][1]} →</Link>}
@@ -90,6 +90,11 @@ function Sugestoes({ codigo, cenarioId, mudou }: { codigo: string; cenarioId: nu
   const [ocupado, setOcupado] = useState(false);
   const podeAceitar = pode("alocacoes.editar");
   const aceitar = async (it: any, acao: any = it.acao) => {
+    if (acao?.requer_concordancia) {
+      // termo de horas do horista: só se ajusta com a concordância do instrutor
+      if (!confirm(`${it.caso}\n\n${acao === it.acao ? it.sugestao : ""}\n\nO instrutor concordou com o ajuste do termo?`)) return false;
+      acao = { ...acao, concordancia: true };
+    }
     try {
       const r = await api.post("/api/sugestoes/aplicar", { cenario_id: cenarioId, acao, gerar: false });
       setEstado((e) => ({ ...e, [it.id]: { ok: true, msg: r.mensagem || "Aplicada." } }));
@@ -99,7 +104,8 @@ function Sugestoes({ codigo, cenarioId, mudou }: { codigo: string; cenarioId: nu
       return false;
     }
   };
-  const pendentes = (s.dados?.itens || []).filter((i: any) => i.acao && !estado[i.id]?.ok);
+  // "Aceitar todas" não inclui o que depende da concordância de alguém (ajuste do termo do horista)
+  const pendentes = (s.dados?.itens || []).filter((i: any) => i.acao && !estado[i.id]?.ok && !i.acao.requer_concordancia);
   const aceitarTodas = async () => {
     setOcupado(true);
     let n = 0;

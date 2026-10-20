@@ -319,7 +319,8 @@ def montar_entrada(db: Session, cenario: CenarioPlanejamento, escopo: dict, peso
     instrutores = []
     from app.services import termos as termos_svc
     t0, t1 = cenario.periodo_inicio or date.today(), cenario.periodo_fim or date.today()
-    termos_h = termos_svc.termos_do(db, instr_ids, t0, t1)
+    simulacao = (escopo or {}).get("tipo") == "simulacao" or getattr(cenario, "tipo", "planejamento") == "simulacao"
+    termos_h = {} if simulacao else termos_svc.termos_do(db, instr_ids, t0, t1)
     for i in db.scalars(select(Instrutor).where(Instrutor.id.in_(instr_ids))):
         disp = [(j.dia_semana, minutos(j.hora_inicio), minutos(j.hora_fim))
                 for j in db.scalars(select(DisponibilidadeInstrutor).where(DisponibilidadeInstrutor.instrutor_id == i.id))]
@@ -331,7 +332,12 @@ def montar_entrada(db: Session, cenario: CenarioPlanejamento, escopo: dict, peso
         uns = sorted({i.unidade_id, *db.scalars(select(InstrutorUnidade.unidade_id).where(InstrutorUnidade.instrutor_id == i.id))})
         unidades.update(uns)
         lim_sem = limite_letivo_efetivo(i)
-        if i.modalidade == "horista" and termos_h.get(i.id):
+        # geração do semestre: o horista fica, de preferência, dentro do termo do mês (horas e dias); na simulação de
+        # turmas o termo não conta (é ajustável) — só a ocupação e a carga máxima do contrato
+        if i.modalidade == "horista" and termos_h.get(i.id) and not simulacao:
+            dias_termo = [set(t.dias_semana) for t in termos_h[i.id].values() if t.dias_semana]
+            if dias_termo and len(dias_termo) == len(termos_h[i.id]):
+                disp = [j for j in disp if j[0] in set.union(*dias_termo)]
             # horista: a semana não passa do que o termo do mês mais folgado permite (o mês exato a validação confere)
             lim_sem = min(lim_sem, max(float(t.horas_aula) * 7 / ((termos_svc.fim_do_mes(m) - m).days + 1) for m, t in termos_h[i.id].items()))
         instrutores.append(InstrutorS(i.id, uns, disp, int(lim_sem * 60), int(float(i.max_horas_dia) * 60),
