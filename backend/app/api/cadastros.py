@@ -893,6 +893,44 @@ def estrutura_curricular(area_id: int | None = None, db: Session = Depends(get_d
     return res
 
 
+@router.get("/estrutura-curricular/ucs")
+def todas_as_ucs(ativas: bool = True, db: Session = Depends(get_db), ctx: Contexto = Depends(get_contexto)):
+    """Todas as UCs (das versões da matriz) com curso, versão e área, quantos instrutores podem dar cada uma e em quantas
+    turmas ativas ela está — para a lista de UCs da página de cursos."""
+    from collections import defaultdict as _dd
+    from app.models import Area, Curso, Turma, TurmaUC
+    from app.services import aderencia
+    ctx.exigir("cadastros.ler")
+    areas = {a.id: a for a in db.scalars(select(Area))}
+    cursos = {c.id: c for c in db.scalars(select(Curso))}
+    matrizes = {m.id: m for m in db.scalars(select(MatrizCurricular))}
+    turmas_uc = _dd(int)
+    for uid, n in db.execute(select(TurmaUC.uc_id, func.count(func.distinct(TurmaUC.turma_id))).join(Turma, Turma.id == TurmaUC.turma_id)
+                             .where(Turma.ativo.is_(True), Turma.simulacao_id.is_(None), Turma.situacao.notin_(["concluida", "cancelada"]))
+                             .group_by(TurmaUC.uc_id)):
+        turmas_uc[uid] = n
+    base = aderencia.Base(db)
+    res = []
+    for u in db.scalars(select(UnidadeCurricular).where(UnidadeCurricular.ativo.is_(ativas)).order_by(UnidadeCurricular.codigo)):
+        m = matrizes.get(u.matriz_id)
+        c = cursos.get(m.curso_id) if m else None
+        if c is None:
+            continue
+        a = areas.get(c.area_id)
+        if ctx.unidades is not None and a is not None and a.unidade_id not in ctx.unidades:
+            continue
+        hab = None
+        if u.categoria != "transversal":
+            info = base.ucs.get(c.id, {}).get(u.codigo)
+            hab = base.habilitados(info, 0, c.id) if info else 0
+        res.append({"id": u.id, "codigo": u.codigo, "nome": u.nome, "categoria": u.categoria, "carga_horaria_total": u.carga_horaria_total,
+                    "encontros_semanais": u.encontros_semanais, "sequencia": u.sequencia, "certificacao_exigida": u.certificacao_exigida,
+                    "tipos_ambiente": [t.nome for t in u.tipos_ambiente], "matriz_id": u.matriz_id, "versao": m.versao, "tipo_oferta": m.tipo_oferta,
+                    "situacao_versao": m.situacao, "curso_id": c.id, "curso": c.codigo, "curso_nome": c.nome,
+                    "area_id": c.area_id, "area": a.nome if a else None, "habilitados": hab, "turmas": turmas_uc.get(u.id, 0)})
+    return res
+
+
 @router.get("/estrutura-curricular/versoes/{mid}")
 def ucs_da_versao(mid: int, db: Session = Depends(get_db), ctx: Contexto = Depends(get_contexto)):
     """UCs de uma versão da matriz, com classificação, carga horária, dias de aula, salas e certificação."""

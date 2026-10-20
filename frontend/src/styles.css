@@ -1039,3 +1039,25 @@ li.sem-marcador { list-style: none; margin-left: -18px; }
 .uc-ch { display: grid; gap: 3px; } .uc-ch .barra-pct { min-width: 0; }
 .uc-acoes { display: flex; gap: 4px; } .uc-acoes .btn-link { text-decoration: none; }
 @media (max-width: 800px) { .uc-linha { grid-template-columns: 36px 1fr; } .uc-ch, .uc-acoes { grid-column: 2; } .cur-trilha-acoes { margin-left: 0; width: 100%; } .cur-trilha-acoes input { min-width: 0; flex: 1; } }
+
+/* ---------- cursos: listas (cursos, versões, UCs) no estilo da navegação ---------- */
+.lst-barra { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; background: var(--superficie); border: 1px solid var(--borda); border-radius: 12px; padding: 8px 10px; }
+.lst-barra input[type=search] { min-width: 260px; flex: 1; max-width: 380px; }
+.lst-barra .btn-primario { margin-left: auto; }
+.lst { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.lst-linha { display: grid; grid-template-columns: 64px minmax(220px, 2fr) minmax(130px, 1fr) minmax(150px, 1.2fr) auto auto; gap: 12px; align-items: center;
+  background: var(--superficie); border: 1px solid var(--borda); border-radius: 12px; padding: 10px 12px; cursor: pointer; transition: border-color .15s, box-shadow .15s; }
+.lst-linha:hover, .lst-uc:hover { border-color: var(--primaria); box-shadow: 0 4px 14px rgba(20, 50, 79, .08); }
+.lst-linha .cur-sigla, .lst-uc .cur-sigla, .lst-linha > .chip-area, .lst-linha > span:has(> .badge) { justify-self: start; }
+.lst-linha.inativo, .lst-uc.inativo { opacity: .6; cursor: default; }
+.lst-id { display: grid; gap: 2px; min-width: 0; }
+.lst-nums { display: flex; gap: 10px; font-size: .82rem; color: var(--mudo); white-space: nowrap; }
+.lst-acoes { display: flex; align-items: center; gap: 6px; justify-content: flex-end; } .lst-acoes .btn-link { text-decoration: none; }
+.lst-discreto { color: var(--mudo) !important; }
+.lst-peq { font-size: .8rem; }
+.lst-uc { grid-template-columns: 64px minmax(240px, 2fr) minmax(180px, 1.1fr) minmax(120px, auto) auto; cursor: pointer; }
+.lst-hab { display: grid; gap: 2px; white-space: nowrap; }
+@media (max-width: 900px) {
+  .lst-linha, .lst-uc { grid-template-columns: 64px 1fr; } .lst-linha > *:nth-child(n+3), .lst-uc > *:nth-child(n+3) { grid-column: 2; }
+  .lst-acoes { justify-content: flex-start; }
+}

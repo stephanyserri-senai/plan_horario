@@ -204,3 +204,7 @@ def test_estrutura_curricular_para_navegar_por_area(db, mundo):
     cur = a["cursos"][0]
     assert a["instrutores"] == 3 and a["unidade"] == "Unidade 1"
     assert sorted(cur["turmas_ativas"]) == ["T1", "T2"] and cur["epis"] == 0 and cur["dispensa_epi"] is False and cur["versoes"][0]["ucs"] == 3
+    # lista de UCs: curso, área, quantos instrutores podem dar cada uma e em quantas turmas ativas está
+    ucs = {u["codigo"]: u for u in c.get("/api/estrutura-curricular/ucs", headers=_login(c)).json()}
+    assert ucs["A"]["habilitados"] == 2 and ucs["B"]["habilitados"] == 1 and ucs["A"]["turmas"] == 2 and ucs["A"]["curso"] == "C1"
+    assert c.get("/api/estrutura-curricular/ucs?ativas=false", headers=_login(c)).json() == []

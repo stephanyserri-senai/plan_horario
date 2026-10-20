@@ -482,7 +482,7 @@ export default function Cadastro() {
       </div>}
       {aba === "turnos" && <TurnosPadrao aoCriar={() => setVersao((v) => v + 1)} />}
       {ent === "instrutores" && aba === "instrutores" && <AcessosPortal />}
-      {aba === "observacoes" ? <ObservacoesInstrutores /> : aba === "estrutura" ? <EstruturaCurricular /> : aba === "epis" ? <ControleEpis /> : aba === "disponibilidade_instrutores" ? <QuadroDisponibilidade /> : <ListaEntidade key={`${aba}-${versao}`} ent={aba} />}
+      {aba === "observacoes" ? <ObservacoesInstrutores /> : aba === "estrutura" ? <EstruturaCurricular /> : ent === "cursos" && ["cursos", "matrizes", "ucs"].includes(aba) ? <EstruturaCurricular key={aba} visao={aba} /> : aba === "epis" ? <ControleEpis /> : aba === "disponibilidade_instrutores" ? <QuadroDisponibilidade /> : <ListaEntidade key={`${aba}-${versao}`} ent={aba} />}
     </Pagina>
   );
 }
