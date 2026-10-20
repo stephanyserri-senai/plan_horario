@@ -143,3 +143,22 @@ def test_competencias_e_certificacoes_pelo_perfil(db, mundo):
     assert c.post(f"/api/instrutores/{m.i3.id}/certificacoes/{cert['id']}/retirar", headers=h).json()["geral"] == 60.0
     assert c.put(f"/api/instrutores/{m.i3.id}/competencias", json={"curso_id": cid, "uc_codigo": "A", "nivel": "nenhum"}, headers=h).json()["geral"] == 20.0
     assert c.put(f"/api/instrutores/{m.i3.id}/competencias", json={"curso_id": cid, "uc_codigo": "X", "nivel": "pleno"}, headers=h).status_code == 422
+
+
+def test_resumo_dos_cartoes(db, mundo):
+    m = mundo
+    _mundo_com_area(db, m)
+    c = TestClient(app)
+    h = _login(c)
+    r = c.get(f"/api/instrutores/resumo?cenario_id={m.cen.id}", headers=h).json()
+    i1 = r[str(m.i1.id)]
+    assert i1["ucs_sim"] == 2 and i1["semestre"]["turmas"] == 0 and i1["alertas"] == []
+    # horista sem termo do mês e certificação vencida aparecem como alerta
+    from datetime import date
+    from app.models import HabilitacaoInstrutor, Instrutor
+    db.get(Instrutor, m.i2.id).modalidade = "horista"
+    db.add(HabilitacaoInstrutor(instrutor_id=m.i2.id, nome="NR-10", valido_ate=date(2020, 1, 1), ativo=True))
+    db.commit()
+    i2 = c.get(f"/api/instrutores/resumo?cenario_id={m.cen.id}", headers=h).json()[str(m.i2.id)]
+    textos = {a["texto"] for a in i2["alertas"]}
+    assert "certificação vencida" in textos and any(t.startswith("sem termo de") for t in textos) and i2["termo"]["horas_aula"] is None

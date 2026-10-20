@@ -933,3 +933,46 @@ li.sem-marcador { list-style: none; margin-left: -18px; }
 .seg-op:not(:disabled):hover { background: var(--fundo); }
 .seg-op.on { font-weight: 700; } .seg-op.on-pleno { background: var(--ok-bg); color: var(--ok); } .seg-op.on-parcial { background: var(--alerta-bg); color: var(--alerta); }
 .seg-op.on-nenhum { background: var(--fundo); color: var(--mudo); }
+
+/* ---------- cartões de instrutor (v2): dados, semestre, competências, alertas e ações ---------- */
+.grade-inst { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+.cartao-inst { cursor: default; padding: 0; gap: 0; overflow: hidden; position: relative; }
+.cartao-inst::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 4px; background: linear-gradient(90deg, var(--primaria), var(--grafico-1)); }
+.cartao-inst.com-bloqueio::before { background: linear-gradient(90deg, var(--erro), #d9a227); }
+.cartao-inst.inativo { opacity: .6; }
+.cartao-inst > * { padding-left: 14px; padding-right: 14px; }
+.ci-cab { display: flex; align-items: flex-start; gap: 12px; width: 100%; background: none; border: 0; text-align: left; font: inherit; color: var(--texto);
+  cursor: pointer; padding-top: 16px; padding-bottom: 8px; }
+.ci-cab:hover b { color: var(--primaria); }
+.ci-id { display: grid; gap: 2px; flex: 1; min-width: 0; } .ci-id > b { font-size: 1.02rem; }
+.ci-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; } .ci-tags .modalidade { font-size: .72rem; padding: 2px 8px; }
+.ci-anel { display: grid; justify-items: center; gap: 1px; } .ci-anel small { font-size: .66rem; color: var(--mudo); text-transform: uppercase; letter-spacing: .4px; }
+.cartao-inst .cartao-inst-areas { padding-bottom: 10px; }
+.ci-numeros { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--borda); border-top: 1px solid var(--borda); border-bottom: 1px solid var(--borda);
+  padding: 0 !important; }
+.ci-numeros > div { background: var(--superficie); display: grid; gap: 2px; padding: 8px 10px; align-content: start; }
+.ci-numeros small:first-child { font-size: .66rem; color: var(--mudo); text-transform: uppercase; letter-spacing: .4px; font-weight: 600; }
+.ci-numeros b { font-size: 1.05rem; } .ci-numeros small { font-size: .7rem; } .ci-numeros .barra-pct { min-width: 0; }
+.cartao-inst .cartao-inst-cursos { padding-top: 10px; padding-bottom: 8px; }
+.ci-certs, .ci-alertas { display: flex; flex-wrap: wrap; gap: 4px; padding-bottom: 8px; }
+.chip-area.ca-cert { background: var(--ok-bg); color: var(--ok); border-color: transparent; }
+.chip-area.ca-vence { background: var(--alerta-bg); color: var(--alerta); border-color: transparent; }
+.chip-area.ca-vencida { background: var(--erro-bg); color: var(--erro); border-color: transparent; text-decoration: line-through; }
+.ci-acoes { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; padding-top: 8px; padding-bottom: 10px; border-top: 1px solid var(--borda);
+  background: var(--fundo); margin-top: auto; }
+.ci-acoes .btn-link { text-decoration: none; font-size: .82rem; }
+.ci-acoes .ci-inativar { margin-left: auto; color: var(--mudo); }
+.cartao-inst { display: flex; flex-direction: column; }
+.ci-barra { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; margin: 4px 0 0; }
+.ci-rapidos { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip-filtro { border: 1px solid var(--borda); background: var(--superficie); color: var(--texto); border-radius: 999px; padding: 4px 12px; font: inherit; font-size: .82rem; cursor: pointer; }
+.chip-filtro:hover { border-color: var(--primaria); } .chip-filtro.on { background: var(--primaria); color: var(--primaria-txt); border-color: var(--primaria); }
+@media (max-width: 520px) { .ci-numeros { grid-template-columns: repeat(2, 1fr); } }
+.re-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 8px; flex: 1; min-width: 300px; }
+.re-kpis > div { display: grid; padding: 6px 12px; border-radius: 10px; background: var(--fundo); }
+.re-kpis b { font-size: 1.25rem; } .re-kpis small { font-weight: 600; font-size: .75rem; } .re-kpis span { font-size: .7rem; }
+.re-kpis .re-alerta { background: var(--alerta-bg); } .re-kpis .re-alerta b { color: var(--alerta); }
+.ci-vazio { grid-column: 1 / -1; padding: 24px; text-align: center; border: 1px dashed var(--borda); border-radius: 14px; color: var(--mudo); background: var(--superficie); }
+.resumo-equipe { display: grid; grid-template-columns: minmax(240px, auto) 1fr auto; }
+.re-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); min-width: 0; }
+@media (max-width: 1100px) { .resumo-equipe { grid-template-columns: 1fr; } .re-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

@@ -241,8 +241,12 @@ export function ListaEntidade({ ent }: { ent: string }) {
   const [visao, setVisao] = useState<"cartoes" | "tabela">("cartoes");
   const equipe = useCarregar<any>(() => (ent === "instrutores" ? api.get("/api/aderencia/equipe") : Promise.resolve(null)), [ent, unidadeTopo]);
   const adPor: Record<number, any> = useMemo(() => Object.fromEntries((equipe.dados?.instrutores || []).map((x: any) => [x.instrutor_id, x])), [equipe.dados]);
+  const resumo = useCarregar<any>(() => (ent === "instrutores" ? api.get(`/api/instrutores/resumo${qs({ cenario_id: cenario?.id })}`) : Promise.resolve(null)), [ent, unidadeTopo, cenario?.id]);
+  const [ordem, setOrdem] = useState("nome");
+  const [rapido, setRapido] = useState("");
   useEffect(() => { setPagina(1); setFiltros((sp.get("id") ? { id: sp.get("id")! } : {}) as Record<string, string>); }, [ent, sp]);
-  const lista = useCarregar(() => api.get(`/api/cadastros/${ent}${qs({ q, pagina, por_pagina: 25, ativo: meta?.inativavel ? ativo : "", ...filtros })}`),
+  const porPagina = ent === "instrutores" ? 60 : 25;
+  const lista = useCarregar(() => api.get(`/api/cadastros/${ent}${qs({ q, pagina, por_pagina: porPagina, ativo: meta?.inativavel ? ativo : "", ...filtros })}`),
     [ent, q, pagina, ativo, JSON.stringify(filtros), meta?.inativavel]);
   // ?id=…&editar=1 (vindo de outra aba, ex.: disponibilidade): abre a edição do registro
   useEffect(() => {
@@ -312,10 +316,31 @@ export function ListaEntidade({ ent }: { ent: string }) {
         {meta.fixa && <span className="sub">🔒 Cadastro fixo da instituição: não é possível incluir, excluir ou renomear.</span>}
       </div>
       {lista.erro && <div className="erro-box">{lista.erro}</div>}
-      {ent === "instrutores" && equipe.dados && <ResumoEquipe e={equipe.dados} visao={visao} setVisao={setVisao} />}
+      {ent === "instrutores" && equipe.dados && <ResumoEquipe e={equipe.dados} visao={visao} setVisao={setVisao} itens={lista.dados?.itens || []} r={resumo.dados || {}} />}
+      {ent === "instrutores" && visao === "cartoes" && <div className="ci-barra">
+        <div className="ci-rapidos" role="group" aria-label="Filtro rápido">
+          {[["", "Todos"], ["alertas", "⚠ Com alertas"], ["mensalista", "Mensalistas"], ["horista", "Horistas"], ["pdi", "Com PDI em aberto"]].map(([k, rot]) => (
+            <button key={k} className={`chip-filtro ${rapido === k ? "on" : ""}`} onClick={() => setRapido(k)}>{rot}</button>))}
+        </div>
+        <label className="mudo">Ordenar por <select value={ordem} onChange={(e) => setOrdem(e.target.value)} aria-label="Ordenar instrutores">
+          <option value="nome">Nome</option><option value="aderencia_menor">Menor aderência</option><option value="aderencia_maior">Maior aderência</option>
+          <option value="ocupacao_maior">Mais aulas na semana</option><option value="ocupacao_menor">Menos aulas na semana</option><option value="alertas">Alertas primeiro</option>
+        </select></label>
+      </div>}
       {ent === "instrutores" && visao === "cartoes" ? <div className="grade-inst">
-        {(lista.dados?.itens || []).map((l: any) => <CartaoInstrutor key={l.id} l={l} ad={adPor[l.id]} abrir={() => setPerfil(l.id)} />)}
-        {lista.dados && !lista.dados.itens.length && <p className="mudo">Nenhum instrutor encontrado.</p>}
+        {ordenarInstrutores((lista.dados?.itens || []).filter((l: any) => {
+          const r = resumo.dados?.[l.id];
+          return !rapido || (rapido === "alertas" ? r?.alertas?.length : rapido === "pdi" ? r?.pdi?.abertos : l.modalidade === rapido);
+        }), ordem, adPor, resumo.dados || {}).map((l: any) => <CartaoInstrutor key={l.id} l={l} ad={adPor[l.id]} r={resumo.dados?.[l.id]} abrir={() => setPerfil(l.id)}
+          acoes={<>
+            {editavel && <button className="btn-link" onClick={() => { setErro(null); setEdicao({ ...l }); }}>Editar</button>}
+            {!l._acesso_portal && pode("usuarios.gerenciar") && <button className="btn-link" onClick={() => setAcesso({ id: l.id, nome: l.nome, email: l.email || "", senha: "" })}>Acesso ao portal</button>}
+            <button className="btn-link" onClick={() => verHistorico(l)}>Histórico</button>
+            {editavel && <button className="btn-link ci-inativar" onClick={() => alternarAtivo(l)}>{l.ativo ? "Inativar" : "Reativar"}</button>}
+          </>} />)}
+        {lista.dados && !lista.dados.itens.filter((l: any) => { const r = resumo.dados?.[l.id];
+          return !rapido || (rapido === "alertas" ? r?.alertas?.length : rapido === "pdi" ? r?.pdi?.abertos : l.modalidade === rapido); }).length &&
+          <div className="ci-vazio">{rapido === "alertas" ? "✔ Nenhum instrutor com alerta: disponibilidade, certificações, termos e PDI em dia." : "Nenhum instrutor neste filtro."}</div>}
       </div> : <Tabela colunas={[...(ent === "instrutores" ? [{
         chave: "_ader", rotulo: "Aderência", render: (l: any) => adPor[l.id] ? <button className="btn-link sem-sublinhado" onClick={(e) => { e.stopPropagation(); setPerfil(l.id); }}>
           <Anel valor={adPor[l.id].geral} tamanho={40} /></button> : "—",
@@ -341,9 +366,9 @@ export function ListaEntidade({ ent }: { ent: string }) {
           </div>
         ),
       }]} linhas={lista.dados?.itens || []} chave={(l) => idDe(meta, l)} aoClicar={ent === "instrutores" ? (l: any) => setPerfil(l.id) : undefined} />}
-      {ent === "instrutores" && <PerfilInstrutor id={perfil} fechar={() => { setPerfil(null); equipe.recarregar(); }}
+      {ent === "instrutores" && <PerfilInstrutor id={perfil} fechar={() => { setPerfil(null); equipe.recarregar(); resumo.recarregar(); }}
         editar={editavel ? () => { const l = (lista.dados?.itens || []).find((x: any) => x.id === perfil); setPerfil(null); if (l) { setErro(null); setEdicao({ ...l }); } } : undefined} />}
-      {lista.dados && <Paginacao pagina={pagina} total={lista.dados.total} porPagina={25} mudar={setPagina} />}
+      {lista.dados && <Paginacao pagina={pagina} total={lista.dados.total} porPagina={porPagina} mudar={setPagina} />}
       <Modal titulo={edicao?.__novo ? `Novo — ${meta.rotulo}` : `Editar — ${meta.rotulo}`} aberto={!!edicao} fechar={() => setEdicao(null)} largo>
         {edicao && <>
           <Formulario meta={meta} valores={edicao} setValores={setEdicao} />
@@ -485,7 +510,12 @@ function TurnosPadrao({ aoCriar }: { aoCriar: () => void }) {
 }
 
 /** Topo da lista de instrutores: média de aderência da equipe, a troca cartões/tabela e a cobertura das UCs por área. */
-function ResumoEquipe({ e, visao, setVisao }: { e: any; visao: string; setVisao: (v: any) => void }) {
+function ResumoEquipe({ e, visao, setVisao, itens, r }: { e: any; visao: string; setVisao: (v: any) => void; itens: any[]; r: Record<number, any> }) {
+  const horistas = itens.filter((l) => l.modalidade === "horista").length;
+  const ocup = itens.map((l) => r[l.id]?.semestre?.pct_contrato).filter((x) => x != null) as number[];
+  const media = ocup.length ? ocup.reduce((a, b) => a + b, 0) / ocup.length : null;
+  const comAlerta = itens.filter((l) => r[l.id]?.alertas?.length).length;
+  const pdi = itens.reduce((t, l) => t + (r[l.id]?.pdi?.abertos || 0), 0);
   const umSo = e.cobertura.reduce((t: number, c: any) => t + c.um_so, 0);
   const ninguem = e.cobertura.reduce((t: number, c: any) => t + c.sem_ninguem, 0);
   return (
@@ -493,6 +523,12 @@ function ResumoEquipe({ e, visao, setVisao }: { e: any; visao: string; setVisao:
       <div className="resumo-equipe">
         <div className="re-media"><Anel valor={e.media} tamanho={56} rotulo="Aderência média" /><div><b>Aderência média da equipe</b>
           <small className="mudo">Clique em um instrutor para ver o perfil, a aderência por curso e o PDI.</small></div></div>
+        <div className="re-kpis">
+          <div><b>{itens.length}</b><small>instrutores</small><span className="mudo">{itens.length - horistas} mensalistas · {horistas} horistas</span></div>
+          <div><b>{media == null ? "—" : `${media.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`}</b><small>ocupação média</small><span className="mudo">aulas sobre o contrato</span></div>
+          <div className={comAlerta ? "re-alerta" : ""}><b>{comAlerta}</b><small>com alertas</small><span className="mudo">cadastro, certificação, termo</span></div>
+          <div><b>{pdi}</b><small>itens de PDI</small><span className="mudo">em aberto</span></div>
+        </div>
         <div className="re-visao" role="group" aria-label="Forma de exibir">
           <button className={`btn ${visao === "cartoes" ? "btn-primario" : ""}`} onClick={() => setVisao("cartoes")}>▦ Cartões</button>
           <button className={`btn ${visao === "tabela" ? "btn-primario" : ""}`} onClick={() => setVisao("tabela")}>☰ Tabela</button>
@@ -545,4 +581,13 @@ function AreaCobertura({ c }: { c: any }) {
       </ul>}
     </div>
   );
+}
+
+function ordenarInstrutores(itens: any[], ordem: string, ad: Record<number, any>, r: Record<number, any>) {
+  const g = (l: any) => ad[l.id]?.geral ?? 0, o = (l: any) => r[l.id]?.semestre?.media_semanal_h ?? 0, a = (l: any) => r[l.id]?.alertas?.length ?? 0;
+  const f: Record<string, (x: any, y: any) => number> = {
+    aderencia_menor: (x, y) => g(x) - g(y), aderencia_maior: (x, y) => g(y) - g(x), ocupacao_maior: (x, y) => o(y) - o(x),
+    ocupacao_menor: (x, y) => o(x) - o(y), alertas: (x, y) => a(y) - a(x),
+  };
+  return f[ordem] ? [...itens].sort((x, y) => f[ordem](x, y) || String(x.nome).localeCompare(String(y.nome))) : itens;
 }

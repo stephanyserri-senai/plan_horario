@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, Body, Depends
 from sqlalchemy import func, select
@@ -419,3 +419,79 @@ def retirar_certificacao(iid: int, hid: int, ctx: Contexto = Depends(requer("cad
     auditoria.registrar(db, ctx, "certificacao.retirar", "habilitacoes_instrutores", h.id, antes=antes, depois=auditoria.snapshot(h))
     db.commit()
     return {"retirada": h.nome, "geral": aderencia.indice(db, inst.id, detalhe=False)["geral"]}
+
+
+# ============================================================================ resumo para os cartões da lista
+@router.get("/instrutores/resumo")
+def resumo_instrutores(cenario_id: int | None = None, ctx: Contexto = Depends(requer("cadastros.ler")), db: Session = Depends(get_db)):
+    """Tudo o que o cartão de cada instrutor mostra, de uma vez: UCs que dá, certificações, PDI, disponibilidade, ocupação no
+    semestre (sobre o contrato), termo do mês do horista e alertas (certificação vencida, sem termo, sem disponibilidade...)."""
+    from app.services import termos as termos_svc
+    from app.services.regras_aula import limite_letivo_efetivo
+    hoje = date.today()
+    q = select(Instrutor)
+    if ctx.unidades is not None:
+        q = q.where(Instrutor.unidade_id.in_(ctx.unidades))
+    insts = db.scalars(q).all()
+    ids = [i.id for i in insts]
+    if not ids:
+        return {}
+    unidades = {u.id: u.nome for u in db.scalars(select(Unidade))}
+    comps = defaultdict(lambda: {"pleno": 0, "parcial": 0})
+    for iid, nivel, n in db.execute(select(CompetenciaInstrutor.instrutor_id, CompetenciaInstrutor.nivel, func.count()).where(
+            CompetenciaInstrutor.instrutor_id.in_(ids), CompetenciaInstrutor.ativo.is_(True)).group_by(CompetenciaInstrutor.instrutor_id, CompetenciaInstrutor.nivel)):
+        if nivel in ("pleno", "parcial"):
+            comps[iid][nivel] = n
+    certs = defaultdict(list)
+    for h in db.scalars(select(HabilitacaoInstrutor).where(HabilitacaoInstrutor.instrutor_id.in_(ids), HabilitacaoInstrutor.ativo.is_(True))
+                        .order_by(HabilitacaoInstrutor.nome)):
+        certs[h.instrutor_id].append({"nome": h.nome, "vencida": bool(h.valido_ate and h.valido_ate < hoje),
+                                      "vence_em_30": bool(h.valido_ate and hoje <= h.valido_ate <= hoje + timedelta(days=30))})
+    pdi = defaultdict(lambda: {"abertos": 0, "atrasados": 0, "concluidos": 0})
+    for p in db.scalars(select(PdiItem).where(PdiItem.instrutor_id.in_(ids))):
+        if p.situacao in ("planejado", "em_andamento"):
+            pdi[p.instrutor_id]["abertos"] += 1
+            pdi[p.instrutor_id]["atrasados"] += bool(p.prazo and p.prazo < hoje)
+        elif p.situacao == "concluido":
+            pdi[p.instrutor_id]["concluidos"] += 1
+    com_disp = set(db.scalars(select(DisponibilidadeInstrutor.instrutor_id).where(DisponibilidadeInstrutor.instrutor_id.in_(ids)).distinct()))
+    cen = db.get(CenarioPlanejamento, cenario_id) if cenario_id else None
+    horas, proxima, turmas = defaultdict(float), {}, defaultdict(set)
+    semanas = 1.0
+    if cen is not None:
+        from app.services.indicadores import periodo_padrao
+        d0, d1 = periodo_padrao(db, cen)
+        semanas = max(1.0, ((d1 - d0).days + 1) / 7)
+        for iid, data, mins, tid in db.execute(select(Alocacao.instrutor_id, Alocacao.data, Alocacao.minutos_aula, Alocacao.turma_id).where(
+                Alocacao.cenario_id == cen.id, Alocacao.instrutor_id.in_(ids), Alocacao.status != "cancelada", Alocacao.data >= d0, Alocacao.data <= d1)):
+            horas[iid] += mins / 60
+            turmas[iid].add(tid)
+            if data >= hoje and (iid not in proxima or data < proxima[iid]):
+                proxima[iid] = data
+    mes = termos_svc.mes_de(hoje)
+    termos = termos_svc.termos_do(db, [i.id for i in insts if i.modalidade == "horista"], mes, termos_svc.fim_do_mes(mes))
+    res = {}
+    for i in insts:
+        carga = float(i.carga_horaria_contratual or 0)
+        media = horas[i.id] / semanas
+        alertas = []
+        if i.id not in com_disp:
+            alertas.append(("bloqueio", "sem disponibilidade cadastrada"))
+        if any(c["vencida"] for c in certs[i.id]):
+            alertas.append(("bloqueio", "certificação vencida"))
+        if pdi[i.id]["atrasados"]:
+            alertas.append(("alerta", f"{pdi[i.id]['atrasados']} item(ns) do PDI com prazo vencido"))
+        termo = None
+        if i.modalidade == "horista":
+            t = termos.get(i.id, {}).get(mes)
+            termo = {"rotulo": termos_svc.rotulo_mes(mes), "horas_aula": float(t.horas_aula) if t else None}
+            if t is None:
+                alertas.append(("alerta", f"sem termo de {termos_svc.rotulo_mes(mes)}"))
+        if cen is not None and media > limite_letivo_efetivo(i) + 1e-6:
+            alertas.append(("alerta", "acima do limite semanal do contrato"))
+        res[i.id] = {"unidade": unidades.get(i.unidade_id), "ucs_sim": comps[i.id]["pleno"], "ucs_em_partes": comps[i.id]["parcial"],
+                     "certificacoes": certs[i.id], "pdi": pdi[i.id], "termo": termo,
+                     "semestre": {"media_semanal_h": round(media, 1), "pct_contrato": round(100 * media / carga, 1) if carga else 0,
+                                  "turmas": len(turmas[i.id]), "proxima_aula": proxima[i.id].isoformat() if i.id in proxima else None} if cen else None,
+                     "alertas": [{"tipo": t, "texto": x} for t, x in alertas]}
+    return res

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { api, dataBR, qs } from "../api";
 import { useApp } from "../contexto";
 import { Abas, Badge, Modal, useCarregar } from "./ui";
@@ -43,21 +43,39 @@ export function BarraPct({ valor, fina, neutra }: { valor: number; fina?: boolea
   return <span className={`barra-pct ${fina ? "fina" : ""}`}><span className={`barra-pct-v bp-${tom}`} style={{ width: `${Math.min(100, valor)}%` }} /></span>;
 }
 
-/** Cartão do instrutor na lista: avatar, áreas, aderência geral e por curso. */
-export function CartaoInstrutor({ l, ad, abrir }: { l: any; ad?: any; abrir: () => void }) {
+/** Cartão do instrutor na lista: quem é (unidade, áreas, nível, modalidade), como está no semestre (aulas, turmas, próxima aula),
+ * o que sabe (UCs, certificações, aderência por curso), o PDI, os alertas e as ações do cadastro. Clique abre o perfil completo. */
+export function CartaoInstrutor({ l, ad, r, abrir, acoes }: { l: any; ad?: any; r?: any; abrir: () => void; acoes?: ReactNode }) {
+  const horista = l.modalidade === "horista";
+  const s = r?.semestre;
   return (
-    <button className="cartao-inst" onClick={abrir} aria-label={`Abrir o perfil de ${l.nome}`}>
-      <div className="cartao-inst-topo">
+    <article className={`cartao-inst ${l.ativo === false ? "inativo" : ""} ${r?.alertas?.some((a: any) => a.tipo === "bloqueio") ? "com-bloqueio" : ""}`}>
+      <button className="ci-cab" onClick={abrir} aria-label={`Abrir o perfil de ${l.nome}`}>
         <Avatar nome={l.nome} />
-        <div className="cartao-inst-nome">
+        <span className="ci-id">
           <b>{l.nome}</b>
-          <small className="mudo">{l.matricula} · {NIVEL[l.nivel] || l.nivel} · {l.modalidade === "horista" ? "Horista" : "Mensalista"} · {Number(l.carga_horaria_contratual)} h</small>
-        </div>
-        {ad ? <Anel valor={ad.geral} tamanho={52} rotulo="Aderência geral" /> : <span className="ader-vazio" />}
-      </div>
+          <small className="mudo">{l.matricula}{r?.unidade ? ` · ${r.unidade.replace(/^Unidade\s+/i, "")}` : ""}</small>
+          <span className="ci-tags">
+            <span className={`modalidade modalidade-${l.modalidade}`}>{horista ? "Horista" : "Mensalista"}</span>
+            <span className="chip-area">{NIVEL[l.nivel] || l.nivel}</span>
+            <span className="chip-area">{Number(l.carga_horaria_contratual)} h/sem</span>
+            {l._acesso_portal && <span className="chip-area ca-portal">portal ✓</span>}
+          </span>
+        </span>
+        <span className="ci-anel">{ad ? <Anel valor={ad.geral} tamanho={56} rotulo="Aderência geral" /> : <span className="ader-vazio" />}<small>aderência</small></span>
+      </button>
       <div className="cartao-inst-areas">
         {(ad?.areas || []).map((a: any) => <span key={a.area_id} className={`chip-area ${a.principal ? "ca-principal" : ""}`}>{a.area} · {pct(a.pct)}</span>)}
-        {l._acesso_portal && <span className="chip-area ca-portal">portal ✓</span>}
+        {!ad?.areas?.length && <span className="chip-area">sem área</span>}
+      </div>
+      <div className="ci-numeros">
+        <div><small>Aulas/semana</small><b>{s ? `${s.media_semanal_h} h` : "—"}</b>
+          {s && <><BarraPct valor={s.pct_contrato} fina neutra /><small className="mudo">{pct(s.pct_contrato)} do contrato</small></>}</div>
+        <div><small>Turmas</small><b>{s ? s.turmas : "—"}</b><small className="mudo">{s?.proxima_aula ? `próxima ${dataBR(s.proxima_aula).slice(0, 5)}` : "sem aula futura"}</small></div>
+        <div><small>UCs</small><b>{r ? r.ucs_sim : "—"}</b><small className="mudo">{r?.ucs_em_partes ? `+ ${r.ucs_em_partes} em partes` : "que ministra"}</small></div>
+        <div><small>{horista ? `Termo ${r?.termo?.rotulo?.split("/")[0] || ""}` : "PDI"}</small>
+          {horista ? <><b>{r?.termo?.horas_aula != null ? `${r.termo.horas_aula} h` : "—"}</b><small className="mudo">{r?.termo?.horas_aula != null ? "de aula no mês" : "sem termo"}</small></>
+            : <><b>{r ? r.pdi.abertos : "—"}</b><small className="mudo">{r?.pdi.concluidos ? `${r.pdi.concluidos} concluído(s)` : "item(ns) em aberto"}</small></>}</div>
       </div>
       <div className="cartao-inst-cursos">
         {(ad?.cursos || []).slice(0, 4).map((c: any) => (
@@ -65,7 +83,17 @@ export function CartaoInstrutor({ l, ad, abrir }: { l: any; ad?: any; abrir: () 
         ))}
         {!ad?.cursos?.length && <small className="mudo">Sem cursos com UCs técnicas na área.</small>}
       </div>
-    </button>
+      {(r?.certificacoes?.length > 0 || (horista && r?.pdi.abertos > 0)) && <div className="ci-certs">
+        {r.certificacoes.map((c: any) => <span key={c.nome} className={`chip-area ${c.vencida ? "ca-vencida" : c.vence_em_30 ? "ca-vence" : "ca-cert"}`}
+          title={c.vencida ? "vencida" : c.vence_em_30 ? "vence em até 30 dias" : "válida"}>🎓 {c.nome}</span>)}
+        {horista && r?.pdi.abertos > 0 && <span className="chip-area">PDI: {r.pdi.abertos} em aberto</span>}
+      </div>}
+      {r?.alertas?.length > 0 && <div className="ci-alertas">{r.alertas.map((a: any) => <Badge key={a.texto} tipo={a.tipo}>{a.texto}</Badge>)}</div>}
+      <div className="ci-acoes" onClick={(e) => e.stopPropagation()}>
+        <button className="btn btn-primario btn-pequeno" onClick={abrir}>Ver perfil</button>
+        {acoes}
+      </div>
+    </article>
   );
 }
 
