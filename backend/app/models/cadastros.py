@@ -495,6 +495,30 @@ class AmbienteArea(Base):
     area_id: Mapped[int] = mapped_column(ForeignKey("areas.id"), primary_key=True)
 
 
+# --------------------------------------------------------------------------- PDI
+class PdiItem(TimestampMixin, Base):
+    """Item do PDI (plano de desenvolvimento individual) do instrutor: uma UC a aprender, a completar
+    ("em partes" → "sim") ou a certificação exigida por uma UC; sai das propostas do índice de aderência."""
+    __tablename__ = "pdi_itens"
+    __table_args__ = (
+        CheckConstraint("tipo in ('uc','completar','certificacao')", name="pdi_itens_tipo_check"),
+        CheckConstraint("situacao in ('planejado','em_andamento','concluido','cancelado')", name="pdi_itens_situacao_check"),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    instrutor_id: Mapped[int] = mapped_column(ForeignKey("instrutores.id", ondelete="CASCADE"), index=True)
+    curso_id: Mapped[int | None] = mapped_column(ForeignKey("cursos.id", ondelete="SET NULL"))
+    uc_codigo: Mapped[str] = mapped_column(String(30))
+    uc_nome: Mapped[str] = mapped_column(String(200))
+    tipo: Mapped[str] = mapped_column(String(20), default="uc")
+    certificacao: Mapped[str | None] = mapped_column(String(200))
+    prioridade: Mapped[str | None] = mapped_column(String(10))
+    prazo: Mapped[date | None] = mapped_column(Date)
+    situacao: Mapped[str] = mapped_column(String(20), default="planejado", server_default="planejado")
+    observacao: Mapped[str | None] = mapped_column(Text)
+    concluido_em: Mapped[date | None] = mapped_column(Date)
+    criado_por_id: Mapped[int | None] = mapped_column(ForeignKey("usuarios.id", ondelete="SET NULL"))
+
+
 # --------------------------------------------------------------------------- EPIs
 class EpiCurso(TimestampMixin, Base):
     """EPI que o curso exige de cada aluno (ex.: luva isolante, óculos de proteção). Entra em toda turma nova do curso."""

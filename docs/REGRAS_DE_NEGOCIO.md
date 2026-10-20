@@ -45,6 +45,10 @@ Gerado por `scripts/gerar_regras_md.py` a partir de `backend/app/services/regras
 
 - **Remanejar o único habilitado** (`REMANEJAMENTO`, preferência): UC que depende de um só instrutor: além de habilitar outro, o sistema sugere liberar o habilitado de outra UC dele, passando-a a quem está livre e pode assumi-la naquela turma (área, nível e certificação). _Onde: riscos, sugestões, substituição._
 
+## Instrutores
+
+- **Índice de aderência e PDI** (`ADERENCIA_INSTRUTOR`, aviso): Aderência a um curso = parte da carga horária das UCs técnicas que o instrutor pode ministrar ('sim' vale a UC inteira, 'em partes' metade; sem a certificação exigida a UC ainda não conta; UCs transversais ficam de fora; instrutor básico entra só nos cursos básicos). A aderência à área soma os cursos da área e a geral soma todas as áreas do instrutor. O que falta vira proposta de PDI (aprender, completar ou certificar), com prioridade pela demanda das turmas, por quantos outros instrutores já dão a UC e pelo ganho no curso; concluir um item pode marcar a UC como 'sim' no perfil. _Onde: perfil do instrutor, PDI._
+
 ## Quadro e decisões
 
 - **5 instrutores para 4 turmas** (`PROPORCAO_5_4`, aviso): Referência de 1.25 instrutor por turma. É um aviso, que pesa quando a folga dos instrutores não comporta uma turma nova. _Onde: quadro de instrutores._

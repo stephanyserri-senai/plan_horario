@@ -59,6 +59,7 @@ BEGIN
     || CASE WHEN to_regclass('public.notificacoes') IS NOT NULL THEN ', notificacoes' ELSE '' END
     || CASE WHEN to_regclass('public.solicitacoes_instrutor') IS NOT NULL THEN ', solicitacoes_instrutor' ELSE '' END
     || CASE WHEN to_regclass('public.epis_turma') IS NOT NULL THEN ', epis_turma, epis_curso' ELSE '' END
+    || CASE WHEN to_regclass('public.pdi_itens') IS NOT NULL THEN ', pdi_itens' ELSE '' END
     || ' RESTART IDENTITY';
   -- instrutores: DELETE (a tabela de usuários, que é mantida, aponta para ela)
   DELETE FROM instrutores;

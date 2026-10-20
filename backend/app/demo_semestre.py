@@ -420,6 +420,7 @@ def montar(db, ctx, limite_s: float = 120) -> dict:
     casos = pendencias(db, ctx, cen, instrutores, unid, area, turno, cursos, cal)
     casos.update(epis_demo(db, cursos))
     casos.update(modulos_demo(db))
+    casos.update(pdi_demo(db, ctx))
 
     n_aulas = db.scalar(select(func.count()).select_from(Alocacao).where(Alocacao.cenario_id == cen.id))
     return {"cenario_id": cen.id, "aulas": n_aulas, "execucao": ex.id, "substituicao": sub_info, **casos}
@@ -546,3 +547,26 @@ def modulos_demo(db) -> dict:
         feitas.append(t.codigo)
     db.commit()
     return {"turmas_modulares": feitas}
+
+
+def pdi_demo(db, ctx) -> dict:
+    """PDI de exemplo, montado das propostas do índice de aderência: Marcos Vieira começa pela UC de maior prioridade
+    da área (em andamento) e planeja a seguinte; Juliana Prates planeja a primeira."""
+    from app.models import PdiItem
+    from app.services import aderencia
+    base = aderencia.Base(db, hoje=date(ANO, 10, 16))
+    planos = {"Marcos Vieira": [("em_andamento", "Curso interno na unidade; prática acompanhada às sextas."), ("planejado", None)],
+              "Juliana Prates": [("planejado", None)]}
+    n = 0
+    for nome, itens in planos.items():
+        inst = db.scalar(select(Instrutor).where(Instrutor.nome == nome))
+        if inst is None:
+            continue
+        props = aderencia.propostas(db, inst.id, base)["itens"]
+        for (sit, obs), pr in zip(itens, props):
+            db.add(PdiItem(instrutor_id=inst.id, curso_id=pr["curso_id"], uc_codigo=pr["uc_codigo"], uc_nome=pr["uc_nome"], tipo=pr["tipo"],
+                           certificacao=pr["certificacao"] if pr["tipo"] == "certificacao" else None, prioridade=pr["prioridade"],
+                           prazo=date.fromisoformat(pr["prazo_sugerido"]), situacao=sit, observacao=obs, criado_por_id=ctx.id))
+            n += 1
+    db.commit()
+    return {"pdi_itens": n}

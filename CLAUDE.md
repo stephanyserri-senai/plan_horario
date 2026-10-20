@@ -32,6 +32,10 @@ UC transversal/técnica, substituição, solicitações, quadro 5:4...) estão e
 - UC fora do prazo: modular → reposição aos sábados (exceção `reposicao`, que libera dia/turno/disponibilidade só no turno de
   sábado); não modular → `passar_proximo_semestre` (prazo vai ao fim do próximo semestre). UC com um só habilitado: habilitar
   outro ou remanejar o habilitado (`resolucoes._remanejar`, ação `passar_uc`). Vários caminhos por caso vão em `opcoes`.
+- Aderência do instrutor (`services/aderencia.py`): % da carga horária das UCs técnicas dos cursos da(s) área(s) que ele pode dar
+  (sim = 1, em partes = 0,5, sem a certificação exigida = 0; transversais fora; versões da matriz juntas pelo código da UC),
+  por curso, área e geral. O que falta vira proposta de PDI (`pdi_itens`); concluir com "habilitar" marca a UC como sim.
+  Perfil do instrutor: `GET /api/instrutores/{id}/perfil` (lista de instrutores em cartões, clique abre o perfil).
 - Riscos: `services/resolucoes.sugerir` dá uma correção por caso (acao para `services/sugestoes.aplicar`); trocar sala e
   remarcar valem também com o horário publicado (ajuste operacional, como a substituição).
 

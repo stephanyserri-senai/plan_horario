@@ -8,6 +8,7 @@ import { CompetenciasUCs, JornadaInstrutor, PreviaCodigoTurma } from "../compone
 import ObservacoesInstrutores from "../components/ObservacoesInstrutores";
 import EstruturaCurricular from "./Cursos";
 import { ControleEpis, PreviaEpis } from "../components/Epis";
+import { Anel, CartaoInstrutor, PerfilInstrutor } from "../components/PerfilInstrutor";
 
 export type CampoMeta = { nome: string; tipo: string; obrigatorio: boolean; somente_leitura: boolean; rotulo: string; ref?: string; opcoes?: any[]; pessoal?: boolean;
   secao?: "principal" | "avancado" | "auto"; ajuda?: string };
@@ -234,6 +235,10 @@ export function ListaEntidade({ ent }: { ent: string }) {
   const [historico, setHistorico] = useState<any[] | null>(null);
   const [duplicar, setDuplicar] = useState<any | null>(null);
   const [acesso, setAcesso] = useState<any | null>(null);
+  const [perfil, setPerfil] = useState<number | null>(null);
+  const [visao, setVisao] = useState<"cartoes" | "tabela">("cartoes");
+  const equipe = useCarregar<any>(() => (ent === "instrutores" ? api.get("/api/aderencia/equipe") : Promise.resolve(null)), [ent, unidadeTopo]);
+  const adPor: Record<number, any> = useMemo(() => Object.fromEntries((equipe.dados?.instrutores || []).map((x: any) => [x.instrutor_id, x])), [equipe.dados]);
   useEffect(() => { setPagina(1); setFiltros((sp.get("id") ? { id: sp.get("id")! } : {}) as Record<string, string>); }, [ent, sp]);
   const lista = useCarregar(() => api.get(`/api/cadastros/${ent}${qs({ q, pagina, por_pagina: 25, ativo: meta?.inativavel ? ativo : "", ...filtros })}`),
     [ent, q, pagina, ativo, JSON.stringify(filtros), meta?.inativavel]);
@@ -300,7 +305,14 @@ export function ListaEntidade({ ent }: { ent: string }) {
         {meta.fixa && <span className="sub">🔒 Cadastro fixo da instituição: não é possível incluir, excluir ou renomear.</span>}
       </div>
       {lista.erro && <div className="erro-box">{lista.erro}</div>}
-      <Tabela colunas={[...colunas, {
+      {ent === "instrutores" && equipe.dados && <ResumoEquipe e={equipe.dados} visao={visao} setVisao={setVisao} />}
+      {ent === "instrutores" && visao === "cartoes" ? <div className="grade-inst">
+        {(lista.dados?.itens || []).map((l: any) => <CartaoInstrutor key={l.id} l={l} ad={adPor[l.id]} abrir={() => setPerfil(l.id)} />)}
+        {lista.dados && !lista.dados.itens.length && <p className="mudo">Nenhum instrutor encontrado.</p>}
+      </div> : <Tabela colunas={[...(ent === "instrutores" ? [{
+        chave: "_ader", rotulo: "Aderência", render: (l: any) => adPor[l.id] ? <button className="btn-link sem-sublinhado" onClick={(e) => { e.stopPropagation(); setPerfil(l.id); }}>
+          <Anel valor={adPor[l.id].geral} tamanho={40} /></button> : "—",
+      }] : []), ...colunas, {
         chave: "_acoes", rotulo: "Ações", render: (l: any) => (
           <div className="acoes-linha" onClick={(e) => e.stopPropagation()}>
             {editavel && ent !== "areas" && <button className="btn-link" onClick={() => { setErro(null); setEdicao({ ...l }); }}>Editar</button>}
@@ -321,7 +333,9 @@ export function ListaEntidade({ ent }: { ent: string }) {
             {meta.inativavel && !l.ativo && <Badge tipo="alerta">inativo</Badge>}
           </div>
         ),
-      }]} linhas={lista.dados?.itens || []} chave={(l) => idDe(meta, l)} />
+      }]} linhas={lista.dados?.itens || []} chave={(l) => idDe(meta, l)} aoClicar={ent === "instrutores" ? (l: any) => setPerfil(l.id) : undefined} />}
+      {ent === "instrutores" && <PerfilInstrutor id={perfil} fechar={() => { setPerfil(null); equipe.recarregar(); }}
+        editar={editavel ? () => { const l = (lista.dados?.itens || []).find((x: any) => x.id === perfil); setPerfil(null); if (l) { setErro(null); setEdicao({ ...l }); } } : undefined} />}
       {lista.dados && <Paginacao pagina={pagina} total={lista.dados.total} porPagina={25} mudar={setPagina} />}
       <Modal titulo={edicao?.__novo ? `Novo — ${meta.rotulo}` : `Editar — ${meta.rotulo}`} aberto={!!edicao} fechar={() => setEdicao(null)} largo>
         {edicao && <>
@@ -458,6 +472,28 @@ function TurnosPadrao({ aoCriar }: { aoCriar: () => void }) {
           try { const r = await api.post(`/api/unidades/${u}/turnos-padrao`); aviso(r.mensagem); invalidarOpcoes("turnos"); invalidarOpcoes("periodos"); setU(unidadeTopo); aoCriar(); }
           catch (e: any) { aviso(e.message, "erro"); }
         }}>Criar turnos padrão{unidadeTopo ? ` em ${(unidades.find((x) => String(x.id) === unidadeTopo)?.rotulo || "").replace(/^Unidade\s+/i, "")}` : ""}</button>
+      </div>
+    </div>
+  );
+}
+
+/** Topo da lista de instrutores: média de aderência da equipe, cobertura das UCs por área e a troca cartões/tabela. */
+function ResumoEquipe({ e, visao, setVisao }: { e: any; visao: string; setVisao: (v: any) => void }) {
+  return (
+    <div className="resumo-equipe">
+      <div className="re-media"><Anel valor={e.media} tamanho={56} rotulo="Aderência média" /><div><b>Aderência média da equipe</b>
+        <small className="mudo">Clique em um instrutor para ver o perfil, a aderência por curso e o PDI.</small></div></div>
+      <div className="re-cob">
+        {e.cobertura.map((c: any) => (
+          <span key={c.area_id} className="re-area" title={`${c.ucs} UCs técnicas · ${c.pct_duas_ou_mais}% com 2 ou mais instrutores`}>
+            <b>{c.area}</b> {c.sem_ninguem > 0 && <Badge tipo="bloqueio">{c.sem_ninguem} UC sem ninguém</Badge>}
+            {c.um_so > 0 && <Badge tipo="alerta">{c.um_so} com 1 só</Badge>}{!c.sem_ninguem && !c.um_so && <Badge tipo="ok">coberta</Badge>}
+          </span>
+        ))}
+      </div>
+      <div className="re-visao" role="group" aria-label="Forma de exibir">
+        <button className={`btn ${visao === "cartoes" ? "btn-primario" : ""}`} onClick={() => setVisao("cartoes")}>▦ Cartões</button>
+        <button className={`btn ${visao === "tabela" ? "btn-primario" : ""}`} onClick={() => setVisao("tabela")}>☰ Tabela</button>
       </div>
     </div>
   );
