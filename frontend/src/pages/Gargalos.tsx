@@ -10,14 +10,14 @@ const COLUNAS: Record<string, string> = {
   falta_h: "Falta (h)", cabe_h: "Cabe até o prazo (h)", prazo: "Prazo", risco: "Risco", habilitados: "Habilitado(s)", media_pct: "Ocupação média (%)",
   pico_pct: "Semana mais cheia (%)", maior_semana_h: "Maior semana (h)", tipo: "Tipo", recurso: "Recurso", falta_h_semana: "Falta (h/semana)",
   descricao: "Descrição", pedido: "Pedido", de: "De", ate: "Até", justificativa: "Justificativa", dias: "Dias presenciais", ead: "EAD", problema: "O que ajustar",
-  epi: "EPI", quantidade: "Quantidade", estado: "Situação",
+  epi: "EPI", quantidade: "Quantidade", estado: "Situação", mes: "Mês", programadas_h: "Programadas (h)", termo_h: "Termo (h)",
 };
 const DATAS = new Set(["data", "prazo", "de", "ate"]);
 // riscos que o sistema resolve sugerindo uma correção por caso; os outros levam à página certa
 const RESOLVIVEIS = new Set(["sem_recurso", "instrutor_ausente", "sala_indisponivel", "nao_letivo", "dependencia", "prazo", "capacidade"]);
 const PAGINA: Record<string, [string, string]> = {
   solicitacoes: ["/solicitacoes", "Abrir as solicitações"], epis: ["/epis", "Abrir o controle de EPIs"],
-  sobrecarga: ["/consultas", "Ver o ranking de ocupação"], padrao_dias: ["/cadastros/turmas", "Abrir o cadastro de turmas"],
+  sobrecarga: ["/consultas", "Ver o ranking de ocupação"], termo_horas: ["/cadastros/instrutores?aba=disponibilidade_instrutores", "Abrir disponibilidade e termos"], padrao_dias: ["/cadastros/turmas", "Abrir o cadastro de turmas"],
 };
 
 /** Riscos ao desenvolvimento: o que pode atrapalhar as turmas daqui até o fim do semestre, com sugestões para aceitar. */

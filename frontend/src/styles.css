@@ -853,3 +853,32 @@ li.sem-marcador { list-style: none; margin-left: -18px; }
   .ad-curso { grid-template-columns: 1fr 60px; } .ad-curso .barra-pct { grid-column: 1 / -1; grid-row: 2; }
   .pdi-prop { grid-template-columns: auto 1fr; } .pdi-ganho { justify-items: start; grid-column: 2; text-align: left; }
 }
+
+/* ---------- disponibilidade (uma linha por instrutor) e termos de horas ---------- */
+.qd-resumo { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; background: var(--superficie); border: 1px solid var(--borda); border-radius: 14px; padding: 10px 14px; margin: 10px 0; }
+.qd-mod { display: flex; align-items: center; gap: 8px; }
+.qd-mes { display: inline-flex; align-items: center; gap: 6px; color: var(--mudo); font-size: .85rem; }
+.qd-legenda { display: inline-flex; gap: 10px; flex-wrap: wrap; font-size: .78rem; color: var(--mudo); margin-left: auto; }
+.qd-tabela td { vertical-align: middle; }
+.qd-inst { display: flex; align-items: center; gap: 10px; min-width: 210px; } .qd-inst > div { display: grid; }
+.qd-dia { text-align: center !important; white-space: nowrap; }
+.tq { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 6px; font-size: .72rem; font-weight: 700; margin: 1px; }
+.tq-M { background: #fde9b8; color: #7a5200; } .tq-V { background: #d9eafb; color: #1f5f99; } .tq-N { background: #e3defa; color: #4b3a99; } .tq-S { background: #d8f0e2; color: #1e7d4f; }
+.qd-carga { min-width: 230px; }
+.qd-c { display: grid; gap: 3px; } .qd-c .barra-pct { max-width: 200px; }
+.termos-lista { display: grid; gap: 10px; }
+.termo-mes { border: 1px solid var(--borda); border-radius: 12px; padding: 10px 12px; display: grid; gap: 8px; }
+.termo-mes.sem { border-style: dashed; }
+.termo-cab { display: flex; gap: 8px; align-items: center; } .termo-cab > b { text-transform: capitalize; }
+.termo-campos { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+.termo-campos label { display: grid; gap: 3px; font-size: .78rem; color: var(--mudo); }
+.termo-campos input[type=number] { width: 120px; } .termo-obs { flex: 1; min-width: 200px; } .termo-obs input { width: 100%; }
+.termo-prog { display: flex; align-items: center; gap: 10px; } .termo-prog .barra-pct { max-width: 220px; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .tq-M { background: #4a3a12; color: #f3c66a; } :root:not([data-theme="light"]) .tq-V { background: #152c42; color: #8ec2f5; }
+  :root:not([data-theme="light"]) .tq-N { background: #2c2552; color: #c2b6ff; } :root:not([data-theme="light"]) .tq-S { background: #173527; color: #6fd3a0; }
+}
+:root[data-theme="dark"] .tq-M { background: #4a3a12; color: #f3c66a; } :root[data-theme="dark"] .tq-V { background: #152c42; color: #8ec2f5; }
+:root[data-theme="dark"] .tq-N { background: #2c2552; color: #c2b6ff; } :root[data-theme="dark"] .tq-S { background: #173527; color: #6fd3a0; }
+.cap { text-transform: capitalize; }
+.qd-disp { white-space: nowrap; }

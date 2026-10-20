@@ -9,6 +9,7 @@ import ObservacoesInstrutores from "../components/ObservacoesInstrutores";
 import EstruturaCurricular from "./Cursos";
 import { ControleEpis, PreviaEpis } from "../components/Epis";
 import { Anel, CartaoInstrutor, PerfilInstrutor } from "../components/PerfilInstrutor";
+import QuadroDisponibilidade from "../components/QuadroDisponibilidade";
 
 export type CampoMeta = { nome: string; tipo: string; obrigatorio: boolean; somente_leitura: boolean; rotulo: string; ref?: string; opcoes?: any[]; pessoal?: boolean;
   secao?: "principal" | "avancado" | "auto"; ajuda?: string };
@@ -38,7 +39,7 @@ const AJUDA: Record<string, string> = {
   turma_ucs: "Disciplinas que cada turma vai cursar. Indique aqui instrutor ou sala preferidos, se houver.",
   instrutores: "No próprio cadastro: escolha a área e marque as UCs que o instrutor ministra (aparecem as UCs dos cursos da área) e os turnos e dias em que pode dar aula. As abas ao lado mostram a visão geral.",
   competencias: "Quais unidades curriculares cada instrutor está habilitado a ministrar.",
-  disponibilidade_instrutores: "Dias e horários em que cada instrutor pode dar aula. Sem registros, considera-se disponível em todo o horário de funcionamento.",
+  disponibilidade_instrutores: "Uma linha por instrutor: os turnos em que pode dar aula em cada dia e a carga conforme a modalidade. Mensalista tem jornada semanal fixa (aulas até 90% dela); horista recebe todo mês um termo de horas, que define as horas de aula do mês e pode mudar. Os turnos e dias se editam no cadastro do instrutor.",
   ucs: "Disciplinas da matriz: carga horária, quantas aulas por semana e o tipo de sala exigido (ex.: laboratório de informática).",
   cursos: "Escolha a área e o curso: as versões da matriz (uma por tipo de oferta, ex.: AIT ou HTC, quando o currículo muda) e as UCs de cada versão, com classificação e carga horária, ficam no mesmo lugar. A sigla do curso (ex.: ELT) entra no código das turmas: HTC-ELT-12.",
   matrizes: "Versões do currículo de cada curso. Use “Nova versão” para copiar uma matriz existente.",
@@ -242,6 +243,11 @@ export function ListaEntidade({ ent }: { ent: string }) {
   useEffect(() => { setPagina(1); setFiltros((sp.get("id") ? { id: sp.get("id")! } : {}) as Record<string, string>); }, [ent, sp]);
   const lista = useCarregar(() => api.get(`/api/cadastros/${ent}${qs({ q, pagina, por_pagina: 25, ativo: meta?.inativavel ? ativo : "", ...filtros })}`),
     [ent, q, pagina, ativo, JSON.stringify(filtros), meta?.inativavel]);
+  // ?id=…&editar=1 (vindo de outra aba, ex.: disponibilidade): abre a edição do registro
+  useEffect(() => {
+    const itens = lista.dados?.itens;
+    if (sp.get("editar") && sp.get("id") && itens?.length === 1 && String(itens[0].id) === sp.get("id") && !edicao) setEdicao({ ...itens[0] });
+  }, [lista.dados]);
   const colunas = useMemo(() => [...(meta?.campos || [])].sort((a, b) => Number(!["codigo", "matricula", "nome"].includes(a.nome)) - Number(!["codigo", "matricula", "nome"].includes(b.nome))).filter((c) => !OCULTAR_LISTA.has(c.nome) && !LARGOS.has(c.tipo) && !c.nome.startsWith("_") && c.tipo !== "oferta")
     .filter((c) => !(unidadeTopo && c.nome === "unidade_id"))  // unidade já escolhida no topo: coluna redundante
     .slice(0, 9).map((c) => ({
@@ -398,7 +404,7 @@ function FiltroRef({ c, valor, mudar }: { c: CampoMeta; valor: string; mudar: (v
   );
 }
 
-const ROTULO_ABA: Record<string, string> = { observacoes: "💬 Observações dos instrutores", estrutura: "Por área e curso", epis: "🦺 EPIs das turmas", cursos: "Lista de cursos",
+const ROTULO_ABA: Record<string, string> = { disponibilidade_instrutores: "Disponibilidade e termos de horas", observacoes: "💬 Observações dos instrutores", estrutura: "Por área e curso", epis: "🦺 EPIs das turmas", cursos: "Lista de cursos",
   matrizes: "Lista de versões", ucs: "Lista de UCs" };
 
 /** Explica o portal do instrutor e, no login pelo Supabase, convida todos os instrutores com e-mail de uma vez. */
@@ -450,7 +456,7 @@ export default function Cadastro() {
       </div>}
       {aba === "turnos" && <TurnosPadrao aoCriar={() => setVersao((v) => v + 1)} />}
       {ent === "instrutores" && aba === "instrutores" && <AcessosPortal />}
-      {aba === "observacoes" ? <ObservacoesInstrutores /> : aba === "estrutura" ? <EstruturaCurricular /> : aba === "epis" ? <ControleEpis /> : <ListaEntidade key={`${aba}-${versao}`} ent={aba} />}
+      {aba === "observacoes" ? <ObservacoesInstrutores /> : aba === "estrutura" ? <EstruturaCurricular /> : aba === "epis" ? <ControleEpis /> : aba === "disponibilidade_instrutores" ? <QuadroDisponibilidade /> : <ListaEntidade key={`${aba}-${versao}`} ent={aba} />}
     </Pagina>
   );
 }

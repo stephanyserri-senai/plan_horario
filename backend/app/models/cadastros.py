@@ -495,6 +495,21 @@ class AmbienteArea(Base):
     area_id: Mapped[int] = mapped_column(ForeignKey("areas.id"), primary_key=True)
 
 
+# --------------------------------------------------------------------------- termo de horas (horista)
+class TermoHoras(TimestampMixin, Base):
+    """Termo de horas do instrutor HORISTA: a cada mês define quantas horas de aula ele assume (e outras ocupações).
+    Muda de um mês para outro; o mensalista não tem termo (a jornada semanal é fixa, com o teto de 90%)."""
+    __tablename__ = "termos_horas"
+    __table_args__ = (UniqueConstraint("instrutor_id", "mes"), CheckConstraint("horas_aula >= 0"), CheckConstraint("horas_outras >= 0"))
+    id: Mapped[int] = mapped_column(primary_key=True)
+    instrutor_id: Mapped[int] = mapped_column(ForeignKey("instrutores.id", ondelete="CASCADE"), index=True)
+    mes: Mapped[date] = mapped_column(Date)  # primeiro dia do mês
+    horas_aula: Mapped[float] = mapped_column(Numeric(6, 2), default=0)
+    horas_outras: Mapped[float] = mapped_column(Numeric(6, 2), default=0, server_default=text("0"))  # projetos, apoio etc.
+    observacao: Mapped[str | None] = mapped_column(Text)
+    atualizado_por_id: Mapped[int | None] = mapped_column(ForeignKey("usuarios.id", ondelete="SET NULL"))
+
+
 # --------------------------------------------------------------------------- PDI
 class PdiItem(TimestampMixin, Base):
     """Item do PDI (plano de desenvolvimento individual) do instrutor: uma UC a aprender, a completar

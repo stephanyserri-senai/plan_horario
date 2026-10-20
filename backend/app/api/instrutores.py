@@ -5,14 +5,14 @@ from collections import defaultdict
 from datetime import date, datetime
 
 from fastapi import APIRouter, Body, Depends
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.core.deps import Contexto, requer
 from app.core.errors import EntradaInvalida, NaoEncontrado
 from app.models import (Alocacao, Ambiente, Bloqueio, CenarioPlanejamento, CompetenciaInstrutor, DisponibilidadeInstrutor,
-                        HabilitacaoInstrutor, Instrutor, InstrutorUnidade, PdiItem, Turma, Unidade, UnidadeCurricular)
+                        HabilitacaoInstrutor, Instrutor, InstrutorUnidade, PdiItem, TermoHoras, Turma, Unidade, UnidadeCurricular)
 from app.services import aderencia, auditoria
 
 router = APIRouter(prefix="/api", tags=["instrutores"])
@@ -120,7 +120,15 @@ def perfil(iid: int, cenario_id: int | None = None, ctx: Contexto = Depends(requ
                     "media_semanal_h": round(media, 1), "pct_limite": round(100 * media / float(inst.limite_ch_letiva or 1), 1),
                     "pct_contrato": round(100 * media / float(inst.carga_horaria_contratual or 1), 1),
                     "agenda_h": {k: round(v, 1) for k, v in agenda.items()}, "por_turma": lista, "proximas": proximas}
-    return {"dados": dados, "semestre": semestre, "aderencia": aderencia.indice(db, inst.id, base), "pdi": _pdi_salvo(db, inst.id)}
+    termos = None
+    if inst.modalidade == "horista":
+        from app.services import termos as termos_svc
+        hoje_m = termos_svc.mes_de(date.today())
+        d0, d1 = (date.fromisoformat(semestre["inicio"]), date.fromisoformat(semestre["fim"])) if semestre else (hoje_m, termos_svc.fim_do_mes(hoje_m))
+        meses = termos_svc.listar(db, inst, cen.id if cen is not None else None, d0, d1)
+        atual = next((m for m in meses if m["mes"] == hoje_m.isoformat()[:7]), meses[0] if meses else None)
+        termos = {"meses": meses, "atual": atual}
+    return {"dados": dados, "semestre": semestre, "termos": termos, "aderencia": aderencia.indice(db, inst.id, base), "pdi": _pdi_salvo(db, inst.id)}
 
 
 @router.get("/instrutores/{iid}/pdi")
@@ -201,3 +209,120 @@ def atualizar_pdi(pid: int, d: dict = Body(...), ctx: Contexto = Depends(requer(
     auditoria.registrar(db, ctx, "pdi.atualizar", "pdi_itens", p.id, antes=antes, depois={**auditoria.snapshot(p), "habilitou": habilitou})
     db.commit()
     return {"item": _pdi_salvo(db, inst.id), "habilitou": habilitou, "geral": aderencia.indice(db, inst.id, detalhe=False)["geral"]}
+
+
+# ============================================================================ disponibilidade (uma linha por instrutor) e termo de horas
+TURNOS_QUADRO = ("M", "T", "V", "N", "S")
+
+
+def _mesclar(janelas: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    res: list[list[int]] = []
+    for a, b in sorted(janelas):
+        if res and a <= res[-1][1]:
+            res[-1][1] = max(res[-1][1], b)
+        else:
+            res.append([a, b])
+    return [(a, b) for a, b in res]
+
+
+@router.get("/instrutores/disponibilidade")
+def quadro_disponibilidade(q: str = "", modalidade: str = "", cenario_id: int | None = None, mes: str | None = None,
+                           ctx: Contexto = Depends(requer("cadastros.ler")), db: Session = Depends(get_db)):
+    """Uma linha por instrutor: em que turnos de cada dia ele pode dar aula, horas por semana e a carga conforme a
+    modalidade — mensalista (jornada semanal fixa, teto de 90%) ou horista (termo de horas do mês)."""
+    from app.models import Turno
+    from app.services import termos as termos_svc
+    from app.services.regras_aula import limite_letivo_efetivo
+    ref = termos_svc._mes_param(mes) if mes else termos_svc.mes_de(date.today())
+    qi = select(Instrutor).where(Instrutor.ativo.is_(True))
+    if ctx.unidades is not None:
+        qi = qi.where(Instrutor.unidade_id.in_(ctx.unidades))
+    if modalidade in ("mensalista", "horista"):
+        qi = qi.where(Instrutor.modalidade == modalidade)
+    if q.strip():
+        qi = qi.where(Instrutor.nome.ilike(f"%{q.strip()}%") | Instrutor.matricula.ilike(f"%{q.strip()}%"))
+    insts = db.scalars(qi.order_by(Instrutor.nome)).all()
+    ids = [i.id for i in insts]
+    turnos = defaultdict(list)
+    for t in db.scalars(select(Turno).where(Turno.ativo.is_(True), Turno.codigo.in_(TURNOS_QUADRO)).order_by(Turno.hora_inicio)):
+        turnos[t.unidade_id].append(t)
+    janelas = defaultdict(lambda: defaultdict(list))
+    for d in db.scalars(select(DisponibilidadeInstrutor).where(DisponibilidadeInstrutor.instrutor_id.in_(ids))) if ids else []:
+        janelas[d.instrutor_id][d.dia_semana].append((d.hora_inicio.hour * 60 + d.hora_inicio.minute, d.hora_fim.hour * 60 + d.hora_fim.minute))
+    cen = db.get(CenarioPlanejamento, cenario_id) if cenario_id else None
+    termos = termos_svc.termos_do(db, [i.id for i in insts if i.modalidade == "horista"], ref, termos_svc.fim_do_mes(ref))
+    semestre = {}
+    if cen is not None:
+        from app.services.indicadores import periodo_padrao
+        d0, d1 = periodo_padrao(db, cen)
+        semestre = {"inicio": d0.isoformat(), "fim": d1.isoformat()}
+        n_termos = defaultdict(int)
+        for t in db.scalars(select(TermoHoras).where(TermoHoras.instrutor_id.in_(ids), TermoHoras.mes >= termos_svc.mes_de(d0), TermoHoras.mes <= d1)) if ids else []:
+            n_termos[t.instrutor_id] += 1
+        meses_sem = len(termos_svc.meses_entre(d0, d1))
+    linhas = []
+    for i in insts:
+        dias = []
+        total = 0
+        for dia in range(6):
+            js = _mesclar(janelas[i.id].get(dia, []))
+            total += sum(b - a for a, b in js)
+            cods = []
+            for t in turnos.get(i.unidade_id, []):
+                if (t.codigo == "S") != (dia == 5):
+                    continue
+                ti, tf = t.hora_inicio.hour * 60 + t.hora_inicio.minute, t.hora_fim.hour * 60 + t.hora_fim.minute
+                sob = sum(max(0, min(b, tf) - max(a, ti)) for a, b in js)
+                if sob >= 0.5 * (tf - ti):
+                    cods.append("V" if t.codigo == "T" else t.codigo)
+            dias.append({"dia": dia, "turnos": cods, "janelas": [f"{a // 60:02d}:{a % 60:02d}–{b // 60:02d}:{b % 60:02d}" for a, b in js]})
+        linha = {"id": i.id, "nome": i.nome, "matricula": i.matricula, "modalidade": i.modalidade, "nivel": i.nivel,
+                 "carga_semanal": float(i.carga_horaria_contratual or 0), "limite_letivo": limite_letivo_efetivo(i),
+                 "disponivel_semana_h": round(total / 60, 1), "dias": dias, "sem_disponibilidade": total == 0}
+        if i.modalidade == "horista":
+            t = termos.get(i.id, {}).get(ref)
+            prog = termos_svc.horas_programadas(db, cen.id, i.id, ref) if cen is not None else None
+            linha["termo"] = {**termos_svc.termo_dict(t, prog), "tem_termo": True} if t else {"tem_termo": False, "mes": ref.isoformat()[:7],
+                                                                                              "rotulo": termos_svc.rotulo_mes(ref), "programadas_h": prog}
+            if cen is not None:
+                linha["termos_no_semestre"] = {"com_termo": n_termos[i.id], "meses": meses_sem}
+        elif cen is not None:
+            d0, d1 = date.fromisoformat(semestre["inicio"]), date.fromisoformat(semestre["fim"])
+            mins = db.scalar(select(func.coalesce(func.sum(Alocacao.minutos_aula), 0)).where(
+                Alocacao.cenario_id == cen.id, Alocacao.instrutor_id == i.id, Alocacao.status != "cancelada",
+                Alocacao.data >= d0, Alocacao.data <= d1)) or 0
+            media = float(mins) / 60 / max(1.0, ((d1 - d0).days + 1) / 7)
+            linha["ocupacao"] = {"media_semanal_h": round(media, 1), "pct_jornada": round(100 * media / linha["carga_semanal"], 1) if linha["carga_semanal"] else 0}
+        linhas.append(linha)
+    sem_termo = sum(1 for l in linhas if l["modalidade"] == "horista" and not l["termo"]["tem_termo"])
+    return {"mes": ref.isoformat()[:7], "rotulo_mes": termos_svc.rotulo_mes(ref), "semestre": semestre, "instrutores": linhas,
+            "resumo": {"total": len(linhas), "mensalistas": sum(1 for l in linhas if l["modalidade"] != "horista"),
+                       "horistas": sum(1 for l in linhas if l["modalidade"] == "horista"), "horistas_sem_termo": sem_termo,
+                       "sem_disponibilidade": sum(1 for l in linhas if l["sem_disponibilidade"])}}
+
+
+@router.get("/instrutores/{iid}/termos")
+def termos_instrutor(iid: int, cenario_id: int | None = None, ctx: Contexto = Depends(requer("cadastros.ler")), db: Session = Depends(get_db)):
+    """Termos de horas do horista mês a mês no semestre, com as horas de aula já programadas em cada mês."""
+    from app.services import termos as termos_svc
+    inst = _instrutor(db, ctx, iid)
+    cen = db.get(CenarioPlanejamento, cenario_id) if cenario_id else None
+    if cen is not None:
+        from app.services.indicadores import periodo_padrao
+        d0, d1 = periodo_padrao(db, cen)
+    else:
+        d0 = termos_svc.mes_de(date.today())
+        d1 = termos_svc.fim_do_mes(date(d0.year + (d0.month + 4) // 12, (d0.month + 4) % 12 + 1, 1))
+    return {"instrutor": {"id": inst.id, "nome": inst.nome, "modalidade": inst.modalidade, "carga_semanal": float(inst.carga_horaria_contratual or 0)},
+            "meses": termos_svc.listar(db, inst, cen.id if cen else None, d0, d1)}
+
+
+@router.put("/instrutores/{iid}/termos/{mes}")
+def salvar_termo(iid: int, mes: str, d: dict = Body(...), cenario_id: int | None = None, ctx: Contexto = Depends(requer("cadastros.editar")),
+                 db: Session = Depends(get_db)):
+    """Registra ou altera o termo de horas do mês (AAAA-MM): {"horas_aula", "horas_outras"?, "observacao"?}."""
+    from app.services import termos as termos_svc
+    inst = _instrutor(db, ctx, iid)
+    r = termos_svc.salvar(db, ctx, inst, mes, d.get("horas_aula"), d.get("horas_outras") or 0, d.get("observacao"), cenario_id)
+    db.commit()
+    return r

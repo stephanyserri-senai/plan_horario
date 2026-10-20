@@ -172,6 +172,12 @@ class BaseDados:
         return self._memo(("disp_i", instrutor_id), lambda: self.db.scalars(
             select(DisponibilidadeInstrutor).where(DisponibilidadeInstrutor.instrutor_id == instrutor_id)).all())
 
+    def termo_mes(self, instrutor_id, mes: date):
+        """Termo de horas do horista no mês (None sem termo)."""
+        from app.models import TermoHoras
+        return self._memo(("termo", instrutor_id, mes), lambda: self.db.scalar(
+            select(TermoHoras).where(TermoHoras.instrutor_id == instrutor_id, TermoHoras.mes == mes)))
+
     def disponibilidade_ambiente(self, ambiente_id):
         return self._memo(("disp_a", ambiente_id), lambda: self.db.scalars(
             select(DisponibilidadeAmbiente).where(DisponibilidadeAmbiente.ambiente_id == ambiente_id)).all())
@@ -561,6 +567,16 @@ def validar_aula(b: BaseDados, a: AulaProposta, ignorar: set[int] | None = None)
         if min_sem > lim * 60:
             regra90 = " = 90% da jornada; o restante fica para planejamento" if lim < float(instrutor.limite_ch_letiva) - 1e-6 else ""
             add(BLOQUEIO, "LIMITE_SEMANAL", f"{instrutor.nome} somaria {min_sem / 60:.1f} h letivas na semana (limite {lim:.1f} h{regra90}).", "instrutor", instrutor.id)
+        if instrutor.modalidade == "horista":
+            # horista: o termo de horas do mês define as horas de aula que ele assume naquele mês
+            from app.services.termos import fim_do_mes, mes_de, rotulo_mes
+            termo = b.termo_mes(instrutor.id, mes_de(d))
+            if termo is not None:
+                do_mes = [s for s in b.sessoes_instrutor_periodo(instrutor.id, mes_de(d), fim_do_mes(d)) if s.id not in ignorar]
+                min_mes = sum(s.minutos_aula for s in do_mes) + a.minutos_aula
+                if min_mes > float(termo.horas_aula) * 60 + 1e-6:
+                    add(BLOQUEIO, "TERMO_HORAS_MES", f"{instrutor.nome} (horista) somaria {min_mes / 60:.1f} h de aula em {rotulo_mes(mes_de(d))}; "
+                                                     f"o termo de horas do mês é de {float(termo.horas_aula):g} h.", "instrutor", instrutor.id)
         descanso = timedelta(hours=float(instrutor.intervalo_minimo_h or 0))
         if descanso:
             for s in b.sessoes_instrutor(instrutor.id, d - timedelta(days=1)):

@@ -112,8 +112,13 @@ function VisaoGeral({ d }: { d: any }) {
     <div className="perfil-geral">
       <div className="perfil-kpis">
         <div className="pk"><small>Aulas no semestre</small><b>{s ? s.aulas : "—"}</b><span className="mudo">{s ? `${s.realizadas} dadas · ${s.horas} h` : "escolha o semestre"}</span></div>
-        <div className="pk"><small>Média semanal</small><b>{s ? `${s.media_semanal_h} h` : "—"}</b>
-          {s && <><BarraPct valor={s.pct_limite} fina neutra /><span className="mudo">{pct(s.pct_limite)} do limite letivo ({d.dados.limite_letivo} h)</span></>}</div>
+        {d.termos ? <div className="pk"><small>Termo de {d.termos.atual?.rotulo || "—"}</small>
+          {d.termos.atual?.tem_termo ? <><b>{d.termos.atual.horas_aula} h</b>
+            {d.termos.atual.programadas_h != null && <><BarraPct valor={d.termos.atual.pct} fina neutra />
+              <span className="mudo">{d.termos.atual.programadas_h} h de aula programadas ({pct(d.termos.atual.pct)})</span></>}</>
+            : <><b>—</b><span className="mudo">sem termo neste mês: vale o limite semanal ({d.dados.limite_letivo} h)</span></>}</div>
+          : <div className="pk"><small>Média semanal</small><b>{s ? `${s.media_semanal_h} h` : "—"}</b>
+          {s && <><BarraPct valor={s.pct_limite} fina neutra /><span className="mudo">{pct(s.pct_limite)} do limite letivo ({d.dados.limite_letivo} h)</span></>}</div>}
         <div className="pk"><small>Turmas</small><b>{s ? s.turmas : "—"}</b><span className="mudo">{s ? `${s.por_turma.length} UC(s) em andamento` : ""}</span></div>
         <div className="pk"><small>UCs que ministra</small><b>{d.dados.ucs_sim}</b><span className="mudo">{d.dados.ucs_em_partes ? `+ ${d.dados.ucs_em_partes} em partes` : "marcadas no perfil"}</span></div>
       </div>
@@ -155,7 +160,15 @@ function VisaoGeral({ d }: { d: any }) {
           <div className="agenda-chips">
             {d.dados.certificacoes.map((c: any) => <Badge key={c.nome} tipo={c.vencida ? "erro" : "ok"}>{c.nome}{c.valido_ate ? ` até ${dataBR(c.valido_ate)}` : ""}</Badge>)}
           </div>
-          <p className="sub">Carga contratual {d.dados.carga_contratual} h/semana · limite letivo {d.dados.limite_letivo} h</p>
+          {d.termos ? <>
+            <h4>Termos de horas (horista)</h4>
+            <ul className="lista-limpa disp">
+              {d.termos.meses.map((m: any) => <li key={m.mes}><b className="cap">{m.rotulo}</b>{" "}
+                {m.tem_termo ? <small>{m.horas_aula} h de aula{m.horas_outras ? ` + ${m.horas_outras} h outras` : ""}{m.programadas_h != null ? ` · ${m.programadas_h} h programadas` : ""}</small>
+                  : <Badge tipo="alerta">sem termo</Badge>}{m.excedente_h > 0 && <> <Badge tipo="bloqueio">{m.excedente_h} h acima</Badge></>}</li>)}
+            </ul>
+            <p className="sub">Horista: as horas de aula de cada mês vêm do termo, que pode mudar mês a mês.</p>
+          </> : <p className="sub">Mensalista: jornada fixa de {d.dados.carga_contratual} h/semana · aulas até {d.dados.limite_letivo} h (teto de 90%)</p>}
         </section>
       </div>
     </div>

@@ -317,6 +317,9 @@ def montar_entrada(db: Session, cenario: CenarioPlanejamento, escopo: dict, peso
 
     # instrutores e ambientes
     instrutores = []
+    from app.services import termos as termos_svc
+    t0, t1 = cenario.periodo_inicio or date.today(), cenario.periodo_fim or date.today()
+    termos_h = termos_svc.termos_do(db, instr_ids, t0, t1)
     for i in db.scalars(select(Instrutor).where(Instrutor.id.in_(instr_ids))):
         disp = [(j.dia_semana, minutos(j.hora_inicio), minutos(j.hora_fim))
                 for j in db.scalars(select(DisponibilidadeInstrutor).where(DisponibilidadeInstrutor.instrutor_id == i.id))]
@@ -327,7 +330,11 @@ def montar_entrada(db: Session, cenario: CenarioPlanejamento, escopo: dict, peso
         disp = [Janela(*j) for j in disp]
         uns = sorted({i.unidade_id, *db.scalars(select(InstrutorUnidade.unidade_id).where(InstrutorUnidade.instrutor_id == i.id))})
         unidades.update(uns)
-        instrutores.append(InstrutorS(i.id, uns, disp, int(limite_letivo_efetivo(i) * 60), int(float(i.max_horas_dia) * 60),
+        lim_sem = limite_letivo_efetivo(i)
+        if i.modalidade == "horista" and termos_h.get(i.id):
+            # horista: a semana não passa do que o termo do mês mais folgado permite (o mês exato a validação confere)
+            lim_sem = min(lim_sem, max(float(t.horas_aula) * 7 / ((termos_svc.fim_do_mes(m) - m).days + 1) for m, t in termos_h[i.id].items()))
+        instrutores.append(InstrutorS(i.id, uns, disp, int(lim_sem * 60), int(float(i.max_horas_dia) * 60),
                                       int(float(i.intervalo_minimo_h or 0) * 60), i.turno_preferencial_id))
     tipos = {t.id: t for t in db.scalars(select(TipoAmbiente))}
     ambientes = []

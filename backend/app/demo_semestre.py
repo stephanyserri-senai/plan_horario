@@ -335,6 +335,7 @@ def montar(db, ctx, limite_s: float = 120) -> dict:
             db.add(TurmaUC(turma_id=t.id, uc_id=uc.id, situacao="ofertada", data_limite=prazos.get(uc.codigo)))
     db.flush()
 
+    termos_demo(db)  # antes da geração: o gerador e a validação respeitam o termo de cada mês
     cen = cenarios.criar(db, ctx, f"Planejamento {ANO}/2", periodo_inicio=INICIO, periodo_fim=FIM,
                          descricao="Semestre de demonstração: Beira Mar e Porto, 13 turmas nos três turnos.")
     db.commit()
@@ -421,6 +422,7 @@ def montar(db, ctx, limite_s: float = 120) -> dict:
     casos.update(epis_demo(db, cursos))
     casos.update(modulos_demo(db))
     casos.update(pdi_demo(db, ctx))
+    casos.update(termo_reduzido_demo(db, cen.id))
 
     n_aulas = db.scalar(select(func.count()).select_from(Alocacao).where(Alocacao.cenario_id == cen.id))
     return {"cenario_id": cen.id, "aulas": n_aulas, "execucao": ex.id, "substituicao": sub_info, **casos}
@@ -570,3 +572,44 @@ def pdi_demo(db, ctx) -> dict:
             n += 1
     db.commit()
     return {"pdi_itens": n}
+
+
+SEM_TERMO_NOVEMBRO = "PT-2006"  # o termo de novembro deste horista ainda não chegou (aparece em Riscos)
+
+
+def termos_demo(db) -> None:
+    """Termo de horas mensal dos horistas, de agosto a dezembro: as horas de aula do mês pelo limite semanal do cadastro."""
+    import calendar
+    from app.models import TermoHoras
+    from app.services.regras_aula import limite_letivo_efetivo
+    for i in db.scalars(select(Instrutor).where(Instrutor.matricula.in_(HORISTAS))):
+        for mes in range(INICIO.month, FIM.month + 1):
+            if i.matricula == SEM_TERMO_NOVEMBRO and mes == 11:
+                continue
+            dias = calendar.monthrange(ANO, mes)[1]
+            horas = round(limite_letivo_efetivo(i) * dias / 7 / 4) * 4
+            db.add(TermoHoras(instrutor_id=i.id, mes=date(ANO, mes, 1), horas_aula=horas, horas_outras=4 if mes in (8, 12) else 0,
+                              observacao="Termo do mês: turmas do semestre" + ("; 4 h de apoio à matrícula" if mes == 8 else
+                                                                                 "; 4 h de apoio ao encerramento" if mes == 12 else "")))
+    db.flush()
+
+
+def termo_reduzido_demo(db, cenario_id: int) -> dict:
+    """O termo muda: o de novembro de um horista vem menor depois da grade pronta, e as aulas excedentes viram risco."""
+    from app.models import TermoHoras
+    from app.services.termos import horas_programadas
+    # o horista com mais aulas em novembro (fora o que ainda não tem o termo do mês)
+    cands = []
+    for i in db.scalars(select(Instrutor).where(Instrutor.matricula.in_(HORISTAS - {SEM_TERMO_NOVEMBRO}))):
+        cands.append((horas_programadas(db, cenario_id, i.id, date(ANO, 11, 1)), i.matricula, i))
+    if not cands:
+        return {}
+    prog, _m, i = max(cands, key=lambda x: (x[0], x[1]))
+    t = db.scalar(select(TermoHoras).where(TermoHoras.instrutor_id == i.id, TermoHoras.mes == date(ANO, 11, 1)))
+    if t is None:
+        return {}
+    if prog > 8:
+        t.horas_aula = max(0, int(prog) - 8)
+        t.observacao = "Termo de novembro reduzido: o instrutor assumiu um projeto externo."
+    db.commit()
+    return {"termo_reduzido": {"instrutor": i.nome, "novembro_h": float(t.horas_aula), "programadas_h": prog}}

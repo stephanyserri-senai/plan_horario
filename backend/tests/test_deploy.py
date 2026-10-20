@@ -88,7 +88,7 @@ def test_api_importa_sem_ortools():
 def test_saude_informa_fila_e_migracao(mundo):
     from app.main import app
     r = TestClient(app).get("/api/saude").json()
-    assert r["status"] == "ok" and r["migracao"] == "0016" and "execucoes_pendentes" in r["fila"]
+    assert r["status"] == "ok" and r["migracao"] == "0017" and "execucoes_pendentes" in r["fila"]
 
 
 # ------------------------------------------------------------------ RLS / Data API do Supabase
@@ -151,7 +151,7 @@ def test_sql_offline_das_migracoes_reproduz_banco_novo():
             assert c.scalar(text("SELECT count(*) FROM usuarios WHERE email = 'admin'")) == 1
             assert c.scalar(text("SELECT count(*) FROM pg_class cl JOIN pg_namespace n ON n.oid = cl.relnamespace "
                                  "WHERE n.nspname = 'public' AND cl.relkind = 'r' AND NOT cl.relrowsecurity")) == 0
-            assert c.scalar(text("SELECT version_num FROM alembic_version")) == "0016"
+            assert c.scalar(text("SELECT version_num FROM alembic_version")) == "0017"
             assert c.scalar(text("SELECT count(*) FROM pg_constraint WHERE conname LIKE 'excl_alocacao_%'")) == 3
             # estrutura fixa da instituição (migração 0003), idêntica a app/core/estrutura.py
             from app.core.estrutura import AREAS, UNIDADES
@@ -490,14 +490,14 @@ def test_scripts_do_sql_editor_funcionam_comando_a_comando():
             os.environ.pop("ALEMBIC_DATABASE_URL", None)
         dsn = url.replace("postgresql+psycopg://", "postgresql://")
         sql_dir = RAIZ / "backend" / "sql"
-        for arq, vezes in (("atualizacao_0003.sql", 1), ("atualizacao_0004.sql", 1), ("atualizacao_0005.sql", 1), ("atualizacao_0006.sql", 1), ("atualizacao_0007.sql", 1), ("atualizacao_0008.sql", 1), ("atualizacao_0009.sql", 1), ("atualizacao_0010.sql", 1), ("atualizacao_0011.sql", 1), ("atualizacao_0012.sql", 1), ("atualizacao_0013.sql", 1), ("atualizacao_0014.sql", 1), ("atualizacao_0015.sql", 1), ("atualizacao_0016.sql", 1), ("seed_inicial.sql", 1), ("demo_recarregar.sql", 2)):
+        for arq, vezes in (("atualizacao_0003.sql", 1), ("atualizacao_0004.sql", 1), ("atualizacao_0005.sql", 1), ("atualizacao_0006.sql", 1), ("atualizacao_0007.sql", 1), ("atualizacao_0008.sql", 1), ("atualizacao_0009.sql", 1), ("atualizacao_0010.sql", 1), ("atualizacao_0011.sql", 1), ("atualizacao_0012.sql", 1), ("atualizacao_0013.sql", 1), ("atualizacao_0014.sql", 1), ("atualizacao_0015.sql", 1), ("atualizacao_0016.sql", 1), ("atualizacao_0017.sql", 1), ("seed_inicial.sql", 1), ("demo_recarregar.sql", 2)):
             for _ in range(vezes):
                 for cmd in _comandos_sql((sql_dir / arq).read_text(encoding="utf-8")):
                     with psycopg.connect(dsn, autocommit=True) as conn:
                         conn.execute(cmd.encode())
         eng = create_engine(url)
         with eng.connect() as c:
-            assert c.scalar(text("SELECT version_num FROM alembic_version")) == "0016"
+            assert c.scalar(text("SELECT version_num FROM alembic_version")) == "0017"
             assert c.scalar(text("SELECT count(*) FROM areas")) == 11
             assert c.scalar(text("SELECT count(*) FROM turmas WHERE codigo LIKE 'DEMO-%'")) == 3
             assert c.scalar(text("SELECT count(*) FROM turma_uc tu JOIN turmas t ON t.id = tu.turma_id WHERE t.codigo LIKE 'DEMO-%'")) == 12
@@ -525,7 +525,7 @@ def test_scripts_do_sql_editor_funcionam_comando_a_comando():
         adm.dispose()
 
 
-CONFLITOS_DA_DEMO = {"BLOQUEIO_INSTRUTOR", "BLOQUEIO_AMBIENTE", "DIA_NAO_LETIVO"}
+CONFLITOS_DA_DEMO = {"BLOQUEIO_INSTRUTOR", "BLOQUEIO_AMBIENTE", "DIA_NAO_LETIVO", "TERMO_HORAS_MES"}
 
 
 def test_sql_do_semestre_de_demonstracao():
