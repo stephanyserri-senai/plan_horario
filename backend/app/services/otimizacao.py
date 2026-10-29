@@ -343,7 +343,7 @@ def montar_entrada(db: Session, cenario: CenarioPlanejamento, escopo: dict, peso
             # horista: a semana não passa do que o termo do mês mais folgado permite (o mês exato a validação confere)
             lim_sem = min(lim_sem, max(float(t.horas_aula) * 7 / ((termos_svc.fim_do_mes(m) - m).days + 1) for m, t in termos_h[i.id].items()))
         instrutores.append(InstrutorS(i.id, uns, disp, int(lim_sem * 60), int(float(i.max_horas_dia) * 60),
-                                      int(float(i.intervalo_minimo_h or 0) * 60), i.turno_preferencial_id))
+                                      int(float(i.intervalo_minimo_h or 0) * 60), i.turno_preferencial_id, i.modalidade == "horista"))
     tipos = {t.id: t for t in db.scalars(select(TipoAmbiente))}
     ambientes = []
     for a in db.scalars(select(Ambiente).where(Ambiente.id.in_(amb_ids))):

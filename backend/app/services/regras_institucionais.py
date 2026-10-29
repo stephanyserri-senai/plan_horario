@@ -160,6 +160,13 @@ def catalogo() -> list[dict]:
           "fora do termo é alerta; o que impede, para horista e mensalista, é já estar ocupado e a carga máxima do contrato. A geração do "
           "semestre procura manter o horista dentro do termo; a simulação e a previsão de turmas não olham o termo.",
           ["disponibilidade e termos", "validação", "gerador", "simulador", "riscos", "substituição"])
+    regra("MENSALISTA_PRIMEIRO", "Instrutores", "preferencia", "Mensalistas ocupados primeiro",
+          "Todos os instrutores devem ser ocupados, mas na distribuição das aulas o mensalista (jornada garantida) tem prioridade: recebe "
+          "primeiro, e o horista fica com o que os mensalistas habilitados não conseguem cobrir (ocupados, no teto de 90% ou sem a UC). "
+          "O gerador de horários conta cada hora dada por horista como custo (critério prioridade_mensalista) e equilibra a carga dentro "
+          "de cada grupo — entre os mensalistas e, no que sobra, entre os horistas, para não concentrar em poucos. As listas de instrutores "
+          "possíveis, as sugestões de substituto e as correções de riscos mostram o mensalista antes do horista.",
+          ["gerador", "alocação manual", "substituição", "solicitações", "riscos", "simulador"], {"peso_padrao": 30.0})
     regra("NIVEL", "Instrutores", "obrigatoria", "Nível básico ou técnico",
           f"Instrutor BÁSICO só dá aula em aprendizagem industrial básica e qualificações ({', '.join(sorted(OFERTAS_BASICAS))}); TÉCNICO, em todas as modalidades "
           f"(inclusive {', '.join(sorted(OFERTAS_TECNICAS))}). Sem exceção.", ["gerador", "validação", "substituição", "quadro"])

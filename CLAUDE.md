@@ -44,7 +44,9 @@ UC transversal/técnica, substituição, solicitações, quadro 5:4...) estão e
   horas de aula do mês e, opcional, dias da semana). O termo é ajustável numa urgência com a concordância do instrutor
   (`termos.ajustar`, ação `ajustar_termo`), então aula fora do termo é ALERTA (TERMO_HORAS_MES / TERMO_FORA_DOS_DIAS); o que impede
   é estar ocupado e a carga máxima do contrato. A geração do semestre procura manter o horista no termo; simulação e previsão de
-  turmas ignoram o termo; a ocupação é medida sobre o contrato. Aba "Disponibilidade e termos de horas": uma linha por instrutor.
+  turmas ignoram o termo; a ocupação é medida sobre o contrato. Mensalista é ocupado primeiro (regra MENSALISTA_PRIMEIRO):
+  todos são ocupados; critério `prioridade_mensalista` no solver (hora de horista custa; `equilibrio_carga` por grupo) e
+  `planejamento.mensalistas_primeiro` / ordenação de `substituicao.candidatos` nas listas de instrutores. Aba "Disponibilidade e termos de horas": uma linha por instrutor.
 - Versão da matriz: cada uma tem sua lista de UCs; em `rascunho` a lista é editável, depois de cadastrada (vigente/encerrada) fica fixa
   (código, nome, carga, modalidade, categoria; incluir/retirar) — `VERSAO_CADASTRADA` em `api/cadastros._regras_uc`; mudar = nova versão.
   UC `modalidade` presencial/ead; EAD só se `cursos.preve_ead`; UC EAD fica fora do gerador e da demanda (risco "ead" no acompanhamento).

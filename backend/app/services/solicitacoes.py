@@ -78,7 +78,8 @@ def serializar(db: Session, s: SolicitacaoInstrutor, detalhes: bool = False) -> 
 
 
 def sugerir(candidatos: list[dict]) -> dict | None:
-    """Sugestão do sistema: o primeiro recomendado (livre, da área e com a UC; quem está na escola vem antes);
+    """Sugestão do sistema: o primeiro recomendado (livre, da área e com a UC; mensalista antes do horista e, entre eles,
+    quem está na escola);
     sem recomendado, o primeiro que assume com exceção justificada."""
     for g in ("recomendado", "excecao"):
         c = next((x for x in candidatos if x["grupo"] == g), None)

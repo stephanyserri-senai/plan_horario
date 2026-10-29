@@ -47,6 +47,7 @@ class InstrutorS:
     max_dia_min: int
     descanso_min: int = 0
     turno_preferencial_id: int | None = None
+    horista: bool = False  # mensalista é ocupado primeiro; o horista completa o que faltar
 
 
 @dataclass

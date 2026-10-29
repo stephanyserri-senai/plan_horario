@@ -101,9 +101,13 @@ def avaliar_cenario(db: Session, cenario_id: int, pesos: dict | None = None, ref
     for a in aulas:
         if a.instrutor_id:
             carga[a.instrutor_id] += a.minutos_aula
-    ocup = [100 * (mins / n_sem) / (limite_letivo_efetivo(instrutores[i]) * 60) for i, mins in carga.items()
-            if i in instrutores and limite_letivo_efetivo(instrutores[i]) > 0]
-    v["equilibrio_carga"] = max(ocup) if ocup else 0.0
+    # maior ocupação dos mensalistas + maior ocupação dos horistas (cada grupo equilibrado entre si)
+    for horista in (False, True):
+        ocup = [100 * (mins / n_sem) / (limite_letivo_efetivo(instrutores[i]) * 60) for i, mins in carga.items()
+                if i in instrutores and (instrutores[i].modalidade == "horista") == horista and limite_letivo_efetivo(instrutores[i]) > 0]
+        v["equilibrio_carga"] += max(ocup) if ocup else 0.0
+    # mensalista primeiro: horas de aula por semana dadas por horistas
+    v["prioridade_mensalista"] = sum(mins for i, mins in carga.items() if i in instrutores and instrutores[i].modalidade == "horista") / 60 / n_sem
 
     pref = 0
     for a in aulas:

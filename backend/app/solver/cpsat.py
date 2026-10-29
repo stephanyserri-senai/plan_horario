@@ -326,6 +326,9 @@ def resolver(entrada: EntradaSolver) -> SaidaSolver:
                 xv = x.get((a.chave, o.idx, i))
                 if xv is not None and instrutores[i].turno_preferencial_id and instrutores[i].turno_preferencial_id != o.turno_id:
                     termos["preferencia_turno"].append((1, xv))
+                # mensalista primeiro: cada hora dada por horista custa (ele só completa o que os mensalistas não cobrem)
+                if xv is not None and instrutores[i].horista:
+                    termos["prioridade_mensalista"].append((o.minutos / 60, xv))
         # concentração no mesmo dia
         if pesos["concentracao_dias"] > 0 and a.encontros > 1:
             por_dia = defaultdict(list)
@@ -365,9 +368,10 @@ def resolver(entrada: EntradaSolver) -> SaidaSolver:
             m.Add(alterados == len(lista) - sum(mantidos))
             termos[criterio].append((1, alterados))
 
-    # equilíbrio de carga (maior ocupação percentual)
+    # equilíbrio de carga (maior ocupação percentual), separado em mensalistas e horistas: todos são ocupados, mas o
+    # mensalista tem prioridade (prioridade_mensalista); o que sobra para os horistas é repartido entre eles
     if pesos["equilibrio_carga"] > 0:
-        lmax = m.NewIntVar(0, 1000, "lmax")
+        lmax = {False: m.NewIntVar(0, 1000, "lmax_m"), True: m.NewIntVar(0, 1000, "lmax_h")}
         carga = defaultdict(list)
         for (k, oi, i), xv in x.items():
             carga[i].append((opcoes[k][oi].minutos, xv))
@@ -378,8 +382,8 @@ def resolver(entrada: EntradaSolver) -> SaidaSolver:
         for i, itens in carga.items():
             lim = max(instrutores[i].limite_semanal_min, 1)
             # 100 * minutos / limite <= lmax  →  100*minutos <= lmax*limite
-            m.Add(100 * (sum(mn * xv for mn, xv in itens) + fixo_sem[i]) <= lmax * lim)
-        termos["equilibrio_carga"].append((1, lmax))
+            m.Add(100 * (sum(mn * xv for mn, xv in itens) + fixo_sem[i]) <= lmax[instrutores[i].horista] * lim)
+        termos["equilibrio_carga"] += [(1, lmax[False]), (1, lmax[True])]
 
     # janelas (instrutores e turmas) e aulas isoladas
     def janelas(itens_por_dia_slot, criterio, fixos_por_dia_slot):

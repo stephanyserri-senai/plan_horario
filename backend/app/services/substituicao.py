@@ -144,9 +144,11 @@ def candidatos(db: Session, cenario_id: int, aulas: list[Alocacao], max_dias: in
                     "ministra_uc": bool(comps.get(i.id, set()) & ucs), "outra_unidade": i.unidade_id not in unidades,
                     # PL/PJ = está na escola; vazio = precisa ser acionado com antecedência
                     "presenca": sorted(presenca, key=["PL", "PJ", "vazio"].index), "na_escola": bool(presenca) and "vazio" not in presenca,
-                    "ajustar_termo": termo, "motivos": list(dict.fromkeys(motivos))[:4]})
+                    "ajustar_termo": termo, "modalidade": i.modalidade, "motivos": list(dict.fromkeys(motivos))[:4]})
     ordem = {"recomendado": 0, "excecao": 1, "parcial": 2, "indisponivel": 3}
-    res.sort(key=lambda x: (ordem[x["grupo"]], not x["na_escola"], x["outra_unidade"], not x["ministra_uc"], -x["dias_livres"], x["nome"]))
+    # mensalista primeiro (jornada garantida; quem está na escola em PL/PJ antes); o horista completa
+    res.sort(key=lambda x: (ordem[x["grupo"]], x["modalidade"] == "horista", not x["na_escola"], x["outra_unidade"], not x["ministra_uc"],
+                            -x["dias_livres"], x["nome"]))
     return {"aulas": len(aulas), "dias": len(blocos), "dias_avaliados": len(amostra), "instrutores": res,
             "hoje": hoje().isoformat(), "antecedencia_dias": ANTECEDENCIA_DIAS}
 

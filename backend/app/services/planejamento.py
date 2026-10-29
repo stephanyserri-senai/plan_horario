@@ -124,8 +124,8 @@ def instrutores_elegiveis(db: Session, uc: UnidadeCurricular, unidade_id: int, n
             if unidade_id not in unidades or not _tem_certificacao(db, inst.id, uc, na_data):
                 continue
             res.append({"id": inst.id, "nome": inst.nome, "matricula": inst.matricula, "nivel": "pleno", "area_id": inst.area_id,
-                        "nivel_instrutor": inst.nivel, "transversal": True})
-        return res
+                        "nivel_instrutor": inst.nivel, "modalidade": inst.modalidade, "transversal": True})
+        return mensalistas_primeiro(res)
     q = (
         select(Instrutor, CompetenciaInstrutor)
         .join(CompetenciaInstrutor, CompetenciaInstrutor.instrutor_id == Instrutor.id)
@@ -147,8 +147,14 @@ def instrutores_elegiveis(db: Session, uc: UnidadeCurricular, unidade_id: int, n
         if not _tem_certificacao(db, inst.id, uc, na_data):
             continue
         res.append({"id": inst.id, "nome": inst.nome, "matricula": inst.matricula, "nivel": comp.nivel, "area_id": inst.area_id,
-                    "nivel_instrutor": inst.nivel})
-    return res
+                    "nivel_instrutor": inst.nivel, "modalidade": inst.modalidade})
+    return mensalistas_primeiro(res)
+
+
+def mensalistas_primeiro(lista: list[dict]) -> list[dict]:
+    """Ordem de escolha dos instrutores: mensalistas primeiro (têm a jornada garantida e devem ser ocupados antes);
+    o horista completa o que faltar. Dentro de cada grupo, quem domina a UC (sim) antes de quem a domina em partes."""
+    return sorted(lista, key=lambda x: (x.get("modalidade") == "horista", x.get("nivel") == "parcial", x["nome"]))
 
 
 def ambientes_compativeis(db: Session, uc: UnidadeCurricular, turma: Turma, grupo_dividido: bool = False) -> list[dict]:
