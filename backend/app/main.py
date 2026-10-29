@@ -193,7 +193,8 @@ def saude():
 # Fora da Vercel, o build do frontend é servido pela própria API (na Vercel, pela CDN).
 _dist = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 if _dist.exists() and not settings.serverless:
-    app.mount("/assets", StaticFiles(directory=_dist / "assets"), name="assets")
+    if (_dist / "static").is_dir():
+        app.mount("/static", StaticFiles(directory=_dist / "static"), name="static")
 
     @app.get("/{caminho:path}", include_in_schema=False)
     def spa(caminho: str):
