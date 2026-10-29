@@ -26,6 +26,7 @@ import Login, { DefinirSenha } from "./pages/Login";
 import Planejamento from "./pages/Planejamento";
 import Relatorios from "./pages/Relatorios";
 import Simulador from "./pages/Simulador";
+import Substituicoes from "./pages/Substituicoes";
 import Usuarios from "./pages/Usuarios";
 
 type Item = { para: string; rotulo: string; icone: string; acao?: string };
@@ -41,6 +42,7 @@ const MENU: { grupo: string; itens: Item[] }[] = [
     { para: "/simulador", rotulo: "Simular nova turma", icone: "◇", acao: "simulacao.executar" },
     { para: "/gargalos", rotulo: "Riscos e gargalos", icone: "⚠", acao: "indicadores.ler" },
     { para: "/relatorios", rotulo: "Relatórios", icone: "⎙", acao: "exportacao.executar" },
+    { para: "/substituicoes", rotulo: "Substituições", icone: "🔁", acao: "alocacoes.ler" },
     { para: "/solicitacoes", rotulo: "Solicitações dos instrutores", icone: "📝", acao: "solicitacoes.aprovar" },
     { para: "/epis", rotulo: "EPIs das turmas", icone: "🦺", acao: "cadastros.ler" },
   ] },
@@ -210,6 +212,7 @@ export default function App() {
             <Route path="/configuracoes" element={<Configuracoes />} />
             <Route path="/regras" element={<Regras />} />
             <Route path="/solicitacoes" element={<Solicitacoes />} />
+            <Route path="/substituicoes" element={<Substituicoes />} />
             <Route path="/epis" element={<Epis />} />
             <Route path="/auditoria" element={<Auditoria />} />
             <Route path="*" element={<Navigate to="/" />} />

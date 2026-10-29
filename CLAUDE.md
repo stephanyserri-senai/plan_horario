@@ -50,6 +50,11 @@ UC transversal/técnica, substituição, solicitações, quadro 5:4...) estão e
 - Versão da matriz: cada uma tem sua lista de UCs; em `rascunho` a lista é editável, depois de cadastrada (vigente/encerrada) fica fixa
   (código, nome, carga, modalidade, categoria; incluir/retirar) — `VERSAO_CADASTRADA` em `api/cadastros._regras_uc`; mudar = nova versão.
   UC `modalidade` presencial/ead; EAD só se `cursos.preve_ead`; UC EAD fica fora do gerador e da demanda (risco "ead" no acompanhamento).
+- Um instrutor por UC (turma × UC × grupo): `validacao.titular_da_uc` + regra UM_INSTRUTOR_POR_UC (bloqueio; alerta com exceção
+  regra_academica; não vale na substituição). O gerador restringe a atividade ao titular. `passar_uc` usa `substituir(..., transferir=True)`.
+- Substituições: página `/substituicoes` (busca do instrutor → `GET /api/substituicoes/aulas-do-instrutor` → aulas marcadas →
+  `GET /api/substituicoes/candidatos?alocacao_ids=`). Horista fora do termo/disponibilidade = grupo `aprovacao`; `POST /api/substituicoes`
+  com `aprovado_supervisao` e `concordancia` relaxa a disponibilidade (exceção "aprovada pela supervisão") e ajusta o termo do mês.
 - Riscos: `services/resolucoes.sugerir` dá uma correção por caso (acao para `services/sugestoes.aplicar`); trocar sala e
   remarcar valem também com o horário publicado (ajuste operacional, como a substituição).
 

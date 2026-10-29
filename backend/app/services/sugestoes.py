@@ -96,7 +96,7 @@ def aplicar(db: Session, ctx, cenario_id: int, acao: dict, motivo: str | None = 
         if not aulas:
             raise ConflitoValidacao("Não há aulas futuras desta UC com o instrutor indicado.")
         r = substituicao.substituir(db, ctx, cenario_id, aulas, int(acao["para_instrutor_id"]),
-                                    motivo or "Sugestão do sistema aceita: passar a UC para liberar turnos do instrutor")
+                                    motivo or "Sugestão do sistema aceita: passar a UC para liberar turnos do instrutor", transferir=True)
         if not r["substituidas"]:
             raise ConflitoValidacao("A troca não passou na validação: " + "; ".join(m for f in r["falhas"][:3] for m in f["motivos"][:1]))
         msgs.append(f"{r['substituidas']} aula(s) passaram para o novo instrutor" + (f"; {len(r['falhas'])} não puderam" if r["falhas"] else "") + ".")

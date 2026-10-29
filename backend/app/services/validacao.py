@@ -116,6 +116,7 @@ class SessaoExistente:
     status: str
     unidade_id: int | None = None
     recursos: dict[int, int] = field(default_factory=dict)
+    titular_id: int | None = None  # aula em substituição: o titular da UC continua sendo este
 
 
 def grupos_da_aula(grupo: int | None) -> list[int]:
@@ -254,7 +255,7 @@ class BaseDados:
             id=a.id, turma_id=a.turma_id, turma_uc_id=a.turma_uc_id, uc_id=a.uc_id, grupos=list(a.grupos),
             instrutor_id=a.instrutor_id, ambiente_id=a.ambiente_id, data=a.data, inicio=a.inicio, fim=a.fim,
             fim_ambiente=a.fim_ambiente, minutos_aula=a.minutos_aula, status=a.status,
-            unidade_id=amb.unidade_id if amb else (turma.unidade_id if turma else None),
+            unidade_id=amb.unidade_id if amb else (turma.unidade_id if turma else None), titular_id=a.instrutor_titular_id,
         )
 
     def precarregar(self):
@@ -357,6 +358,27 @@ def carga_horaria_minutos(b: BaseDados, tuc: TurmaUC, grupo: int | None, ignorar
         else:
             programados += s.minutos_aula
     return realizados, programados
+
+
+def titular_da_uc(b: BaseDados, a: AulaProposta, ignorar: set[int]) -> int | None:
+    """Instrutor da UC na turma (por grupo): quem dá as outras aulas programadas dela (numa substituição, o titular).
+    Sem aula programada, vale quem deu as já realizadas. Nada a conferir numa substituição, numa aula já realizada ou
+    numa aula que já está em substituição."""
+    if a.origem == "substituicao":
+        return None
+    if a.alocacao_id:
+        propria = b.get(Alocacao, a.alocacao_id)
+        if propria is not None and (propria.status == "realizada" or (propria.instrutor_titular_id and propria.instrutor_id == a.instrutor_id)):
+            return None
+    contagem = {"programada": defaultdict(int), "realizada": defaultdict(int)}
+    for s in b.sessoes_turma_uc(a.turma_uc_id):
+        if s.id in ignorar or not s.instrutor_id:
+            continue
+        mesmo_grupo = (s.grupos == [a.grupo]) if a.grupo is not None else len(s.grupos) != 1
+        if mesmo_grupo:
+            contagem["realizada" if s.status == "realizada" else "programada"][s.titular_id or s.instrutor_id] += 1
+    c = contagem["programada"] or contagem["realizada"]
+    return max(c, key=lambda i: (c[i], -i)) if c else None
 
 
 def validar_aula(b: BaseDados, a: AulaProposta, ignorar: set[int] | None = None) -> list[Ocorrencia]:
@@ -538,6 +560,16 @@ def validar_aula(b: BaseDados, a: AulaProposta, ignorar: set[int] | None = None)
                 "instrutor", instrutor.id)
         if unidade_aula not in b.unidades_instrutor(instrutor):
             add(BLOQUEIO, "INSTRUTOR_UNIDADE", f"{instrutor.nome} não está autorizado a atuar nesta unidade.", "instrutor", instrutor.id)
+        # um instrutor por UC (turma × UC, por grupo): outro instrutor só por substituição ou exceção justificada
+        titular = titular_da_uc(b, a, ignorar)
+        if titular and titular != instrutor.id:
+            nome_t = (b.get(Instrutor, titular) or instrutor).nome
+            if academica:
+                add(ALERTA, "UM_INSTRUTOR_POR_UC", f"{uc.codigo} da {turma.codigo} é de {nome_t}; {instrutor.nome} assume por exceção justificada "
+                                                   f"#{excecao.id}: {excecao.justificativa}", "instrutor", instrutor.id)
+            else:
+                add(BLOQUEIO, "UM_INSTRUTOR_POR_UC", f"{uc.codigo} da {turma.codigo} é de {nome_t}: cada UC tem um só instrutor. Para outro "
+                                                     f"instrutor assumir, use a substituição (ou registre uma exceção justificada).", "instrutor", instrutor.id)
         # (5) disponibilidade
         disp = b.disponibilidade_instrutor(instrutor.id)
         if not disp:
@@ -689,6 +721,17 @@ def validar_aula(b: BaseDados, a: AulaProposta, ignorar: set[int] | None = None)
             if any(o.regra in relaxa and o.severidade == BLOQUEIO for o in oc):
                 oc = [o for o in oc if not (o.regra in relaxa and o.severidade == BLOQUEIO)]
                 add(ALERTA, "REPOSICAO_SABADO", f"Reposição aos sábados autorizada pela exceção #{excecao.id}: {excecao.justificativa}")
+
+    # --- substituição por horista fora da disponibilidade/termo: só com a aprovação da supervisão e a concordância do
+    # instrutor, registradas na exceção justificada da substituição (o termo do mês é ajustado junto)
+    if academica and instrutor is not None and instrutor.modalidade == "horista" and "aprovada pela supervisão" in (excecao.justificativa or ""):
+        propria = b.get(Alocacao, a.alocacao_id) if a.alocacao_id else None
+        if a.origem == "substituicao" or (propria is not None and propria.instrutor_titular_id):
+            relaxa = {"INSTRUTOR_FORA_DISPONIBILIDADE", "INSTRUTOR_SEM_DISPONIBILIDADE"}
+            if any(o.regra in relaxa and o.severidade == BLOQUEIO for o in oc):
+                oc = [o for o in oc if not (o.regra in relaxa and o.severidade == BLOQUEIO)]
+                add(ALERTA, "SUBSTITUICAO_FORA_DISPONIBILIDADE", f"{instrutor.nome} (horista) assume fora da disponibilidade cadastrada, com a "
+                                                                 f"aprovação da supervisão e a concordância dele (exceção #{excecao.id}).", "instrutor", instrutor.id)
     return oc
 
 

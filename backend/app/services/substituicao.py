@@ -51,6 +51,9 @@ def _sem_antecedencia(dia: date) -> str | None:
                 f"(para esta data, só quem está em PL ou PJ)")
     return None
 EXCECIONAVEIS = {"INSTRUTOR_OUTRA_AREA", "INSTRUTOR_NAO_HABILITADO"}
+# horista fora do termo de horas ou da disponibilidade cadastrada: pode substituir, desde que a supervisão aprove e ele concorde
+COM_APROVACAO = {"INSTRUTOR_FORA_DISPONIBILIDADE", "INSTRUTOR_SEM_DISPONIBILIDADE"}
+ALERTAS_TERMO = ("TERMO_HORAS_MES", "TERMO_FORA_DOS_DIAS")
 
 
 def _cenario(db: Session, cenario_id: int) -> CenarioPlanejamento:
@@ -63,8 +66,15 @@ def _cenario(db: Session, cenario_id: int) -> CenarioPlanejamento:
 
 
 def aulas_alvo(db: Session, cenario_id: int, alocacao_id: int | None = None, instrutor_id: int | None = None,
-               inicio: date | None = None, fim: date | None = None, turma_uc_id: int | None = None) -> list[Alocacao]:
-    """Uma aula, ou todas as aulas do instrutor no período (opcionalmente só de uma turma × UC)."""
+               inicio: date | None = None, fim: date | None = None, turma_uc_id: int | None = None,
+               alocacao_ids: list[int] | None = None) -> list[Alocacao]:
+    """Uma aula, aulas escolhidas uma a uma, ou todas as aulas do instrutor no período (opcionalmente só de uma turma × UC)."""
+    if alocacao_ids:
+        aulas = [a for a in db.scalars(select(Alocacao).where(Alocacao.id.in_(alocacao_ids), Alocacao.cenario_id == cenario_id,
+                                                              Alocacao.status != "cancelada").order_by(Alocacao.inicio))]
+        if not aulas:
+            raise NaoEncontrado("Nenhuma das aulas escolhidas foi encontrada neste semestre.")
+        return aulas
     if alocacao_id:
         a = db.get(Alocacao, alocacao_id)
         if a is None or a.cenario_id != cenario_id:
@@ -113,12 +123,13 @@ def candidatos(db: Session, cenario_id: int, aulas: list[Alocacao], max_dias: in
         if i.id in atuais:
             continue
         bloqueados, precisa_exc, motivos, presenca, termo = 0, False, [], set(), False
+        horista = i.modalidade == "horista"
         for bl in amostra:
             oc = validar_aula(b, AulaProposta(turma_uc_id=bl["turma_uc_id"], inicio=bl["inicio"], fim=bl["fim"], minutos_aula=bl["minutos"],
                                               grupo=bl["grupo"], instrutor_id=i.id, origem="substituicao"), ignorar)
             proprios = [o for o in oc if o.recurso_tipo == "instrutor" and o.severidade == "bloqueio"]
-            fora_termo = [o for o in oc if o.regra in ("TERMO_HORAS_MES", "TERMO_FORA_DOS_DIAS")]
-            impeditivos = [o for o in proprios if o.regra not in EXCECIONAVEIS]
+            fora_termo = [o for o in oc if o.regra in ALERTAS_TERMO] + [o for o in proprios if horista and o.regra in COM_APROVACAO]
+            impeditivos = [o for o in proprios if o.regra not in EXCECIONAVEIS and not (horista and o.regra in COM_APROVACAO)]
             if impeditivos:
                 bloqueados += 1
                 motivos += [f"{bl['data']:%d/%m}: {o.descricao}" for o in impeditivos]
@@ -129,13 +140,14 @@ def candidatos(db: Session, cenario_id: int, aulas: list[Alocacao], max_dias: in
                 motivos.append(falta)
                 continue
             presenca.add(RESERVAS[r.tipo] if r else "vazio")
-            if fora_termo:  # horista fora do termo: pode, se ele concordar em ajustar o termo
+            if fora_termo:  # horista fora do termo/da disponibilidade: pode, com a aprovação da supervisão e a concordância dele
                 termo = True
                 motivos += [o.descricao for o in fora_termo]
-            if proprios:  # só outra área / sem a UC: assume com exceção justificada
+            if [o for o in proprios if o.regra in EXCECIONAVEIS]:  # só outra área / sem a UC: assume com exceção justificada
                 precisa_exc = True
                 motivos += [o.descricao for o in proprios]
-        grupo = ("indisponivel" if bloqueados == len(amostra) else "parcial" if bloqueados else "excecao" if precisa_exc else "recomendado")
+        grupo = ("indisponivel" if bloqueados == len(amostra) else "parcial" if bloqueados else "aprovacao" if termo
+                 else "excecao" if precisa_exc else "recomendado")
         if grupo == "indisponivel" and i.unidade_id not in unidades:
             continue  # de outra unidade e sem horário: só polui a lista
         todas, ars = areas_do_recurso(db, i)
@@ -144,12 +156,48 @@ def candidatos(db: Session, cenario_id: int, aulas: list[Alocacao], max_dias: in
                     "ministra_uc": bool(comps.get(i.id, set()) & ucs), "outra_unidade": i.unidade_id not in unidades,
                     # PL/PJ = está na escola; vazio = precisa ser acionado com antecedência
                     "presenca": sorted(presenca, key=["PL", "PJ", "vazio"].index), "na_escola": bool(presenca) and "vazio" not in presenca,
-                    "ajustar_termo": termo, "modalidade": i.modalidade, "motivos": list(dict.fromkeys(motivos))[:4]})
-    ordem = {"recomendado": 0, "excecao": 1, "parcial": 2, "indisponivel": 3}
+                    "ajustar_termo": termo, "precisa_excecao": precisa_exc, "modalidade": i.modalidade, "motivos": list(dict.fromkeys(motivos))[:4]})
+    ordem = {"recomendado": 0, "excecao": 1, "aprovacao": 2, "parcial": 3, "indisponivel": 4}
     # mensalista primeiro (jornada garantida; quem está na escola em PL/PJ antes); o horista completa
     res.sort(key=lambda x: (ordem[x["grupo"]], x["modalidade"] == "horista", not x["na_escola"], x["outra_unidade"], not x["ministra_uc"],
                             -x["dias_livres"], x["nome"]))
     return {"aulas": len(aulas), "dias": len(blocos), "dias_avaliados": len(amostra), "instrutores": res,
+            "hoje": hoje().isoformat(), "antecedencia_dias": ANTECEDENCIA_DIAS}
+
+
+def aulas_do_instrutor(db: Session, cenario_id: int, instrutor_id: int, inicio: date, fim: date) -> dict:
+    """O que o instrutor faz no período, aula a aula (um bloco por dia × turma × UC): para enxergar o que ele deixaria de dar
+    ao pedir substituição. Inclui as aulas dele que já estão com um substituto."""
+    from app.models import Ambiente, Turno
+    inst = db.get(Instrutor, instrutor_id)
+    if inst is None:
+        raise NaoEncontrado("Instrutor não encontrado.")
+    aulas = db.scalars(select(Alocacao).where(Alocacao.cenario_id == cenario_id, Alocacao.status != "cancelada", Alocacao.data >= inicio,
+                                              Alocacao.data <= fim, (Alocacao.instrutor_id == instrutor_id) | (Alocacao.instrutor_titular_id == instrutor_id))
+                        .order_by(Alocacao.inicio)).all()
+    turmas = {t.id: t for t in db.scalars(select(Turma).where(Turma.id.in_({a.turma_id for a in aulas})))} if aulas else {}
+    ucs = {u.id: u for u in db.scalars(select(UnidadeCurricular).where(UnidadeCurricular.id.in_({a.uc_id for a in aulas})))} if aulas else {}
+    salas = {x.id: x.codigo for x in db.scalars(select(Ambiente))}
+    turnos = {x.id: x.nome for x in db.scalars(select(Turno))}
+    nomes = {i.id: i.nome for i in db.scalars(select(Instrutor))}
+    g = defaultdict(list)
+    for a in aulas:
+        g[(a.data, a.turma_uc_id, a.grupo, a.instrutor_id)].append(a)
+    blocos = []
+    for (d, _tuc, grupo, iid), xs in sorted(g.items(), key=lambda k: (k[0][0], min(x.inicio for x in k[1]))):
+        t, u = turmas.get(xs[0].turma_id), ucs.get(xs[0].uc_id)
+        substituida = iid != instrutor_id
+        blocos.append({"ids": [x.id for x in xs], "data": d.isoformat(), "dia_semana": d.weekday(),
+                       "inicio": min(x.inicio for x in xs).strftime("%H:%M"), "fim": max(x.fim for x in xs).strftime("%H:%M"),
+                       "turno": turnos.get(t.turno_id) if t else None, "turma": t.codigo if t else None, "turma_uc_id": xs[0].turma_uc_id,
+                       "uc": f"{u.codigo} – {u.nome}" if u else None, "grupo": grupo, "sala": salas.get(xs[0].ambiente_id),
+                       "aulas": len(xs), "minutos": sum(x.minutos_aula for x in xs),
+                       "situacao": "realizada" if all(x.status == "realizada" for x in xs) else "programada",
+                       "substituto": nomes.get(iid) if substituida else None,
+                       "substituindo": nomes.get(xs[0].instrutor_titular_id) if not substituida and xs[0].instrutor_titular_id else None,
+                       "motivo": (xs[0].observacao or "").split(": ", 1)[-1] if (substituida or xs[0].instrutor_titular_id) else None})
+    return {"instrutor": {"id": inst.id, "nome": inst.nome, "modalidade": inst.modalidade, "matricula": inst.matricula},
+            "inicio": inicio.isoformat(), "fim": fim.isoformat(), "blocos": blocos,
             "hoje": hoje().isoformat(), "antecedencia_dias": ANTECEDENCIA_DIAS}
 
 
@@ -162,7 +210,11 @@ def _descrever(db: Session, aulas: list[Alocacao]) -> str:
     return "; ".join(f"{k} em {', '.join(d.strftime('%d/%m') for d in sorted(ds)[:8])}{'…' if len(ds) > 8 else ''}" for k, ds in partes.items())
 
 
-def substituir(db: Session, ctx, cenario_id: int, aulas: list[Alocacao], substituto_id: int, motivo: str, somente_validar: bool = False) -> dict:
+def substituir(db: Session, ctx, cenario_id: int, aulas: list[Alocacao], substituto_id: int, motivo: str, somente_validar: bool = False,
+               aprovado_supervisao: bool = False, concordancia: bool = False, transferir: bool = False) -> dict:
+    """`aprovado_supervisao` + `concordancia`: horista fora do termo de horas ou da disponibilidade cadastrada assume com a
+    aprovação da supervisão e a concordância dele (o termo do mês é ajustado). `transferir`: a UC passa de vez ao novo
+    instrutor (remanejamento), não é uma substituição temporária — ele vira o instrutor da UC."""
     motivo = (motivo or "").strip()
     if len(motivo) < 10:
         raise EntradaInvalida("Explique o motivo da substituição (mínimo de 10 caracteres). Ex.: falta do titular por motivo de saúde.")
@@ -174,11 +226,14 @@ def substituir(db: Session, ctx, cenario_id: int, aulas: list[Alocacao], substit
         raise EntradaInvalida("Nenhuma aula encontrada para substituir no período informado.")
     travar_recursos(db, cenario_id, [("instrutor", sub.id)] + [("instrutor", a.instrutor_id) for a in aulas])
     sp = db.begin_nested()
-    exc = ExcecaoAutorizada(tipo="regra_academica", justificativa=f"Substituição de instrutor: {motivo}", autorizado_por_id=ctx.id)
+    aprovado = bool(aprovado_supervisao and concordancia and sub.modalidade == "horista")
+    exc = ExcecaoAutorizada(tipo="regra_academica", autorizado_por_id=ctx.id,
+                            justificativa=f"Substituição de instrutor: {motivo}" + (" — aprovada pela supervisão, com a concordância do instrutor" if aprovado else ""))
     db.add(exc)
     db.flush()
     b = BaseDados(db, cenario_id)
     ok, falhas, usou_exc, feitas, convertidas = [], [], False, [], []
+    termos_ajustar: dict[date, set[int]] = {}  # horista fora do termo (aprovado): meses a ajustar → dias a incluir
     for a in aulas:
         rot = {"alocacao_id": a.id, "data": a.data.isoformat(), "horario": f"{a.inicio:%H:%M}–{a.fim:%H:%M}"}
         if a.status == "realizada":
@@ -194,26 +249,37 @@ def substituir(db: Session, ctx, cenario_id: int, aulas: list[Alocacao], substit
         oc = validar_aula(b, p, {a.id})
         bloq = [o for o in oc if o.severidade == "bloqueio" and o.recurso_tipo == "instrutor"]
         if bloq:
-            falhas.append({**rot, "motivos": [o.descricao for o in bloq][:3]})
+            pedir = sub.modalidade == "horista" and not aprovado and all(o.regra in COM_APROVACAO for o in bloq)
+            falhas.append({**rot, "motivos": [o.descricao for o in bloq][:3] + (
+                ["horista fora da disponibilidade: marque a aprovação da supervisão e a concordância do instrutor"] if pedir else [])})
             continue
+        fora = [o for o in oc if o.regra in ALERTAS_TERMO]
+        if fora and not aprovado:
+            falhas.append({**rot, "motivos": [o.descricao for o in fora][:2] + [
+                "fora do termo de horas: marque a aprovação da supervisão e a concordância do instrutor"]})
+            continue
+        if fora:
+            termos_ajustar.setdefault(a.data.replace(day=1), set()).update(
+                {a.data.weekday()} if any(o.regra == "TERMO_FORA_DOS_DIAS" for o in fora) else set())
         reserva = _reserva(b, sub.id, a.inicio, a.fim)
         if reserva is None and (falta := _sem_antecedencia(a.data)):
             falhas.append({**rot, "motivos": [falta]})
             continue
         if reserva is not None:
             convertidas.append(reserva)
-        usou_exc = usou_exc or (exc_id == exc.id and any(o.regra == "EXCECAO_REGRA_ACADEMICA" for o in oc))
-        ok.append({**rot, "avisos": [o.descricao for o in oc if o.regra in ("EXCECAO_REGRA_ACADEMICA", "SUBSTITUTO_EM_PL_PJ")][:3]})
+        precisa = any(o.regra in ("EXCECAO_REGRA_ACADEMICA", "SUBSTITUICAO_FORA_DISPONIBILIDADE") for o in oc)
+        usou_exc = usou_exc or (exc_id == exc.id and precisa)
+        ok.append({**rot, "avisos": [o.descricao for o in oc if o.regra in ("EXCECAO_REGRA_ACADEMICA", "SUBSTITUTO_EM_PL_PJ",
+                                                                             "SUBSTITUICAO_FORA_DISPONIBILIDADE", *ALERTAS_TERMO)][:3]})
         if somente_validar:
             continue
         antes = auditoria.snapshot(a)
         titular = a.instrutor_titular_id or a.instrutor_id
-        a.instrutor_titular_id = titular if titular != sub.id else None
+        a.instrutor_titular_id = None if transferir else (titular if titular != sub.id else None)
         a.instrutor_id = sub.id
-        precisa = any(o.regra == "EXCECAO_REGRA_ACADEMICA" for o in oc)
         a.excecao_id = exc_id if exc_id != exc.id else (exc.id if precisa else None)
         a.fixa = True  # o gerador de horários não desfaz a substituição
-        a.observacao = f"Substituição: {motivo}"[:2000]
+        a.observacao = f"{'Transferência da UC' if transferir else 'Substituição'}: {motivo}"[:2000]
         a.versao += 1
         feitas.append((a, antes, titular))
     if somente_validar or not feitas:
@@ -234,6 +300,17 @@ def substituir(db: Session, ctx, cenario_id: int, aulas: list[Alocacao], substit
         raise ConflitoValidacao("Outro usuário alterou a agenda do substituto ao mesmo tempo. Recarregue e tente de novo.")
     for a, antes, _t in feitas:
         auditoria.registrar(db, ctx, "alocacao.substituir", "alocacoes", a.id, antes=antes, depois=auditoria.snapshot(a), motivo=motivo)
+    termos_ajustados = []
+    if termos_ajustar:  # o termo do horista passa a cobrir as aulas assumidas (aprovação da supervisão + concordância dele)
+        from app.services import termos as termos_svc
+        for mes, dias in sorted(termos_ajustar.items()):
+            t = termos_svc.termos_do(db, {sub.id}, mes, termos_svc.fim_do_mes(mes)).get(sub.id, {}).get(mes)
+            prog = termos_svc.horas_programadas(db, cenario_id, sub.id, mes)
+            horas = max(float(t.horas_aula) if t else 0.0, prog)
+            r = termos_svc.ajustar(db, ctx, sub, mes, f"Substituição aprovada pela supervisão: {motivo}", True,
+                                   horas_aula=horas if (not t or horas > float(t.horas_aula)) else None,
+                                   incluir_dias=sorted(dias) if t and t.dias_semana and dias - set(t.dias_semana) else None, cenario_id=cenario_id)
+            termos_ajustados.append(r.get("ajuste"))
     aulas_feitas = [a for a, _, _ in feitas]
     resumo = _descrever(db, aulas_feitas)
     titulares = defaultdict(list)
@@ -247,7 +324,7 @@ def substituir(db: Session, ctx, cenario_id: int, aulas: list[Alocacao], substit
                   f"{len(xs)} aula(s): {_descrever(db, xs)}. Motivo: {motivo}{situacao}.{conv}", "turmas", ctx)
         notificar(db, t, "substituicao", f"{sub.nome} vai substituir você", f"{len(xs)} aula(s): {_descrever(db, xs)}. Motivo: {motivo}{situacao}", "turmas", ctx)
     return {"substituidas": len(feitas), "falhas": falhas, "aulas": ok, "resumo": resumo, "excecao_id": exc.id if usou_exc else None,
-            "pl_pj_convertidos": viraram_aula,
+            "pl_pj_convertidos": viraram_aula, "termos_ajustados": termos_ajustados,
             "previa": False, "cenario_publicado": cen.estado == "publicado"}
 
 

@@ -471,7 +471,7 @@ button.chip-status { cursor: pointer; } .chip-status.alerta { background: #fff3d
 .sub-grupo > .badge { align-self: flex-start; margin-bottom: 2px; }
 .sub-cand { display: flex; gap: 8px; align-items: flex-start; padding: 5px 8px; border-radius: 8px; cursor: pointer; }
 .sub-cand:hover { background: var(--fundo); } .sub-cand.marcada { background: var(--info-bg); } .sub-cand.desabilitado { opacity: .55; cursor: not-allowed; }
-.sub-cand span { display: flex; flex-direction: column; }
+.sub-cand > span { display: flex; flex-direction: column; }
 .sub-motivos { color: var(--mudo); font-size: .78rem; }
 .previa-sub { padding: 10px 12px; border-radius: 8px; margin-top: 8px; } .previa-sub.tom-ok { background: var(--ok-bg); } .previa-sub.tom-alerta { background: var(--alerta-bg); }
 .previa-sub ul { margin: 4px 0 0; padding-left: 18px; }
@@ -1080,3 +1080,41 @@ li.sem-marcador { list-style: none; margin-left: -18px; }
 .versao-aviso.aberta { background: var(--alerta-bg); border: 1px solid var(--borda); color: var(--alerta); }
 .versao-aviso.fechada { background: var(--info-bg); border: 1px solid var(--borda); color: var(--info); }
 .chip-area.ca-ead { background: var(--info-bg); color: var(--info); font-weight: 600; }
+
+/* página de substituições: busca do instrutor → aulas dele → quem pode assumir */
+.subs-topo { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; background: var(--superficie); border: 1px solid var(--borda);
+  border-radius: 12px; padding: 12px 14px; }
+.subs-busca { position: relative; flex: 1 1 280px; display: flex; flex-direction: column; gap: 4px; }
+.subs-busca input { width: 100%; padding: 8px 10px; font-size: 1rem; }
+.subs-rotulo { font-weight: 600; font-size: .85rem; }
+.subs-achados { position: absolute; top: 100%; left: 0; right: 0; z-index: 20; list-style: none; margin: 4px 0 0; padding: 4px;
+  background: var(--superficie); border: 1px solid var(--borda); border-radius: 8px; box-shadow: 0 6px 18px rgba(0, 0, 0, .12); }
+.subs-achados button { width: 100%; text-align: left; background: none; border: 0; padding: 7px 8px; border-radius: 6px; cursor: pointer; }
+.subs-achados button:hover, .subs-achados button:focus-visible { background: var(--info-bg); }
+.subs-atalhos { display: flex; gap: 6px; flex-wrap: wrap; padding-bottom: 4px; }
+.subs-pedidos { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; background: var(--alerta-bg); border: 1px solid var(--borda);
+  border-radius: 10px; padding: 10px 12px; margin: 10px 0; }
+.subs-pedidos .chip-area { cursor: pointer; }
+.subs-agenda, .subs-painel { background: var(--superficie); border: 1px solid var(--borda); border-radius: 12px; padding: 12px 14px; margin: 12px 0; }
+.subs-cab { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+.subs-cab h3 { margin: 0 0 2px; font-size: 1.05rem; }
+.subs-dia { border-top: 1px solid var(--borda); padding: 8px 0; }
+.subs-dia-cab { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.subs-data b { display: inline-block; min-width: 34px; }
+.subs-aula { display: grid; grid-template-columns: auto 110px 1fr auto; gap: 10px; align-items: center; padding: 8px 10px; border-radius: 8px;
+  border: 1px solid transparent; cursor: pointer; }
+.subs-aula:hover { background: var(--fundo); }
+.subs-aula.marcada { background: var(--info-bg); border-color: var(--info); }
+.subs-aula.travada { cursor: default; opacity: .75; }
+.subs-hora { display: flex; flex-direction: column; font-variant-numeric: tabular-nums; font-weight: 600; }
+.subs-hora small { font-weight: 400; color: var(--mudo); }
+.subs-o-que { display: flex; flex-direction: column; min-width: 0; }
+.subs-painel h3 { margin-top: 0; }
+.subs-confirmar { border-top: 1px solid var(--borda); margin-top: 10px; padding-top: 10px; }
+.subs-confirmar .aviso-inline label { display: block; margin: 4px 0; }
+@media (max-width: 640px) {
+  .subs-aula { grid-template-columns: auto 1fr; }
+  .subs-aula .subs-o-que, .subs-aula .subs-sit { grid-column: 2; }
+}
+.sub-cand .sub-cand-cab { display: flex; flex-direction: row; flex-wrap: wrap; gap: 6px; align-items: center; }
+.sub-cand .sub-cand-cab .tag-presenca { margin-left: 0; }

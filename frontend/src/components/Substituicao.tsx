@@ -9,6 +9,7 @@ export const ESTADOS_SUBSTITUICAO = ["em_elaboracao", "em_validacao", "aguardand
 const GRUPOS: [string, string, string][] = [
   ["recomendado", "Livres, da área e com a UC", "ok"],
   ["excecao", "Livres, mas de outra área ou sem a UC cadastrada (fica registrado como exceção)", "alerta"],
+  ["aprovacao", "Horistas fora do termo de horas ou da disponibilidade: com a aprovação da supervisão e a concordância dele", "info"],
   ["parcial", "Livres só em parte dos dias", "info"],
   ["indisponivel", "Não podem (já têm aula, fora da jornada, turno vazio sem antecedência…)", "bloqueio"],
 ];
@@ -28,7 +29,8 @@ export default function Substituicao({ cenarioId, publicado, aula, fechar }: { c
   const [motivo, setMotivo] = useState("");
   const [previa, setPrevia] = useState<any>(null);
   const [erro, setErro] = useState<any>(null);
-  const [verTodos, setVerTodos] = useState(false);
+  const [aprovado, setAprovado] = useState(false);
+  const [concorda, setConcorda] = useState(false);
   const alvo = escopo === "aula" && aula ? { cenario_id: cenarioId, alocacao_id: aula.id }
     : { cenario_id: cenarioId, instrutor_id: ausente, inicio, fim: fim || inicio, turma_uc_id: soTurma && aula ? aula.turma_uc_id : undefined };
   const pronto = escopo === "aula" ? !!aula : !!(ausente && inicio);
@@ -37,7 +39,7 @@ export default function Substituicao({ cenarioId, publicado, aula, fechar }: { c
   const enviar = async (somente: boolean) => {
     setErro(null);
     try {
-      const r = await api.post("/api/substituicoes", { ...alvo, substituto_id: sub, motivo, somente_validar: somente });
+      const r = await api.post("/api/substituicoes", { ...alvo, substituto_id: sub, motivo, somente_validar: somente, aprovado_supervisao: aprovado, concordancia: concorda });
       if (somente) { setPrevia(r); return; }
       aviso(`${r.substituidas} aula(s) substituída(s).${r.falhas.length ? ` ${r.falhas.length} não puderam ser trocadas.` : ""} Os instrutores foram avisados no portal.`);
       fechar(true);
@@ -46,7 +48,9 @@ export default function Substituicao({ cenarioId, publicado, aula, fechar }: { c
   const lista: any[] = cand.dados?.instrutores || [];
   const melhor = lista.find((i) => i.grupo === "recomendado") || lista.find((i) => i.grupo === "excecao");
   const escolhido = lista.find((i) => i.id === sub) || (sub ? { nome: instrutores.find((i) => Number(i.id) === sub)?.rotulo } : null);
-  const SITUACAO: Record<string, string> = { recomendado: "✓ livre, da área", excecao: "⚠ livre, outra área/sem a UC", parcial: "◐ livre só em parte", indisponivel: "✗ não pode" };
+  const SITUACAO: Record<string, string> = { recomendado: "✓ livre, da área", excecao: "⚠ livre, outra área/sem a UC", aprovacao: "⏱ fora do termo (com aprovação)",
+    parcial: "◐ livre só em parte", indisponivel: "✗ não pode" };
+  const precisaAprovacao = lista.find((i) => i.id === sub)?.grupo === "aprovacao";
   const situacao = (id: number) => { const c = lista.find((i) => i.id === id); return c ? ` — ${c.na_escola ? "📍 " : ""}${SITUACAO[c.grupo]}` : ""; };
   const titularId = escopo === "aula" ? aula?.instrutor_id : Number(ausente) || null;
   const campoSubstituto = (
@@ -87,22 +91,13 @@ export default function Substituicao({ cenarioId, publicado, aula, fechar }: { c
         {cand.carregando && <p role="status">Verificando a agenda de cada instrutor…</p>}
         {cand.erro && <div className="erro-box">{cand.erro}</div>}
         {cand.dados && cand.dados.aulas === 0 && <p className="sub">Nenhuma aula desse instrutor no período escolhido.</p>}
-        {cand.dados && cand.dados.aulas > 0 && GRUPOS.map(([g, titulo, tom]) => {
-          const xs = lista.filter((i) => i.grupo === g);
-          if (!xs.length || (g === "indisponivel" && !verTodos)) return null;
-          return <div key={g} className="sub-grupo"><Badge tipo={tom}>{titulo}</Badge>
-            {xs.map((i) => (
-              <label key={i.id} className={`sub-cand ${sub === i.id ? "marcada" : ""} ${g === "indisponivel" ? "desabilitado" : ""}`}>
-                <input type="radio" name="substituto" checked={sub === i.id} onChange={() => { setSub(i.id); setPrevia(null); }} />
-                <span><b>{i.nome}</b> {presenca(i)} {i.ajustar_termo && <span className="tag-presenca" title="Horista fora do termo de horas do mês: pode assumir se concordar com o ajuste do termo">⏱ ajustar o termo (com a concordância dele)</span>} <small className="mudo">{i.area || "sem área"}{i.ministra_uc ? " · ministra a UC" : ""}{i.outra_unidade ? " · outra unidade" : ""}
-                  {g === "parcial" ? ` · livre em ${i.dias_livres} de ${i.dias_avaliados} dias` : ""}</small>
-                  {i.motivos.length > 0 && <small className="sub-motivos">{i.motivos.join(" · ")}</small>}</span>
-              </label>))}
-          </div>;
-        })}
-        {cand.dados && lista.some((i) => i.grupo === "indisponivel") && <button className="btn-link" onClick={() => setVerTodos(!verTodos)}>
-          {verTodos ? "Ocultar" : "Mostrar"} os sem horário ({lista.filter((i) => i.grupo === "indisponivel").length})</button>}
+        {cand.dados && cand.dados.aulas > 0 && <CandidatosSubstituicao dados={cand.dados} escolhido={sub} escolher={(i) => { setSub(i.id); setPrevia(null); }} />}
       </fieldset>}
+      {precisaAprovacao && <div className="aviso-inline">
+        ⏱ {escolhido?.nome} está fora do termo de horas ou da disponibilidade cadastrada. Pode assumir com:
+        <label><input type="checkbox" checked={aprovado} onChange={(e) => { setAprovado(e.target.checked); setPrevia(null); }} /> a <b>aprovação da supervisão</b></label>
+        <label><input type="checkbox" checked={concorda} onChange={(e) => { setConcorda(e.target.checked); setPrevia(null); }} /> a <b>concordância e a disponibilidade</b> do instrutor</label>
+        <small>O termo de horas do mês é ajustado junto.</small></div>}
 
       <Campo rotulo="Motivo da substituição" obrigatorio ajuda="Fica registrado na aula, no histórico e no aviso aos instrutores.">
         <textarea rows={2} value={motivo} placeholder="Ex.: falta do titular por motivo de saúde; ninguém de Energias livre neste turno." onChange={(e) => { setMotivo(e.target.value); setPrevia(null); }} /></Campo>
@@ -126,11 +121,45 @@ export default function Substituicao({ cenarioId, publicado, aula, fechar }: { c
       <Erro erro={erro} />
       <div className="rodape-modal">
         <button className="btn" onClick={() => fechar(false)}>Cancelar</button>
-        <button className="btn" disabled={!sub || motivo.trim().length < 10} onClick={() => enviar(true)}>Conferir</button>
+        <button className="btn" disabled={!sub || motivo.trim().length < 10 || (precisaAprovacao && !(aprovado && concorda))} onClick={() => enviar(true)}>Conferir</button>
         <button className="btn btn-primario" disabled={!sub || motivo.trim().length < 10 || !previa || previa.possiveis === 0} onClick={() => enviar(false)}>Confirmar substituição</button>
       </div>
     </Modal>
   );
+}
+
+/** Possíveis substitutos agrupados: livres da área → outra área/sem a UC → horista fora do termo (com aprovação) → em parte → sem horário.
+ * Dentro de cada grupo, mensalista antes do horista. */
+export function CandidatosSubstituicao({ dados, carregando, erro, escolhido, escolher }: { dados: any; carregando?: boolean; erro?: any; escolhido: number | null;
+  escolher: (c: any) => void }) {
+  const [verTodos, setVerTodos] = useState(false);
+  const lista: any[] = dados?.instrutores || [];
+  if (carregando && !dados) return <p role="status">Verificando a agenda de cada instrutor…</p>;
+  if (erro) return <div className="erro-box">{String(erro)}</div>;
+  if (!dados) return null;
+  if (!dados.aulas) return <p className="sub">Nenhuma aula para substituir.</p>;
+  return <>
+    {dados.dias > dados.dias_avaliados && <small className="mudo">{dados.aulas} aula(s) em {dados.dias} dia(s); avaliados os primeiros {dados.dias_avaliados} dias.</small>}
+    {GRUPOS.map(([g, titulo, tom]) => {
+      const xs = lista.filter((i) => i.grupo === g);
+      if (!xs.length || (g === "indisponivel" && !verTodos)) return null;
+      return <div key={g} className="sub-grupo"><Badge tipo={tom}>{titulo}</Badge>
+        {xs.map((i) => (
+          <label key={i.id} className={`sub-cand ${escolhido === i.id ? "marcada" : ""} ${g === "indisponivel" ? "desabilitado" : ""}`}>
+            <input type="radio" name="substituto" disabled={g === "indisponivel"} checked={escolhido === i.id} onChange={() => escolher(i)} />
+            <span><span className="sub-cand-cab"><b>{i.nome}</b> <span className={`tag-presenca ${i.modalidade === "horista" ? "" : "na-escola"}`}>{i.modalidade === "horista" ? "horista" : "mensalista"}</span>
+              {presenca(i)} {i.ajustar_termo && <span className="tag-presenca" title="Fora do termo de horas ou da disponibilidade cadastrada: com a aprovação da supervisão e a concordância dele">⏱ ajustar o termo</span>}</span>
+              <small className="mudo">{i.area || "sem área"}{i.ministra_uc ? " · ministra a UC" : ""}{i.outra_unidade ? " · outra unidade" : ""}
+                {g === "parcial" ? ` · livre em ${i.dias_livres} de ${i.dias_avaliados} dias` : ""}</small>
+              {i.motivos.length > 0 && <small className="sub-motivos">{i.motivos.join(" · ")}</small>}</span>
+          </label>))}
+      </div>;
+    })}
+    {lista.some((i) => i.grupo === "indisponivel") && <button className="btn-link" onClick={() => setVerTodos(!verTodos)}>
+      {verTodos ? "Ocultar" : "Mostrar"} os sem horário ({lista.filter((i) => i.grupo === "indisponivel").length})</button>}
+    {!lista.some((i) => i.grupo !== "indisponivel") && <p className="sub">Ninguém livre em todas as aulas escolhidas. Para hoje, só quem
+      está na escola (em PL ou PJ) pode assumir; turno vazio precisa de {dados.antecedencia_dias ?? 1} dia de antecedência. Tente menos dias ou veja os sem horário.</p>}
+  </>;
 }
 
 function presenca(i: { presenca?: string[]; na_escola?: boolean }) {

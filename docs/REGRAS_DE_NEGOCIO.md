@@ -40,6 +40,9 @@ Gerado por `scripts/gerar_regras_md.py` a partir de `backend/app/services/regras
 ## Substituições e solicitações
 
 - **Quem pode substituir** (`SUBST_PRESENCA`, obrigatória): Instrutor em PL ou PJ pode assumir no mesmo dia (já está na escola); com turno vazio, só se a substituição for planejada com pelo menos 1 dia de antecedência. _Onde: substituição._
+- **Um instrutor por UC** (`UM_INSTRUTOR_POR_UC`, obrigatória): Cada UC de uma turma (por grupo, quando a UC divide a turma) tem um só instrutor do começo ao fim. Outro instrutor só entra por substituição (o titular continua sendo o da UC) ou por exceção justificada; passar a UC de vez a outro instrutor (remanejamento) troca o instrutor de todas as aulas futuras. O gerador completa a UC com quem já dá as aulas dela. _Onde: validação, gerador, substituição, riscos._
+- **Horista fora do termo como substituto** (`SUBST_HORISTA_TERMO`, obrigatória): Mesmo sem horas ou sem o dia no termo do mês (ou fora da disponibilidade cadastrada), o horista aparece como opção de substituto. Só assume com a aprovação da supervisão e a concordância (e disponibilidade) dele; o termo do mês é ajustado junto e tudo fica registrado com o motivo. _Onde: substituição, termos de horas._
+- **Painel de substituições** (`SUBST_PAINEL`, aviso): Menu Substituições: busca-se o instrutor, vê-se o que ele estaria fazendo no período (aula a aula) e marcam-se as aulas; o sistema indica quem pode assumir pela disponibilidade no dia e no horário — livres da área, de outra área/sem a UC (exceção), horistas fora do termo (com aprovação), livres em parte — com o mensalista antes do horista. _Onde: substituição._
 - **Solicitações do instrutor** (`SOLICITACOES`, obrigatória): Pelo portal o instrutor pede folga ou substituição, com justificativa; o coordenador aprova ou recusa. Folga aprovada vira bloqueio na agenda e as aulas afetadas recebem sugestão de substituto. _Onde: portal, coordenação._
 
 ## Turmas

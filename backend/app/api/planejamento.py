@@ -362,7 +362,8 @@ def _aulas_substituicao(db, ctx, d: dict):
     aulas = substituicao.aulas_alvo(db, int(d["cenario_id"]), d.get("alocacao_id") and int(d["alocacao_id"]),
                                     d.get("instrutor_id") and int(d["instrutor_id"]),
                                     date.fromisoformat(d["inicio"]) if d.get("inicio") else None, date.fromisoformat(d["fim"]) if d.get("fim") else None,
-                                    d.get("turma_uc_id") and int(d["turma_uc_id"]))
+                                    d.get("turma_uc_id") and int(d["turma_uc_id"]),
+                                    [int(x) for x in (d.get("alocacao_ids") or [])] or None)
     for tuc_id in {a.turma_uc_id for a in aulas}:
         _exigir_turma(db, ctx, tuc_id)
     return aulas
@@ -370,12 +371,15 @@ def _aulas_substituicao(db, ctx, d: dict):
 
 @router.get("/substituicoes/candidatos")
 def candidatos_substituicao(cenario_id: int, alocacao_id: int | None = None, instrutor_id: int | None = None, inicio: date | None = None,
-                            fim: date | None = None, turma_uc_id: int | None = None, ctx: Contexto = Depends(requer("alocacoes.editar")),
-                            db: Session = Depends(get_db)):
-    """Quem pode assumir as aulas: livres e da área → livres com justificativa (outra área / sem a UC) → livres em parte → indisponíveis."""
+                            fim: date | None = None, turma_uc_id: int | None = None, alocacao_ids: str | None = None,
+                            ctx: Contexto = Depends(requer("alocacoes.editar")), db: Session = Depends(get_db)):
+    """Quem pode assumir as aulas: livres e da área → livres com justificativa (outra área / sem a UC) → horista fora do termo ou da
+    disponibilidade (com aprovação da supervisão e concordância dele) → livres em parte → indisponíveis.
+    `alocacao_ids`: aulas escolhidas uma a uma (separadas por vírgula)."""
     from app.services import substituicao
     aulas = _aulas_substituicao(db, ctx, {"cenario_id": cenario_id, "alocacao_id": alocacao_id, "instrutor_id": instrutor_id,
-                                          "inicio": inicio and inicio.isoformat(), "fim": fim and fim.isoformat(), "turma_uc_id": turma_uc_id})
+                                          "inicio": inicio and inicio.isoformat(), "fim": fim and fim.isoformat(), "turma_uc_id": turma_uc_id,
+                                          "alocacao_ids": [x for x in (alocacao_ids or "").split(",") if x.strip()]})
     return substituicao.candidatos(db, cenario_id, aulas)
 
 
@@ -385,8 +389,23 @@ def registrar_substituicao(d: dict = Body(...), ctx: Contexto = Depends(requer("
     Com `somente_validar`, só mostra o que seria trocado e o que não dá."""
     from app.services import substituicao
     aulas = _aulas_substituicao(db, ctx, d)
-    r = substituicao.substituir(db, ctx, int(d["cenario_id"]), aulas, int(d["substituto_id"]), d.get("motivo", ""), bool(d.get("somente_validar")))
+    r = substituicao.substituir(db, ctx, int(d["cenario_id"]), aulas, int(d["substituto_id"]), d.get("motivo", ""), bool(d.get("somente_validar")),
+                                aprovado_supervisao=bool(d.get("aprovado_supervisao")), concordancia=bool(d.get("concordancia")))
     db.commit()
+    return r
+
+
+@router.get("/substituicoes/aulas-do-instrutor")
+def aulas_do_instrutor(cenario_id: int, instrutor_id: int, inicio: date, fim: date | None = None, ctx: Contexto = Depends(requer("alocacoes.ler")),
+                       db: Session = Depends(get_db)):
+    """Aulas do instrutor no período (para ver o que ele deixaria de dar e escolher as que vão para um substituto)."""
+    from app.services import substituicao
+    _instrutor_acessivel(db, ctx, instrutor_id)
+    fim = fim or inicio
+    if (fim - inicio).days > 186:
+        raise EntradaInvalida("Escolha um período de até 6 meses.")
+    r = substituicao.aulas_do_instrutor(db, cenario_id, instrutor_id, inicio, fim)
+    r["blocos"] = [x for x in r["blocos"] if ctx.acessa_turma(db.get(Turma, db.get(TurmaUC, x["turma_uc_id"]).turma_id))]
     return r
 
 

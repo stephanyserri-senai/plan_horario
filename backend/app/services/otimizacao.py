@@ -9,7 +9,7 @@ import threading
 import traceback
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
@@ -46,7 +46,7 @@ from app.services.calendario import Calendarios, bloco_de_periodos, combinar, mi
 from app.services.planejamento import ambientes_compativeis, area_da_turma, instrutores_elegiveis, nivel_da_turma, periodos_por_encontro
 from app.services.regras_aula import credito_bloco, credito_periodo, periodos_do_turno, periodos_para_fechar, regras_aula
 from app.services import agenda_instrutor
-from app.services.validacao import AulaProposta, BaseDados, SessaoExistente, carga_horaria_minutos, possui_bloqueio, validar_aula
+from app.services.validacao import AulaProposta, BaseDados, SessaoExistente, carga_horaria_minutos, possui_bloqueio, titular_da_uc, validar_aula
 from app.solver.contrato import (
     AmbienteS,
     AtividadeS,
@@ -245,6 +245,12 @@ def montar_entrada(db: Session, cenario: CenarioPlanejamento, escopo: dict, peso
             continue
         insts = instrutores_elegiveis(db, uc, turma.unidade_id, di, area_da_turma(db, turma), nivel=nivel_da_turma(db, turma))
         ambs = ambientes_compativeis(db, uc, turma, dividir)
+        ja_tem = {}  # um instrutor por UC: o restante da UC fica com quem já dá as aulas dela (se continuar habilitado)
+        for g in grupos:
+            ja = titular_da_uc(b, AulaProposta(turma_uc_id=tuc.id, inicio=datetime.combine(di, time()), fim=datetime.combine(di, time()),
+                                               minutos_aula=0, grupo=g, origem="geracao"), set(ids_subst))
+            if ja and any(i["id"] == ja for i in insts):
+                ja_tem[g] = ja
         ps_unidade = [p for p in periodos if p.unidade_id == turma.unidade_id and (not turma.turno_id or p.turno_id == turma.turno_id)]
         mpp = (sum(credito_periodo(regras, p) for p in ps_unidade) / len(ps_unidade)) if ps_unidade else 50
         num_periodos = periodos_por_encontro(db, turma, uc)
@@ -273,7 +279,7 @@ def montar_entrada(db: Session, cenario: CenarioPlanejamento, escopo: dict, peso
             at = AtividadeS(
                 chave=chave, turma_id=turma.id, turma_uc_id=tuc.id, uc_id=uc.id, grupo=g, grupos=list(TODOS_GRUPOS) if g is None else [g],
                 unidade_id=turma.unidade_id, turno_id=turma.turno_id, dias_permitidos=[d for d in (turma.dias_possiveis or []) if d not in (turma.dias_ead or [])],
-                num_periodos=num_periodos, encontros=enc, instrutores=[i["id"] for i in insts], ambientes=[a["id"] for a in ambs],
+                num_periodos=num_periodos, encontros=enc, instrutores=[ja_tem[g]] if g in ja_tem else [i["id"] for i in insts], ambientes=[a["id"] for a in ambs],
                 tamanho=turma.qtd_alunos if g is None else math.ceil(turma.qtd_alunos / turma.num_grupos),
                 data_ini=di.toordinal(), data_fim=df.toordinal(), prioridade=min(turma.prioridade, uc.prioridade), urgencia=round(urg, 3),
                 aceita_convencional=any(not t.especializado for t in uc.tipos_ambiente) or not uc.tipos_ambiente,
