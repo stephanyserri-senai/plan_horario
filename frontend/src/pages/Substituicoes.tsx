@@ -5,7 +5,7 @@ import { useApp } from "../contexto";
 import { useOpcoes } from "../hooks";
 import { semestreDe } from "../semestre";
 import { CandidatosSubstituicao, SubstituicoesEmVigor } from "../components/Substituicao";
-import { Badge, Campo, Erro, Pagina, useCarregar } from "../components/ui";
+import { Badge, Campo, Erro, Modal, Pagina, useCarregar } from "../components/ui";
 
 const DIAS = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -23,7 +23,7 @@ export default function Substituicoes() {
   const [instrutorId, setInstrutorId] = useState<number | null>(Number(sp.get("instrutor")) || null);
   const [inicio, setInicio] = useState(sp.get("de") || hoje);
   const [fim, setFim] = useState(sp.get("ate") || somaDias(hoje, 13));
-  const [marcadas, setMarcadas] = useState<Set<string>>(new Set());
+  const [aberta, setAberta] = useState<any>(null);  // aula clicada: abre o pop-up com quem pode assumir
   const [versao, setVersao] = useState(0);
   const podeEditar = pode("alocacoes.editar");
 
@@ -32,7 +32,7 @@ export default function Substituicoes() {
     const sem = semestreDe(cenario);
     return cenarios.find((c) => c.estado === "publicado" && c.tipo !== "simulacao" && semestreDe(c) === sem) || cenario;
   }, [cenarios, cenario]);
-  useEffect(() => { setMarcadas(new Set()); }, [instrutorId, inicio, fim, alvo?.id]);
+  useEffect(() => { setAberta(null); }, [instrutorId, inicio, fim, alvo?.id]);
   useEffect(() => {
     const p: Record<string, string> = {};
     if (instrutorId) p.instrutor = String(instrutorId);
@@ -49,22 +49,24 @@ export default function Substituicoes() {
   const pedidosSub = (pendentes.dados || []).filter((s) => s.tipo === "substituicao" || s.tipo === "folga");
 
   const blocos: any[] = aulas.dados?.blocos || [];
-  const chave = (b: any) => b.ids.join(",");
   const livres = blocos.filter((b) => b.situacao === "programada" && !b.substituto);
-  const porDia = useMemo(() => {
-    const m = new Map<string, any[]>();
-    for (const b of blocos) m.set(b.data, [...(m.get(b.data) || []), b]);
-    return [...m.entries()];
+  // agenda em semanas (segunda a sexta; sábado só se houver aula)
+  const semanas = useMemo(() => {
+    const m = new Map<string, Map<string, any[]>>();
+    for (const b of blocos) {
+      const seg = somaDias(b.data, -b.dia_semana);
+      if (!m.has(seg)) m.set(seg, new Map());
+      const dias = m.get(seg)!;
+      dias.set(b.data, [...(dias.get(b.data) || []), b]);
+    }
+    return [...m.entries()].map(([seg, dias]) => {
+      const sab = [...dias.keys()].some((d) => new Date(`${d}T12:00:00`).getDay() === 6);
+      return { seg, dias: Array.from({ length: sab ? 6 : 5 }, (_, i) => { const d = somaDias(seg, i); return { data: d, aulas: dias.get(d) || [] }; }) };
+    });
   }, [blocos]);
-  const escolhidas = livres.filter((b) => marcadas.has(chave(b)));
-  const ids = escolhidas.flatMap((b) => b.ids);
-  const alternar = (b: any) => setMarcadas((s) => { const n = new Set(s); n.has(chave(b)) ? n.delete(chave(b)) : n.add(chave(b)); return n; });
-  const marcarDia = (xs: any[]) => setMarcadas((s) => {
-    const n = new Set(s); const ks = xs.filter((b) => livres.includes(b)).map(chave);
-    const todos = ks.every((k) => n.has(k)); ks.forEach((k) => (todos ? n.delete(k) : n.add(k))); return n;
-  });
   const horas = (min: number) => `${(min / 60).toFixed(1).replace(".", ",")} h`;
   const nome = aulas.dados?.instrutor?.nome || instrutores.find((i) => Number(i.id) === instrutorId)?.rotulo;
+  const nSubst = blocos.filter((b) => b.substituto).length;
 
   return (
     <Pagina titulo="Substituições" descricao="Busque o instrutor, veja o que ele estaria fazendo e escolha as aulas: o sistema indica quem pode assumir pela disponibilidade no dia e no horário (mensalista primeiro). Cada UC tem um só instrutor; a substituição é a exceção e fica registrada.">
@@ -99,48 +101,57 @@ export default function Substituicoes() {
         {!instrutorId && <div className="cur-vazio">Busque um instrutor para ver as aulas dele no período e iniciar a substituição.</div>}
         {instrutorId && <section className="subs-agenda">
           <div className="subs-cab">
-            <div><h3>{nome}</h3>
-              <small className="mudo">{aulas.dados?.instrutor?.modalidade === "horista" ? "Horista" : "Mensalista"} · {dataBR(inicio)} a {dataBR(fim)} ·{" "}
-                {blocos.length} aula(s) de turno · {horas(blocos.reduce((t, b) => t + b.minutos, 0))}</small></div>
+            <div className="subs-quem">
+              <span className="subs-avatar" aria-hidden="true">{(nome || "?").split(" ").map((x: string) => x[0]).slice(0, 2).join("")}</span>
+              <div><h3>{nome}</h3>
+                <small className="mudo">{aulas.dados?.instrutor?.modalidade === "horista" ? "Horista" : "Mensalista"} · {dataBR(inicio)} a {dataBR(fim)}</small></div>
+            </div>
+            <div className="subs-kpis">
+              <span><b>{blocos.length}</b><small>aulas de turno</small></span>
+              <span><b>{horas(blocos.reduce((t, b) => t + b.minutos, 0))}</b><small>no período</small></span>
+              <span><b>{livres.length}</b><small>a substituir</small></span>
+              <span><b>{nSubst}</b><small>já com substituto</small></span>
+            </div>
             <button className="btn-link" onClick={() => setInstrutorId(null)}>Trocar instrutor</button>
           </div>
+          {podeEditar && livres.length > 0 && <p className="subs-dica">👆 Clique numa aula para ver quem pode assumir.</p>}
           {aulas.carregando && <p role="status">Carregando as aulas…</p>}
           {aulas.erro && <div className="erro-box">{aulas.erro}</div>}
           {aulas.dados && !blocos.length && <div className="cur-vazio">Nenhuma aula de {nome} neste período.</div>}
-          {porDia.map(([dia, xs]) => {
-            const d = new Date(`${dia}T12:00:00`);
-            const selecionaveis = xs.filter((b) => livres.includes(b));
-            return (
-              <div key={dia} className="subs-dia">
-                <div className="subs-dia-cab">
-                  <span className="subs-data"><b>{DIAS[(d.getDay() + 6) % 7]}</b> {dataBR(dia).slice(0, 5)}</span>
-                  {podeEditar && selecionaveis.length > 1 && <button className="btn-link" onClick={() => marcarDia(xs)}>marcar o dia todo</button>}
-                </div>
-                {xs.map((b) => {
-                  const pode_ = podeEditar && livres.includes(b);
+          {semanas.map((sem) => (
+            <div key={sem.seg} className="subs-semana">
+              <div className="subs-semana-rot">Semana de {dataBR(sem.seg).slice(0, 5)}</div>
+              <div className="subs-grade" style={{ gridTemplateColumns: `repeat(${sem.dias.length}, minmax(0, 1fr))` }}>
+                {sem.dias.map(({ data, aulas: xs }) => {
+                  const d = new Date(`${data}T12:00:00`);
                   return (
-                    <label key={chave(b)} className={`subs-aula ${marcadas.has(chave(b)) ? "marcada" : ""} ${!pode_ ? "travada" : ""}`}>
-                      <input type="checkbox" disabled={!pode_} checked={marcadas.has(chave(b))} onChange={() => alternar(b)} />
-                      <span className="subs-hora">{b.inicio}–{b.fim}<small>{b.turno}</small></span>
-                      <span className="subs-o-que"><span><b>{b.turma}</b> · {b.uc}{b.grupo ? ` (grupo ${b.grupo})` : ""}</span>
-                        <small className="mudo">🏫 {b.sala || "sem sala"} · {b.aulas} aula(s)</small></span>
-                      <span className="subs-sit">
-                        {b.situacao === "realizada" ? <Badge tipo="neutro">realizada</Badge>
-                          : b.substituto ? <Badge tipo="info">🔁 com {b.substituto}</Badge>
-                            : b.substituindo ? <Badge tipo="alerta">substituindo {b.substituindo}</Badge>
-                              : <Badge tipo="ok">programada</Badge>}
-                      </span>
-                    </label>);
+                    <div key={data} className={`subs-col ${data === hoje ? "hoje" : ""} ${data < inicio || data > fim ? "fora" : ""}`}>
+                      <div className="subs-col-cab"><b>{DIAS[(d.getDay() + 6) % 7]}</b><span>{dataBR(data).slice(0, 5)}</span>{data === hoje && <em>hoje</em>}</div>
+                      {xs.map((b) => {
+                        const clicavel = podeEditar && livres.includes(b);
+                        const tom = b.situacao === "realizada" ? "realizada" : b.substituto ? "substituida" : b.substituindo ? "substituindo" : "programada";
+                        return (
+                          <button key={b.ids.join(",")} className={`subs-card t-${(b.turno || "").slice(0, 1).toLowerCase()} ${tom}`} disabled={!clicavel}
+                            onClick={() => setAberta(b)} title={clicavel ? "Clique para substituir" : undefined}>
+                            <span className="subs-card-hora">{b.inicio}–{b.fim}</span>
+                            <b className="subs-card-turma">{b.turma}</b>
+                            <span className="subs-card-uc">{b.uc}{b.grupo ? ` · G${b.grupo}` : ""}</span>
+                            <span className="subs-card-rodape">🏫 {b.sala || "sem sala"}
+                              {tom === "realizada" && <em>✓ realizada</em>}
+                              {tom === "substituida" && <em>🔁 {b.substituto}</em>}
+                              {tom === "substituindo" && <em>no lugar de {b.substituindo}</em>}
+                              {tom === "programada" && clicavel && <em className="subs-card-acao">Substituir ›</em>}</span>
+                          </button>);
+                      })}
+                      {!xs.length && <span className="subs-col-vazia">—</span>}
+                    </div>);
                 })}
-              </div>);
-          })}
+              </div>
+            </div>))}
         </section>}
 
-        {instrutorId && podeEditar && escolhidas.length > 0 &&
-          <IniciarSubstituicao key={ids.join(",")} cenarioId={alvo.id} ids={ids} titular={nome || ""} resumo={escolhidas}
-            pronto={() => { setMarcadas(new Set()); setVersao((v) => v + 1); aviso("Substituição registrada. Os instrutores foram avisados no portal."); }} />}
-        {instrutorId && podeEditar && blocos.length > 0 && !escolhidas.length &&
-          <p className="sub">Marque as aulas que precisam de substituto (uma a uma ou o dia todo) para ver quem pode assumir.</p>}
+        {aberta && alvo && <PopupSubstituicao cenarioId={alvo.id} aula={aberta} livres={livres} titular={nome || ""} fechar={() => setAberta(null)}
+          pronto={() => { setAberta(null); setVersao((v) => v + 1); aviso("Substituição registrada. Os instrutores foram avisados no portal."); }} />}
 
         <SubstituicoesEmVigor cenarioId={alvo.id} podeEditar={podeEditar} versao={versao} mudou={() => setVersao((v) => v + 1)} />
       </>}
@@ -148,7 +159,37 @@ export default function Substituicoes() {
   );
 }
 
-/** Painel das aulas escolhidas: substitutos possíveis (pela disponibilidade no dia e no horário), motivo, conferência e confirmação. */
+/** Pop-up aberto ao clicar numa aula: o que vai para o substituto (só esta aula, o dia, a UC no período ou tudo) e quem pode assumir. */
+function PopupSubstituicao({ cenarioId, aula, livres, titular, fechar, pronto }: { cenarioId: number; aula: any; livres: any[]; titular: string;
+  fechar: () => void; pronto: () => void }) {
+  const opcoes = [
+    { k: "aula", rotulo: "Só esta aula", xs: [aula] },
+    { k: "dia", rotulo: `O dia ${dataBR(aula.data).slice(0, 5)} todo`, xs: livres.filter((b) => b.data === aula.data) },
+    { k: "uc", rotulo: `${aula.turma} · ${aula.uc.split(" – ")[0]} no período`, xs: livres.filter((b) => b.turma_uc_id === aula.turma_uc_id) },
+    { k: "tudo", rotulo: "Todas as aulas do período", xs: livres },
+  ].filter((o, i, arr) => i === 0 || (o.xs.length > 1 && o.xs.length !== arr[i - 1].xs.length));
+  const [escopo, setEscopo] = useState("aula");
+  const atual = opcoes.find((o) => o.k === escopo) || opcoes[0];
+  const ids = atual.xs.flatMap((b) => b.ids);
+  const d = new Date(`${aula.data}T12:00:00`);
+  return (
+    <Modal titulo="🔁 Substituir aula" aberto fechar={fechar} largo>
+      <div className={`subs-pop-aula t-${(aula.turno || "").slice(0, 1).toLowerCase()}`}>
+        <div className="subs-pop-data"><b>{DIAS[(d.getDay() + 6) % 7]}</b><span>{dataBR(aula.data).slice(0, 5)}</span></div>
+        <div><span><b>{aula.turma}</b> · {aula.uc}{aula.grupo ? ` (grupo ${aula.grupo})` : ""}</span>
+          <small className="mudo">{aula.inicio}–{aula.fim} · {aula.turno} · 🏫 {aula.sala || "sem sala"} · titular: {titular}</small></div>
+      </div>
+      {opcoes.length > 1 && <div className="subs-escopo" role="radiogroup" aria-label="O que vai para o substituto">
+        <span className="mudo">Substituir:</span>
+        {opcoes.map((o) => <button key={o.k} role="radio" aria-checked={escopo === o.k} className={`chip-filtro ${escopo === o.k ? "on" : ""}`}
+          onClick={() => setEscopo(o.k)}>{o.rotulo}{o.xs.length > 1 ? ` (${o.xs.length})` : ""}</button>)}
+      </div>}
+      <IniciarSubstituicao key={ids.join(",")} cenarioId={cenarioId} ids={ids} titular={titular} resumo={atual.xs} pronto={pronto} />
+    </Modal>
+  );
+}
+
+/** Aulas escolhidas: substitutos possíveis (pela disponibilidade no dia e no horário), motivo, conferência e confirmação. */
 function IniciarSubstituicao({ cenarioId, ids, titular, resumo, pronto }: { cenarioId: number; ids: number[]; titular: string; resumo: any[]; pronto: () => void }) {
   const [sub, setSub] = useState<any>(null);
   const [motivo, setMotivo] = useState("");
@@ -172,7 +213,7 @@ function IniciarSubstituicao({ cenarioId, ids, titular, resumo, pronto }: { cena
   };
   return (
     <section className="subs-painel">
-      <h3>🔁 Quem pode assumir <small className="mudo">— {resumo.length} aula(s) de {titular}: {resumo.slice(0, 4).map((b) => `${dataBR(b.data).slice(0, 5)} ${b.turma}`).join(", ")}{resumo.length > 4 ? "…" : ""}</small></h3>
+      <h4 className="subs-painel-tit">Quem pode assumir <small className="mudo">— {resumo.length} aula(s) de {titular}{resumo.length > 1 ? `: ${resumo.slice(0, 4).map((b) => `${dataBR(b.data).slice(0, 5)} ${b.turma}`).join(", ")}${resumo.length > 4 ? "…" : ""}` : ""}</small></h4>
       <CandidatosSubstituicao dados={cand.dados} carregando={cand.carregando} erro={cand.erro} escolhido={sub?.id ?? null}
         escolher={(c) => { setSub(c); setPrevia(null); setAprovado(false); setConcorda(false); }} />
       {sub && <div className="subs-confirmar">
