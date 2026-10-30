@@ -194,7 +194,9 @@ def catalogo() -> list[dict]:
           "(remanejamento) troca o instrutor de todas as aulas futuras. O gerador completa a UC com quem já dá as aulas dela.",
           ["validação", "gerador", "substituição", "riscos"])
     regra("TERMO_MES_SEGUINTE", "Instrutores", "obrigatoria", "Termo de horas: feito no fim do mês para o mês seguinte",
-          "O termo de horas do horista (horas de aula do mês, outras ocupações e, se for o caso, os dias) é o que diz se ele está disponível. "
+          "O termo de horas do horista é o que diz se ele está disponível: as horas de aula do mês, outras ocupações e a grade do mês por "
+          "semana, dia e turno (manhã, tarde, noite e o turno de sábado), cada turno com aula ou planejamento (PL) — ex.: sábado pago "
+          "para planejamento de quem não tem disponibilidade na semana; pode ser só um turno no dia. Aula fora de um turno com aula no termo é alerta. "
           "É feito no fim de cada mês para o mês seguinte. Se foi preciso contar com o instrutor num dia que não estava previsto no termo, "
           "esse dia deve entrar no termo do mês seguinte (numa urgência, o termo do mês é ajustado com a concordância dele). O perfil do "
           "instrutor tem a aba Termo de horas (consulta e alteração), com o prazo e a sugestão do próximo termo; no portal o instrutor "

@@ -1160,3 +1160,36 @@ li.sem-marcador { list-style: none; margin-left: -18px; }
 .termo-mes.atual { border-color: var(--primaria); box-shadow: 0 0 0 1px var(--primaria) inset; }
 .termo-leitura { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: baseline; }
 .cap { text-transform: capitalize; }
+
+/* grade do termo de horas: mês por semanas, dia × turno (aula / PL) */
+.termo-grade-bloco { display: grid; gap: 8px; }
+.termo-grade-bloco > .btn-link { justify-self: start; text-decoration: none; font-weight: 600; }
+.termo-grade-total { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; font-size: .88rem; }
+.grade-termo { display: grid; gap: 6px; }
+.gt-cab, .gt-semana { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; }
+.gt-cab-dia { display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: .8rem; }
+.gt-cab-turnos { display: flex; gap: 3px; }
+.gt-cab-turnos button { border: 1px solid var(--borda); background: var(--superficie); color: var(--mudo); border-radius: 6px; font-size: .68rem;
+  padding: 1px 6px; cursor: pointer; }
+.gt-cab-turnos button:hover { border-color: var(--primaria); color: var(--primaria); }
+.gt-dia { background: var(--fundo); border-radius: 10px; padding: 6px; min-height: 64px; display: flex; flex-direction: column; gap: 4px; }
+.gt-dia.fora-mes { background: transparent; }
+.gt-dia.hoje { outline: 2px solid var(--primaria); outline-offset: -2px; }
+.gt-num { font-size: .75rem; font-weight: 700; color: var(--mudo); }
+.gt-turnos { display: flex; flex-wrap: wrap; gap: 4px; }
+.gt-t { position: relative; border: 1px solid var(--borda); background: var(--superficie); color: var(--mudo); border-radius: 6px;
+  font: inherit; font-size: .72rem; font-weight: 700; padding: 2px 7px; min-width: 26px; text-align: center; }
+.grade-termo.editavel .gt-t:not(:disabled) { cursor: pointer; }
+.grade-termo.editavel .gt-t:not(:disabled):hover { border-color: var(--primaria); }
+.gt-t.v-aula { background: var(--primaria); border-color: var(--primaria); color: var(--primaria-txt); }
+.gt-t.v-pl { background: color-mix(in srgb, #7b5ea7 22%, var(--superficie)); border-color: #7b5ea7; color: var(--texto); }
+.gt-t i { font-style: normal; margin-left: 2px; }
+.gt-t.fora { border-color: var(--erro); color: var(--erro); background: var(--erro-bg); }
+.gt-legenda { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: .75rem; color: var(--mudo); }
+.gt-legenda .gt-t { cursor: default; }
+@media (max-width: 640px) {
+  .gt-cab, .gt-semana { gap: 3px; }
+  .gt-dia { padding: 4px; min-height: 52px; }
+  .gt-t { padding: 1px 4px; min-width: 20px; font-size: .66rem; }
+  .gt-cab-turnos { flex-wrap: wrap; justify-content: center; }
+}

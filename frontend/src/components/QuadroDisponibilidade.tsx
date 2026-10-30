@@ -122,7 +122,8 @@ export function PainelTermo({ instId, nome, url, somenteLeitura }: { instId: num
   const [ajuste, setAjuste] = useState<any | null>(null);
   const editavel = !somenteLeitura && pode("cadastros.editar");
   const salvar = async (m: any) => {
-    const v = { horas_aula: m.horas_aula, horas_outras: m.horas_outras || 0, observacao: m.observacao || "", dias_semana: m.dias_semana || [], ...edit[m.mes] };
+    const v = { horas_aula: m.horas_aula, horas_outras: m.horas_outras || 0, observacao: m.observacao || "", dias_semana: m.dias_semana || [],
+      agenda: m.agenda || {}, ...edit[m.mes] };
     if (v.horas_aula === undefined || v.horas_aula === "") { aviso("Informe as horas de aula do termo.", "erro"); return; }
     try {
       const x = await api.put(`/api/instrutores/${instId}/termos/${m.mes}${qs({ cenario_id: cenario?.id })}`, v);
@@ -134,7 +135,8 @@ export function PainelTermo({ instId, nome, url, somenteLeitura }: { instId: num
   const ajustar = async () => {
     try {
       const x = await api.post(`/api/instrutores/${instId}/termos/${ajuste.mes}/ajuste${qs({ cenario_id: cenario?.id })}`,
-        { horas_aula: ajuste.horas_aula === "" ? null : ajuste.horas_aula, incluir_dias: ajuste.incluir_dias, motivo: ajuste.motivo, concordancia: ajuste.concordancia });
+        { horas_aula: ajuste.horas_aula === "" ? null : ajuste.horas_aula, incluir_dias: ajuste.incluir_dias, incluir_turnos: ajuste.incluir_turnos,
+          motivo: ajuste.motivo, concordancia: ajuste.concordancia });
       aviso(`Termo de ${x.rotulo} ajustado. ${x.ajuste}`);
       setAjuste(null);
       r.recarregar();
@@ -142,7 +144,11 @@ export function PainelTermo({ instId, nome, url, somenteLeitura }: { instId: num
   };
   const campo = (m: any, k: string) => (edit[m.mes]?.[k] ?? m[k] ?? "");
   const mudar = (m: any, k: string, v: any) => setEdit((e) => ({ ...e, [m.mes]: { ...e[m.mes], [k]: v } }));
-  const dias = (m: any): number[] => edit[m.mes]?.dias_semana ?? m.dias_semana ?? [];
+  const agenda = (m: any): Record<string, Record<string, string>> => edit[m.mes]?.agenda ?? m.agenda ?? {};
+  const [abertos, setAbertos] = useState<Set<string>>(new Set());
+  const aberto = (m: any) => abertos.has(m.mes) || (!abertos.has(`-${m.mes}`) && (m.situacao === "atual" || m.situacao === "proximo"));
+  const alternar = (m: any) => setAbertos((x) => { const n = new Set(x); const ab = aberto(m);
+    n.delete(m.mes); n.delete(`-${m.mes}`); n.add(ab ? `-${m.mes}` : m.mes); return n; });
   const nomesDias = (ds: number[]) => ds.map((d) => DIAS_CURTOS[d]).join(", ");
   const px = r.dados?.proximo;
   if (r.carregando && !r.dados) return <p role="status">Carregando…</p>;
@@ -162,7 +168,8 @@ export function PainelTermo({ instId, nome, url, somenteLeitura }: { instId: num
           <div><b>Termo de <span className="cap">{px.rotulo}</span></b>
             <small className="mudo">{px.tem_termo ? `já registrado: ${h(px.horas_aula)} de aula · ${h(px.programadas_h || 0)} já lançadas${px.excedente_h > 0 ? ` (${h(px.excedente_h)} acima do termo)` : ""}` : `a fazer até ${dataBR(px.prazo)}${px.faltam_dias >= 0 ? ` (${px.faltam_dias === 0 ? "hoje" : `faltam ${px.faltam_dias} dia(s)`})` : ""}`}</small></div>
           {editavel && !px.tem_termo && <button className="btn btn-primario btn-pequeno" onClick={() => setEdit((e) => ({ ...e, [px.mes]: {
-            horas_aula: px.sugestao.horas_aula || "", dias_semana: px.sugestao.dias_semana } }))}>Usar a sugestão</button>}
+            horas_aula: px.sugestao.horas_aula || "", horas_outras: px.sugestao.horas_outras || 0, dias_semana: px.sugestao.dias_semana,
+            agenda: px.sugestao.agenda || {} } }))}>Usar a sugestão</button>}
         </div>
         {(px.sugestao.motivos.length > 0 || !px.tem_termo) && <div className="termo-sugestao">
           {!px.tem_termo && <span>Sugestão: <b>{h(px.sugestao.horas_aula)}</b> de aula{px.sugestao.dias_semana.length ? <> · dias <b>{nomesDias(px.sugestao.dias_semana)}</b></> : ""}</span>}
@@ -180,23 +187,33 @@ export function PainelTermo({ instId, nome, url, somenteLeitura }: { instId: num
                 {m.excedente_h > 0 && <Badge tipo="alerta">{h(m.excedente_h)} acima do termo</Badge>}
                 {m.dias_fora?.length > 0 && <Badge tipo="alerta">aula fora do termo: {nomesDias(m.dias_fora)}</Badge>}
                 {editavel && m.situacao !== "passado" && <button className="btn-link termo-urg" onClick={() => setAjuste({ mes: m.mes, rotulo: m.rotulo, horas_aula: m.tem_termo ? m.horas_aula : "",
-                  dias_termo: m.dias_semana || [], incluir_dias: [], motivo: "", concordancia: false })}>⚡ Ajuste por urgência</button>}</div>
+                  dias_termo: m.dias_semana || [], incluir_dias: [], incluir_turnos: [], grade: Object.keys(m.agenda || {}).length > 0, fora: m.fora || [],
+                  motivo: "", concordancia: false })}>⚡ Ajuste por urgência</button>}</div>
               {somenteLeitura ? <div className="termo-leitura">
                 {m.tem_termo ? <><span><b>{h(m.horas_aula)}</b> de aula{m.horas_outras ? ` + ${h(m.horas_outras)} de outras ocupações` : ""}</span>
                   <span>Dias: <b>{m.dias_semana?.length ? nomesDias(m.dias_semana) : "qualquer dia"}</b></span>
                   {m.observacao && <small className="mudo">{m.observacao}</small>}</> : <span className="mudo">Termo ainda não registrado.</span>}
+                {m.tem_termo && Object.keys(m.agenda || {}).length > 0 && <GradeTermo mes={m.mes} agenda={m.agenda} aulas={m.aulas_por_data || {}} />}
               </div> : <div className="termo-campos">
                 <label>Horas de aula no mês<input type="number" min={0} max={220} step={0.5} value={campo(m, "horas_aula")} disabled={!editavel}
                   onChange={(e) => mudar(m, "horas_aula", e.target.value)} /></label>
                 <label>Outras ocupações (h)<input type="number" min={0} max={220} step={0.5} value={campo(m, "horas_outras")} disabled={!editavel}
                   onChange={(e) => mudar(m, "horas_outras", e.target.value)} /></label>
-                <fieldset className="termo-dias"><legend>Dias do termo <small className="mudo">(nenhum = qualquer dia)</small></legend>
-                  {DIAS_CURTOS.map((nome, k) => <label key={k} className="dia-chk"><input type="checkbox" disabled={!editavel} checked={dias(m).includes(k)}
-                    onChange={(e) => mudar(m, "dias_semana", e.target.checked ? [...dias(m), k].sort() : dias(m).filter((x) => x !== k))} />{nome}</label>)}
-                </fieldset>
                 <label className="termo-obs">Observação<input value={campo(m, "observacao")} disabled={!editavel} placeholder="ex.: turmas e UCs do termo"
                   onChange={(e) => mudar(m, "observacao", e.target.value)} /></label>
                 {editavel && <button className={`btn ${sujo ? "btn-primario" : ""}`} disabled={!sujo} onClick={() => salvar(m)}>{m.tem_termo ? "Salvar alteração" : "Registrar termo"}</button>}
+              </div>}
+              {!somenteLeitura && <div className="termo-grade-bloco">
+                <button className="btn-link" onClick={() => alternar(m)}>{aberto(m) ? "▾" : "▸"} 📅 Grade do mês por dia e turno
+                  {Object.keys(agenda(m)).length ? ` (${resumoGrade(agenda(m)).turnosAula} turno(s) de aula · ${resumoGrade(agenda(m)).turnosPl} de PL)` : " (sem grade: vale qualquer dia)"}</button>
+                {aberto(m) && <>
+                  {!Object.keys(agenda(m)).length && m.dias_semana?.length > 0 && <small className="mudo">Termo antigo por dia da semana ({nomesDias(m.dias_semana)}). Marque a grade para definir dia e turno.</small>}
+                  <GradeTermo mes={m.mes} agenda={agenda(m)} aulas={m.aulas_por_data || {}} mudar={editavel ? (ag) => mudar(m, "agenda", ag) : undefined} />
+                  {editavel && Object.keys(agenda(m)).length > 0 && (() => { const r = resumoGrade(agenda(m)); return (
+                    <div className="termo-grade-total"><span>Pela grade: <b>{h(r.horasAula)}</b> de aula ({r.turnosAula} turnos) · <b>{h(r.horasPl)}</b> de planejamento ({r.turnosPl} turnos)</span>
+                      <button className="btn btn-pequeno" onClick={() => setEdit((e) => ({ ...e, [m.mes]: { ...e[m.mes], horas_aula: Math.round(r.horasAula * 10) / 10, horas_outras: r.horasPl } }))}>
+                        Usar estes totais nas horas do termo</button></div>); })()}
+                </>}
               </div>}
               {m.programadas_h != null && <div className="termo-prog">
                 {m.tem_termo && <BarraPct valor={m.pct} fina neutra />}
@@ -208,7 +225,12 @@ export function PainelTermo({ instId, nome, url, somenteLeitura }: { instId: num
                 <div className="termo-campos">
                   <label>Novas horas de aula no mês<input type="number" min={0} max={220} step={0.5} value={ajuste.horas_aula}
                     onChange={(e) => setAjuste({ ...ajuste, horas_aula: e.target.value })} /></label>
-                  {ajuste.dias_termo.length > 0 && <fieldset className="termo-dias"><legend>Incluir dia(s) fora do termo</legend>
+                  {ajuste.grade && ajuste.fora.length > 0 && <fieldset className="termo-dias"><legend>Incluir no termo as aulas fora dele</legend>
+                    {ajuste.fora.map((f: any) => { const k = `${f.data}|${f.turno}`; const on = ajuste.incluir_turnos.some((x: any) => `${x.data}|${x.turno}` === k);
+                      return <label key={k} className="dia-chk"><input type="checkbox" checked={on} onChange={(e) => setAjuste({ ...ajuste, incluir_turnos: e.target.checked
+                        ? [...ajuste.incluir_turnos, f] : ajuste.incluir_turnos.filter((x: any) => `${x.data}|${x.turno}` !== k) })} />{dataBR(f.data).slice(0, 5)} {NOME_TURNO[f.turno]}</label>; })}
+                  </fieldset>}
+                  {!ajuste.grade && ajuste.dias_termo.length > 0 && <fieldset className="termo-dias"><legend>Incluir dia(s) fora do termo</legend>
                     {DIAS_CURTOS.map((nome, k) => ajuste.dias_termo.includes(k) ? null : <label key={k} className="dia-chk"><input type="checkbox" checked={ajuste.incluir_dias.includes(k)}
                       onChange={(e) => setAjuste({ ...ajuste, incluir_dias: e.target.checked ? [...ajuste.incluir_dias, k] : ajuste.incluir_dias.filter((x: number) => x !== k) })} />{nome}</label>)}
                   </fieldset>}
@@ -227,6 +249,97 @@ export function PainelTermo({ instId, nome, url, somenteLeitura }: { instId: num
           );
         })}
       </div>
+    </div>
+  );
+}
+
+const TURNOS_SEMANA = ["M", "V", "N"];
+const HORAS_TURNO: Record<string, number> = { M: 220 / 60, V: 220 / 60, N: 200 / 60, S: 220 / 60 };
+const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+function resumoGrade(agenda: Record<string, Record<string, string>>) {
+  let turnosAula = 0, turnosPl = 0, horasAula = 0;
+  for (const ts of Object.values(agenda)) for (const [tn, v] of Object.entries(ts)) {
+    if (v === "aula") { turnosAula++; horasAula += HORAS_TURNO[tn] || 0; } else if (v === "pl") turnosPl++;
+  }
+  return { turnosAula, turnosPl, horasAula, horasPl: turnosPl * 4 };
+}
+
+/** Grade do termo no mês, separada por semanas (segunda a sábado): em cada dia, os turnos do termo — manhã, tarde e noite na semana,
+ * e o turno de sábado — com aula ou planejamento (PL; ex.: sábado pago para planejamento de quem não tem disponibilidade na semana).
+ * Clique no turno: livre → aula → PL → livre. No cabeçalho, marca o turno em todas as semanas daquele dia. O ponto indica aula já lançada;
+ * aula lançada fora do termo fica em vermelho. Sem `mudar`: só leitura. */
+export function GradeTermo({ mes, agenda, aulas, mudar }: { mes: string; agenda: Record<string, Record<string, string>>; aulas: Record<string, string[]>;
+  mudar?: (a: Record<string, Record<string, string>>) => void }) {
+  const [a, mm] = mes.split("-").map(Number);
+  const primeiro = new Date(a, mm - 1, 1, 12);
+  const ultimo = new Date(a, mm, 0, 12).getDate();
+  const ini = new Date(primeiro); ini.setDate(1 - ((primeiro.getDay() + 6) % 7));
+  const semanas: Date[][] = [];
+  for (let d = new Date(ini); d.getMonth() === mm - 1 || d < primeiro; ) {
+    const sem: Date[] = [];
+    for (let k = 0; k < 7; k++) { sem.push(new Date(d)); d.setDate(d.getDate() + 1); }
+    semanas.push(sem.slice(0, 6));
+    if (d.getMonth() !== mm - 1 && d > primeiro) break;
+  }
+  const doMes = (d: Date) => d.getMonth() === mm - 1;
+  const turnosDo = (d: Date) => (d.getDay() === 6 ? ["S"] : TURNOS_SEMANA);
+  const valor = (k: string, tn: string) => agenda[k]?.[tn] || "";
+  const definir = (ag: Record<string, Record<string, string>>, k: string, tn: string, v: string) => {
+    const dia = { ...(ag[k] || {}) };
+    if (v) dia[tn] = v; else delete dia[tn];
+    const n = { ...ag };
+    if (Object.keys(dia).length) n[k] = dia; else delete n[k];
+    return n;
+  };
+  const ciclar = (k: string, tn: string) => {
+    if (!mudar) return;
+    const v = valor(k, tn);
+    mudar(definir(agenda, k, tn, v === "" ? "aula" : v === "aula" ? "pl" : ""));
+  };
+  const coluna = (dow: number, tn: string) => {
+    if (!mudar) return;
+    const datas: string[] = [];
+    for (let dd = 1; dd <= ultimo; dd++) { const d = new Date(a, mm - 1, dd, 12); if ((d.getDay() + 6) % 7 === dow) datas.push(iso(d)); }
+    const todas = datas.every((k) => valor(k, tn) === "aula");
+    let n = agenda;
+    for (const k of datas) n = definir(n, k, tn, todas ? "" : "aula");
+    mudar(n);
+  };
+  const hoje = iso(new Date());
+  return (
+    <div className={`grade-termo ${mudar ? "editavel" : ""}`}>
+      <div className="gt-cab">
+        {DIAS_CURTOS.map((nome, dow) => <div key={nome} className="gt-cab-dia"><b>{nome}</b>
+          {mudar && <span className="gt-cab-turnos">{(dow === 5 ? ["S"] : TURNOS_SEMANA).map((tn) =>
+            <button key={tn} type="button" title={`Marcar/desmarcar ${NOME_TURNO[tn].toLowerCase()} em todas as ${nome.toLowerCase()}s do mês`} onClick={() => coluna(dow, tn)}>{tn === "S" ? "todos" : tn}</button>)}</span>}
+        </div>)}
+      </div>
+      {semanas.filter((sem) => sem.some((d) => d.getMonth() === mm - 1)).map((sem, i) => (
+        <div key={i} className="gt-semana">
+          {sem.map((d) => {
+            const k = iso(d);
+            if (!doMes(d)) return <div key={k} className="gt-dia fora-mes" />;
+            const lancadas = aulas[k] || [];
+            return (
+              <div key={k} className={`gt-dia ${k === hoje ? "hoje" : ""}`}>
+                <span className="gt-num">{d.getDate()}</span>
+                <div className="gt-turnos">
+                  {turnosDo(d).map((tn) => {
+                    const v = valor(k, tn);
+                    const tem = lancadas.includes(tn);
+                    return <button key={tn} type="button" disabled={!mudar} onClick={() => ciclar(k, tn)}
+                      className={`gt-t ${v ? `v-${v}` : ""} ${tem ? (v === "aula" ? "com-aula" : "fora") : ""}`}
+                      title={`${NOME_TURNO[tn]}: ${v === "aula" ? "aula" : v === "pl" ? "planejamento (PL)" : "livre"}${tem ? " · há aula lançada" : ""}`}>
+                      {tn === "S" ? "Sáb" : tn}{v === "pl" ? " PL" : ""}{tem && <i aria-hidden="true">•</i>}</button>;
+                  })}
+                </div>
+              </div>);
+          })}
+        </div>))}
+      <div className="gt-legenda"><span className="gt-t v-aula">M</span> aula <span className="gt-t v-pl">M PL</span> planejamento <span className="gt-t">M</span> livre
+        <span className="gt-t v-aula com-aula">M<i>•</i></span> aula lançada <span className="gt-t fora">M<i>•</i></span> aula fora do termo
+        {mudar && <small className="mudo"> · clique no turno: livre → aula → PL → livre</small>}</div>
     </div>
   );
 }

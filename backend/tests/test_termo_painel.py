@@ -1,6 +1,6 @@
 """Termo de horas no perfil: painel com o próximo mês (feito no fim do mês) e a sugestão do que entra nele — o dia em que foi
 preciso contar com o horista fora do termo vai para o termo do mês seguinte."""
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from fastapi.testclient import TestClient
 
@@ -37,3 +37,37 @@ def test_portal_mostra_o_termo_ao_horista(db, mundo):
     r = c.get(f"/api/instrutores/{m.i1.id}/termos?cenario_id={m.cen.id}", headers=h)
     assert r.status_code == 200, r.text
     assert r.json()["proximo"]["prazo"] and any(x["tem_termo"] for x in r.json()["meses"])
+
+
+def test_termo_por_dia_e_turno(db, mundo):
+    from app.core.errors import EntradaInvalida
+    from app.services.validacao import AulaProposta, BaseDados, validar_aula
+    m = mundo
+    m.i1.modalidade = "horista"
+    db.commit()
+    ter, qua, sab = SEG + timedelta(days=1), SEG + timedelta(days=2), SEG + timedelta(days=5)
+    grade = {ter.isoformat(): {"M": "aula"}, qua.isoformat(): {"V": "aula"}, sab.isoformat(): {"S": "pl"}}
+    r = termos.salvar(db, m.ctx, m.i1, "2026-08", 20, 4, None, m.cen.id, agenda=grade)
+    db.commit()
+    assert r["agenda"] == grade and r["dias_semana"] == [1, 2]
+    assert r["resumo_agenda"]["turnos_aula"] == 2 and r["resumo_agenda"]["turnos_pl"] == 1
+    # turno de sábado só "S"; data de outro mês recusada
+    import pytest
+    with pytest.raises(EntradaInvalida):
+        termos.salvar(db, m.ctx, m.i1, "2026-08", 20, 0, agenda={sab.isoformat(): {"M": "aula"}})
+    with pytest.raises(EntradaInvalida):
+        termos.salvar(db, m.ctx, m.i1, "2026-08", 20, 0, agenda={"2026-09-01": {"M": "aula"}})
+    db.rollback()
+    # aula na terça de manhã: no termo; terça à tarde ou segunda: fora (alerta)
+    tuc = m.tuc(db, m.t1, m.uc_a)
+    def oc(dia, p):
+        ini = datetime.combine(dia, m.periodos[p].hora_inicio)
+        return [o.regra for o in validar_aula(BaseDados(db, m.cen.id), AulaProposta(turma_uc_id=tuc.id, inicio=ini, fim=ini + timedelta(minutes=100),
+                                                                                    minutos_aula=100, instrutor_id=m.i1.id))]
+    assert "TERMO_FORA_DOS_DIAS" not in oc(ter, 0)
+    assert "TERMO_FORA_DOS_DIAS" in oc(SEG, 0)
+    # ajuste por urgência inclui a célula (segunda de manhã)
+    t = termos.ajustar(db, m.ctx, m.i1, "2026-08", "Substituição urgente", True, incluir_turnos=[{"data": SEG.isoformat(), "turno": "M"}])
+    db.commit()
+    assert t["agenda"][SEG.isoformat()] == {"M": "aula"} and 0 in t["dias_semana"]
+    assert "TERMO_FORA_DOS_DIAS" not in oc(SEG, 0)

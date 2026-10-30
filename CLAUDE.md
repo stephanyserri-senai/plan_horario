@@ -46,9 +46,10 @@ UC transversal/técnica, substituição, solicitações, quadro 5:4...) estão e
   é estar ocupado e a carga máxima do contrato. A geração do semestre procura manter o horista no termo; simulação e previsão de
   turmas ignoram o termo; a ocupação é medida sobre o contrato. Mensalista é ocupado primeiro (regra MENSALISTA_PRIMEIRO):
   todos são ocupados; critério `prioridade_mensalista` no solver (hora de horista custa; `equilibrio_carga` por grupo) e
-  `planejamento.mensalistas_primeiro` / ordenação de `substituicao.candidatos` nas listas de instrutores. Aba "Disponibilidade e termos de horas": uma linha por instrutor.
+  `planejamento.mensalistas_primeiro` / ordenação de `substituicao.candidatos` nas listas de instrutores. Termo só no perfil do instrutor (a antiga aba "Disponibilidade e termos de horas" saiu de Instrutores).
   Termo feito no fim do mês para o mês seguinte (regra TERMO_MES_SEGUINTE): `termos.painel` (meses + `proximo` com prazo e sugestão — dia fora do
-  termo vai para o mês seguinte), aba "Termo de horas" no perfil (`PainelTermo`, editável) e no portal (`GET /api/portal/termos`, só leitura).
+  termo vai para o mês seguinte), aba "Termo de horas" no perfil (`PainelTermo` + `GradeTermo`: mês por semanas, dia × turno M/V/N/S com aula ou PL em
+  `termos_horas.agenda`; `termos.cobre`/`turno_da_aula` na validação; `dias_semana` derivado para o gerador; editável) e no portal (`GET /api/portal/termos`, só leitura).
 - Versão da matriz: cada uma tem sua lista de UCs; em `rascunho` a lista é editável, depois de cadastrada (vigente/encerrada) fica fixa
   (código, nome, carga, modalidade, categoria; incluir/retirar) — `VERSAO_CADASTRADA` em `api/cadastros._regras_uc`; mudar = nova versão.
   UC `modalidade` presencial/ead; EAD só se `cursos.preve_ead`; UC EAD fica fora do gerador e da demanda (risco "ead" no acompanhamento).

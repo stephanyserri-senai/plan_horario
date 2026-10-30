@@ -25,7 +25,7 @@ export function useMeta() {
 const RELACIONADOS: Record<string, string[]> = {
   turmas: ["turmas", "turma_ucs", "epis"],
   // certificações e matriz de competências ficam no perfil de cada instrutor (clique no cartão)
-  instrutores: ["instrutores", "observacoes", "disponibilidade_instrutores"],
+  instrutores: ["instrutores", "observacoes"],
   ucs: ["ucs", "uc_recursos"],
   cursos: ["estrutura", "cursos", "matrizes"],  // as UCs ficam dentro de cada versão da matriz
   ambientes: ["ambientes", "tipos_ambiente", "disponibilidade_ambientes", "recursos_ambientes"],
@@ -238,7 +238,8 @@ export function ListaEntidade({ ent }: { ent: string }) {
   const [historico, setHistorico] = useState<any[] | null>(null);
   const [duplicar, setDuplicar] = useState<any | null>(null);
   const [acesso, setAcesso] = useState<any | null>(null);
-  const [perfil, setPerfil] = useState<number | null>(null);
+  const [perfil, setPerfil] = useState<number | null>(() => Number(new URLSearchParams(location.search).get("perfil")) || null);
+  const abaPerfil = new URLSearchParams(location.search).get("perfil_aba") || undefined;
   const [visao, setVisao] = useState<"cartoes" | "tabela">("cartoes");
   const equipe = useCarregar<any>(() => (ent === "instrutores" ? api.get("/api/aderencia/equipe") : Promise.resolve(null)), [ent, unidadeTopo]);
   const adPor: Record<number, any> = useMemo(() => Object.fromEntries((equipe.dados?.instrutores || []).map((x: any) => [x.instrutor_id, x])), [equipe.dados]);
@@ -367,7 +368,7 @@ export function ListaEntidade({ ent }: { ent: string }) {
           </div>
         ),
       }]} linhas={lista.dados?.itens || []} chave={(l) => idDe(meta, l)} aoClicar={ent === "instrutores" ? (l: any) => setPerfil(l.id) : undefined} />}
-      {ent === "instrutores" && <PerfilInstrutor id={perfil} fechar={() => { setPerfil(null); equipe.recarregar(); resumo.recarregar(); }}
+      {ent === "instrutores" && <PerfilInstrutor id={perfil} abaInicial={abaPerfil} fechar={() => { setPerfil(null); equipe.recarregar(); resumo.recarregar(); }}
         editar={editavel ? () => { const l = (lista.dados?.itens || []).find((x: any) => x.id === perfil); setPerfil(null); if (l) { setErro(null); setEdicao({ ...l }); } } : undefined} />}
       {lista.dados && <Paginacao pagina={pagina} total={lista.dados.total} porPagina={porPagina} mudar={setPagina} />}
       <Modal titulo={edicao?.__novo ? `Novo — ${meta.rotulo}` : `Editar — ${meta.rotulo}`} aberto={!!edicao} fechar={() => setEdicao(null)} largo>

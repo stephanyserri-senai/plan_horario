@@ -233,7 +233,7 @@ def substituir(db: Session, ctx, cenario_id: int, aulas: list[Alocacao], substit
     db.flush()
     b = BaseDados(db, cenario_id)
     ok, falhas, usou_exc, feitas, convertidas = [], [], False, [], []
-    termos_ajustar: dict[date, set[int]] = {}  # horista fora do termo (aprovado): meses a ajustar → dias a incluir
+    termos_ajustar: dict[date, dict] = {}  # horista fora do termo (aprovado): meses a ajustar → dias e (data, turno) a incluir
     for a in aulas:
         rot = {"alocacao_id": a.id, "data": a.data.isoformat(), "horario": f"{a.inicio:%H:%M}–{a.fim:%H:%M}"}
         if a.status == "realizada":
@@ -259,8 +259,11 @@ def substituir(db: Session, ctx, cenario_id: int, aulas: list[Alocacao], substit
                 "fora do termo de horas: marque a aprovação da supervisão e a concordância do instrutor"]})
             continue
         if fora:
-            termos_ajustar.setdefault(a.data.replace(day=1), set()).update(
-                {a.data.weekday()} if any(o.regra == "TERMO_FORA_DOS_DIAS" for o in fora) else set())
+            from app.services.termos import turno_da_aula
+            x = termos_ajustar.setdefault(a.data.replace(day=1), {"dias": set(), "turnos": []})
+            if any(o.regra == "TERMO_FORA_DOS_DIAS" for o in fora):
+                x["dias"].add(a.data.weekday())
+                x["turnos"].append({"data": a.data.isoformat(), "turno": turno_da_aula(a.inicio)})
         reserva = _reserva(b, sub.id, a.inicio, a.fim)
         if reserva is None and (falta := _sem_antecedencia(a.data)):
             falhas.append({**rot, "motivos": [falta]})
@@ -303,13 +306,15 @@ def substituir(db: Session, ctx, cenario_id: int, aulas: list[Alocacao], substit
     termos_ajustados = []
     if termos_ajustar:  # o termo do horista passa a cobrir as aulas assumidas (aprovação da supervisão + concordância dele)
         from app.services import termos as termos_svc
-        for mes, dias in sorted(termos_ajustar.items()):
+        for mes, inc in sorted(termos_ajustar.items()):
+            dias = inc["dias"]
             t = termos_svc.termos_do(db, {sub.id}, mes, termos_svc.fim_do_mes(mes)).get(sub.id, {}).get(mes)
             prog = termos_svc.horas_programadas(db, cenario_id, sub.id, mes)
             horas = max(float(t.horas_aula) if t else 0.0, prog)
             r = termos_svc.ajustar(db, ctx, sub, mes, f"Substituição aprovada pela supervisão: {motivo}", True,
                                    horas_aula=horas if (not t or horas > float(t.horas_aula)) else None,
-                                   incluir_dias=sorted(dias) if t and t.dias_semana and dias - set(t.dias_semana) else None, cenario_id=cenario_id)
+                                   incluir_dias=sorted(dias) if t and not t.agenda and t.dias_semana and dias - set(t.dias_semana) else None,
+                                   incluir_turnos=inc["turnos"] if t and t.agenda else None, cenario_id=cenario_id)
             termos_ajustados.append(r.get("ajuste"))
     aulas_feitas = [a for a, _, _ in feitas]
     resumo = _descrever(db, aulas_feitas)

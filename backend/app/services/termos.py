@@ -62,10 +62,68 @@ def horas_programadas(db: Session, cenario_id: int, instrutor_id: int, mes: date
     return round(float(m or 0) / 60, 1)
 
 
+# termo por dia e turno (grade do mês): M = matutino, V = vespertino, N = noturno, S = sábado; cada célula é aula ou PL
+TURNOS_TERMO = ("M", "V", "N", "S")
+NOME_TURNO = {"M": "matutino", "V": "vespertino", "N": "noturno", "S": "sábado"}
+HORAS_TURNO = {"M": 220 / 60, "V": 220 / 60, "N": 200 / 60, "S": 220 / 60}  # 4 aulas de 55 min (de dia) ou 50 min (à noite)
+HORAS_PL = 4.0  # turno de planejamento
+
+
+def turno_da_aula(inicio) -> str:
+    if inicio.weekday() == 5:
+        return "S"
+    return "M" if inicio.hour < 12 else "V" if inicio.hour < 18 else "N"
+
+
+def cobre(t: TermoHoras, inicio) -> bool:
+    """A aula cai num turno com aula no termo? (termo sem agenda: vale o dia da semana)."""
+    if t.agenda:
+        return (t.agenda.get(inicio.date().isoformat()) or {}).get(turno_da_aula(inicio)) == "aula"
+    return not t.dias_semana or inicio.weekday() in t.dias_semana
+
+
+def resumo_agenda(agenda: dict | None) -> dict:
+    cel = [(d, tn, v) for d, ts in (agenda or {}).items() for tn, v in ts.items()]
+    aula = [c for c in cel if c[2] == "aula"]
+    pl = [c for c in cel if c[2] == "pl"]
+    return {"turnos_aula": len(aula), "turnos_pl": len(pl), "horas_aula": round(sum(HORAS_TURNO[c[1]] for c in aula), 1),
+            "horas_pl": round(HORAS_PL * len(pl), 1), "dias": len({c[0] for c in cel})}
+
+
+def _agenda(agenda, m: date) -> dict | None:
+    """Valida a grade do mês: só datas do mês, turnos M/V/N na semana e S no sábado, valores aula ou pl."""
+    if agenda is None:
+        return None
+    if not isinstance(agenda, dict):
+        raise EntradaInvalida("Grade do termo inválida.")
+    res = {}
+    for k, ts in agenda.items():
+        try:
+            d = date.fromisoformat(str(k)[:10])
+        except ValueError:
+            raise EntradaInvalida(f"Data inválida na grade do termo: {k}.")
+        if mes_de(d) != m:
+            raise EntradaInvalida(f"{d:%d/%m/%Y} não é de {rotulo_mes(m)}.")
+        if d.weekday() == 6:
+            raise EntradaInvalida("Domingo não entra no termo.")
+        validos = ("S",) if d.weekday() == 5 else ("M", "V", "N")
+        cel = {}
+        for tn, v in (ts or {}).items():
+            if v in (None, "", "livre"):
+                continue
+            if tn not in validos or v not in ("aula", "pl"):
+                raise EntradaInvalida(f"Turno {tn}={v} inválido em {d:%d/%m} (use {', '.join(validos)} com aula ou pl).")
+            cel[tn] = v
+        if cel:
+            res[d.isoformat()] = cel
+    return res
+
+
 def termo_dict(t: TermoHoras, programadas: float | None = None) -> dict:
     d = {"id": t.id, "mes": t.mes.isoformat()[:7], "rotulo": rotulo_mes(t.mes), "horas_aula": float(t.horas_aula),
          "horas_outras": float(t.horas_outras or 0), "observacao": t.observacao, "dias_semana": sorted(t.dias_semana) if t.dias_semana else [],
-         "atualizado_em": t.atualizado_em.isoformat() if t.atualizado_em else None}
+         "atualizado_em": t.atualizado_em.isoformat() if t.atualizado_em else None, "agenda": t.agenda or {},
+         "resumo_agenda": resumo_agenda(t.agenda)}
     if programadas is not None:
         d["programadas_h"] = programadas
         d["pct"] = round(100 * programadas / float(t.horas_aula), 1) if float(t.horas_aula) else (0.0 if not programadas else 999.0)
@@ -114,12 +172,23 @@ def painel(db: Session, inst: Instrutor, cenario_id: int | None, hoje: date | No
         d0 = min(d0, mes_de(desde))
     d1 = fim_do_mes(max(prox, mes_de(ate) if ate else prox))
     meses = listar(db, inst, cenario_id, d0, d1)
+    termos_ = termos_do(db, [inst.id], d0, d1).get(inst.id, {})
     for m in meses:
         md = _mes_param(m["mes"])
         m["situacao"] = "passado" if md < atual else "atual" if md == atual else "proximo" if md == prox else "futuro"
-        dias = dias_com_aula(db, cenario_id, inst.id, md)
+        inicios = [] if not cenario_id else list(db.scalars(select(Alocacao.inicio).where(
+            Alocacao.cenario_id == cenario_id, Alocacao.instrutor_id == inst.id, Alocacao.status != "cancelada",
+            Alocacao.data >= md, Alocacao.data <= fim_do_mes(md))))
+        por_data: dict[str, set] = {}
+        for i in inicios:
+            por_data.setdefault(i.date().isoformat(), set()).add(turno_da_aula(i))
+        m["aulas_por_data"] = {k: sorted(v, key=TURNOS_TERMO.index) for k, v in sorted(por_data.items())}
+        dias = sorted({i.weekday() for i in inicios})
         m["dias_com_aula"] = dias
-        m["dias_fora"] = [d for d in dias if m.get("dias_semana") and d not in m["dias_semana"]]
+        t = termos_.get(md)
+        fora = sorted({(i.date().isoformat(), turno_da_aula(i)) for i in inicios if t is not None and not cobre(t, i)})
+        m["fora"] = [{"data": d, "turno": tn} for d, tn in fora]
+        m["dias_fora"] = sorted({date.fromisoformat(d).weekday() for d, _ in fora})
     por_mes = {m["mes"]: m for m in meses}
     ma, mp = por_mes.get(atual.isoformat()[:7], {}), por_mes.get(prox.isoformat()[:7], {})
     motivos, dias_sug = [], set(ma.get("dias_semana") or [])
@@ -133,11 +202,29 @@ def painel(db: Session, inst: Instrutor, cenario_id: int | None, hoje: date | No
             if d not in base_prox and d not in dias_sug:
                 motivos.append(f"{DIAS_NOME[d]}: já há aula programada em {rotulo_mes(prox)}")
             dias_sug.add(d)
+    padrao: dict[int, dict[str, str]] = {}
+    for d, ts in (ma.get("agenda") or {}).items():
+        for tn, v in ts.items():
+            padrao.setdefault(date.fromisoformat(d).weekday(), {})[tn] = v if padrao.get(date.fromisoformat(d).weekday(), {}).get(tn) != "aula" else "aula"
+    for f in ma.get("fora") or []:
+        padrao.setdefault(date.fromisoformat(f["data"]).weekday(), {})[f["turno"]] = "aula"
+    for d, ts in (mp.get("aulas_por_data") or {}).items():
+        for tn in ts:
+            padrao.setdefault(date.fromisoformat(d).weekday(), {})[tn] = "aula"
+    agenda_sug = {}
+    if ma.get("agenda") or padrao:
+        dd = prox
+        while dd <= fim_do_mes(prox):
+            if dd.weekday() in padrao and dd.weekday() < 6:
+                agenda_sug[dd.isoformat()] = {tn: v for tn, v in padrao[dd.weekday()].items() if (tn == "S") == (dd.weekday() == 5)}
+            dd += timedelta(days=1)
+        agenda_sug = {k: v for k, v in agenda_sug.items() if v}
     horas_sug = max(float(mp.get("programadas_h") or 0), float(ma.get("horas_aula") or 0) if ma.get("tem_termo") else 0.0)
     proximo = {"mes": prox.isoformat()[:7], "rotulo": rotulo_mes(prox), "prazo": fim_do_mes(atual).isoformat(), "tem_termo": bool(mp.get("tem_termo")),
                "faltam_dias": (fim_do_mes(atual) - hoje).days, "programadas_h": mp.get("programadas_h"),
                "horas_aula": mp.get("horas_aula"), "excedente_h": mp.get("excedente_h") or 0,
-               "sugestao": {"horas_aula": round(horas_sug, 1), "dias_semana": sorted(d for d in dias_sug if d < 6), "motivos": motivos},
+               "sugestao": {"horas_aula": round(max(horas_sug, resumo_agenda(agenda_sug)["horas_aula"]), 1), "dias_semana": sorted(d for d in dias_sug if d < 6),
+                            "agenda": agenda_sug, "horas_outras": resumo_agenda(agenda_sug)["horas_pl"], "motivos": motivos},
                "pendente": [x for x in motivos if "fora do termo" in x and mp.get("tem_termo") and mp.get("dias_semana")
                             and DIAS_NOME.index(x.split(":")[0]) not in mp["dias_semana"]]}
     return {"instrutor": {"id": inst.id, "nome": inst.nome, "modalidade": inst.modalidade, "carga_semanal": float(inst.carga_horaria_contratual or 0)},
@@ -167,7 +254,7 @@ def _dias(dias) -> list[int] | None:
 
 
 def salvar(db: Session, ctx, inst: Instrutor, mes, horas_aula, horas_outras=0, observacao: str | None = None,
-           cenario_id: int | None = None, dias_semana=None) -> dict:
+           cenario_id: int | None = None, dias_semana=None, agenda=None) -> dict:
     """Registra ou altera o termo do mês (o termo pode mudar; cada mudança fica na auditoria e o instrutor é avisado)."""
     from app.services.notificacoes import notificar
     if inst.modalidade != "horista":
@@ -185,7 +272,13 @@ def salvar(db: Session, ctx, inst: Instrutor, mes, horas_aula, horas_outras=0, o
         t = TermoHoras(instrutor_id=inst.id, mes=m)
         db.add(t)
     t.horas_aula, t.horas_outras, t.observacao, t.atualizado_por_id = ha, ho, (observacao or None), getattr(ctx, "id", None)
-    t.dias_semana = _dias(dias_semana)
+    grade = _agenda(agenda, m)
+    if grade is not None:
+        t.agenda = grade or None
+    if t.agenda:  # com a grade, os dias da semana do termo saem dela (dias com aula)
+        t.dias_semana = sorted({date.fromisoformat(d).weekday() for d, ts in t.agenda.items() if "aula" in ts.values()}) or None
+    else:
+        t.dias_semana = _dias(dias_semana)
     db.flush()
     auditoria.registrar(db, ctx, "termo_horas.salvar", "termos_horas", t.id, antes=antes, depois=auditoria.snapshot(t))
     notificar(db, inst.id, "cadastro", f"Termo de horas de {rotulo_mes(m)}", f"{ha:g} h de aula" + (f" e {ho:g} h de outras atividades" if ho else "") + " no mês.",
@@ -203,7 +296,7 @@ DIAS_NOME = ["segunda", "terça", "quarta", "quinta", "sexta", "sábado"]
 
 
 def ajustar(db: Session, ctx, inst: Instrutor, mes, motivo: str, concordancia: bool, horas_aula=None, incluir_dias=None,
-            cenario_id: int | None = None) -> dict:
+            cenario_id: int | None = None, incluir_turnos=None) -> dict:
     """Ajuste do termo por urgência (mais horas no mês e/ou um dia fora do termo). Só com a concordância do instrutor,
     registrada com o motivo na auditoria, na observação do termo e no aviso ao instrutor."""
     from app.services.notificacoes import notificar
@@ -230,6 +323,19 @@ def ajustar(db: Session, ctx, inst: Instrutor, mes, motivo: str, concordancia: b
             raise EntradaInvalida("As horas do termo vão de 0 a 220 no mês.")
         mudou.append(f"{float(t.horas_aula or 0):g} → {ha:g} h de aula".replace(".", ","))
         t.horas_aula = ha
+    if incluir_turnos and t.agenda:  # termo por dia e turno: inclui as células (data, turno) com aula
+        ag = {k: dict(v) for k, v in t.agenda.items()}
+        novas = []
+        for x in incluir_turnos:
+            dd = date.fromisoformat(str(x["data"])[:10])
+            tn = x.get("turno") or "M"
+            if mes_de(dd) == m and ag.get(dd.isoformat(), {}).get(tn) != "aula":
+                ag.setdefault(dd.isoformat(), {})[tn] = "aula"
+                novas.append(f"{dd:%d/%m} {NOME_TURNO.get(tn, tn)}")
+        if novas:
+            t.agenda = ag
+            t.dias_semana = sorted({date.fromisoformat(d).weekday() for d, ts in ag.items() if "aula" in ts.values()}) or None
+            mudou.append("inclui " + ", ".join(novas))
     novos = _dias(incluir_dias) or []
     if novos and t.dias_semana:
         extra = [d for d in novos if d not in t.dias_semana]

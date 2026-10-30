@@ -17,7 +17,7 @@ const DATAS = new Set(["data", "prazo", "de", "ate"]);
 const RESOLVIVEIS = new Set(["sem_recurso", "instrutor_ausente", "sala_indisponivel", "nao_letivo", "dependencia", "prazo", "capacidade", "termo_horas"]);
 const PAGINA: Record<string, [string, string]> = {
   solicitacoes: ["/solicitacoes", "Abrir as solicitações"], epis: ["/epis", "Abrir o controle de EPIs"],
-  sobrecarga: ["/consultas", "Ver o ranking de ocupação"], termo_horas: ["/cadastros/instrutores?aba=disponibilidade_instrutores", "Abrir disponibilidade e termos"], padrao_dias: ["/cadastros/turmas", "Abrir o cadastro de turmas"],
+  sobrecarga: ["/consultas", "Ver o ranking de ocupação"], termo_horas: ["/cadastros/instrutores", "Abrir o perfil do instrutor (aba Termo de horas)"], padrao_dias: ["/cadastros/turmas", "Abrir o cadastro de turmas"],
 };
 
 /** Riscos ao desenvolvimento: o que pode atrapalhar as turmas daqui até o fim do semestre, com sugestões para aceitar. */

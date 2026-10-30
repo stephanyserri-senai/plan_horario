@@ -610,7 +610,14 @@ def validar_aula(b: BaseDados, a: AulaProposta, ignorar: set[int] | None = None)
                 if min_mes > float(termo.horas_aula) * 60 + 1e-6:
                     add(ALERTA, "TERMO_HORAS_MES", f"{instrutor.nome} (horista) somaria {min_mes / 60:.1f} h de aula em {rotulo_mes(mes_de(d))}, acima do termo "
                                                    f"({float(termo.horas_aula):g} h): ajuste o termo com a concordância do instrutor.", "instrutor", instrutor.id)
-                if termo.dias_semana and dia not in termo.dias_semana and dia < 6:
+                from app.services.termos import NOME_TURNO, cobre, turno_da_aula
+                if termo.agenda:  # termo por dia e turno (grade do mês)
+                    if not cobre(termo, a.inicio):
+                        tn = turno_da_aula(a.inicio)
+                        add(ALERTA, "TERMO_FORA_DOS_DIAS", f"{d:%d/%m} ({DIAS_NOME[dia] if dia < 6 else 'domingo'}, {NOME_TURNO[tn]}) não está com aula no termo de "
+                                                           f"{rotulo_mes(mes_de(d))} de {instrutor.nome}: numa urgência, ajuste o termo com a concordância do "
+                                                           "instrutor; e inclua o dia no termo do mês seguinte.", "instrutor", instrutor.id)
+                elif termo.dias_semana and dia not in termo.dias_semana and dia < 6:
                     add(ALERTA, "TERMO_FORA_DOS_DIAS", f"{DIAS_NOME[dia].capitalize()} não está no termo de {rotulo_mes(mes_de(d))} de {instrutor.nome}: "
                                                        "numa urgência, ajuste o termo com a concordância do instrutor; e inclua o dia no termo do mês seguinte.", "instrutor", instrutor.id)
         descanso = timedelta(hours=float(instrutor.intervalo_minimo_h or 0))

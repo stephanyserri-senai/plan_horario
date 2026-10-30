@@ -512,6 +512,8 @@ class TermoHoras(TimestampMixin, Base):
     horas_outras: Mapped[float] = mapped_column(Numeric(6, 2), default=0, server_default=text("0"))  # projetos, apoio etc.
     # dias da semana do termo (0 = segunda … 5 = sábado); vazio = qualquer dia da disponibilidade
     dias_semana: Mapped[list[int] | None] = mapped_column(ARRAY(Integer))
+    # agenda do mês por dia e turno: {"AAAA-MM-DD": {"M"|"V"|"N"|"S": "aula" | "pl"}}; vazio = vale dias_semana
+    agenda: Mapped[dict | None] = mapped_column(JSONB)
     observacao: Mapped[str | None] = mapped_column(Text)
     atualizado_por_id: Mapped[int | None] = mapped_column(ForeignKey("usuarios.id", ondelete="SET NULL"))
 

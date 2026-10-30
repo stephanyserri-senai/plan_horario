@@ -100,9 +100,9 @@ export function CartaoInstrutor({ l, ad, r, abrir, acoes }: { l: any; ad?: any; 
 }
 
 /** Perfil do instrutor: visão geral (dados, semestre, agenda), aderência por área e curso, e PDI. */
-export function PerfilInstrutor({ id, fechar, editar }: { id: number | null; fechar: () => void; editar?: () => void }) {
+export function PerfilInstrutor({ id, fechar, editar, abaInicial }: { id: number | null; fechar: () => void; editar?: () => void; abaInicial?: string }) {
   const { cenario } = useApp();
-  const [aba, setAba] = useState("geral");
+  const [aba, setAba] = useState(abaInicial || "geral");
   const p = useCarregar<any>(() => (id ? api.get(`/api/instrutores/${id}/perfil${qs({ cenario_id: cenario?.id })}`) : Promise.resolve(null)), [id, cenario?.id]);
   const d = p.dados;
   return (

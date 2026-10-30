@@ -345,7 +345,7 @@ def salvar_termo(iid: int, mes: str, d: dict = Body(...), cenario_id: int | None
     from app.services import termos as termos_svc
     inst = _instrutor(db, ctx, iid)
     r = termos_svc.salvar(db, ctx, inst, mes, d.get("horas_aula"), d.get("horas_outras") or 0, d.get("observacao"), cenario_id,
-                          dias_semana=d.get("dias_semana"))
+                          dias_semana=d.get("dias_semana"), agenda=d.get("agenda"))
     db.commit()
     return r
 
@@ -358,7 +358,7 @@ def ajustar_termo(iid: int, mes: str, d: dict = Body(...), cenario_id: int | Non
     from app.services import termos as termos_svc
     inst = _instrutor(db, ctx, iid)
     r = termos_svc.ajustar(db, ctx, inst, mes, d.get("motivo") or "", bool(d.get("concordancia")), horas_aula=d.get("horas_aula"),
-                           incluir_dias=d.get("incluir_dias"), cenario_id=cenario_id)
+                           incluir_dias=d.get("incluir_dias"), cenario_id=cenario_id, incluir_turnos=d.get("incluir_turnos"))
     db.commit()
     return r
 
