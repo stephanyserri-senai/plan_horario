@@ -612,7 +612,7 @@ def validar_aula(b: BaseDados, a: AulaProposta, ignorar: set[int] | None = None)
                                                    f"({float(termo.horas_aula):g} h): ajuste o termo com a concordância do instrutor.", "instrutor", instrutor.id)
                 if termo.dias_semana and dia not in termo.dias_semana and dia < 6:
                     add(ALERTA, "TERMO_FORA_DOS_DIAS", f"{DIAS_NOME[dia].capitalize()} não está no termo de {rotulo_mes(mes_de(d))} de {instrutor.nome}: "
-                                                       "inclua o dia no termo, com a concordância do instrutor.", "instrutor", instrutor.id)
+                                                       "numa urgência, ajuste o termo com a concordância do instrutor; e inclua o dia no termo do mês seguinte.", "instrutor", instrutor.id)
         descanso = timedelta(hours=float(instrutor.intervalo_minimo_h or 0))
         if descanso:
             for s in b.sessoes_instrutor(instrutor.id, d - timedelta(days=1)):

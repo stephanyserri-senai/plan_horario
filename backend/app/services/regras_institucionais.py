@@ -193,6 +193,12 @@ def catalogo() -> list[dict]:
           "por substituição (o titular continua sendo o da UC) ou por exceção justificada; passar a UC de vez a outro instrutor "
           "(remanejamento) troca o instrutor de todas as aulas futuras. O gerador completa a UC com quem já dá as aulas dela.",
           ["validação", "gerador", "substituição", "riscos"])
+    regra("TERMO_MES_SEGUINTE", "Instrutores", "obrigatoria", "Termo de horas: feito no fim do mês para o mês seguinte",
+          "O termo de horas do horista (horas de aula do mês, outras ocupações e, se for o caso, os dias) é o que diz se ele está disponível. "
+          "É feito no fim de cada mês para o mês seguinte. Se foi preciso contar com o instrutor num dia que não estava previsto no termo, "
+          "esse dia deve entrar no termo do mês seguinte (numa urgência, o termo do mês é ajustado com a concordância dele). O perfil do "
+          "instrutor tem a aba Termo de horas (consulta e alteração), com o prazo e a sugestão do próximo termo; no portal o instrutor "
+          "consulta o próprio termo e as horas já lançadas.", ["perfil do instrutor", "portal", "validação", "substituição"])
     regra("SUBST_HORISTA_TERMO", "Substituições e solicitações", "obrigatoria", "Horista fora do termo como substituto",
           "Mesmo sem horas ou sem o dia no termo do mês (ou fora da disponibilidade cadastrada), o horista aparece como opção de substituto. "
           "Só assume com a aprovação da supervisão e a concordância (e disponibilidade) dele; o termo do mês é ajustado junto e tudo fica "

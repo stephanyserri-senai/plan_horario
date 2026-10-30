@@ -288,6 +288,19 @@ def enviar_observacao(dados: dict = Body(...), ctx: Contexto = Depends(get_conte
 
 
 # ============================================================================ meu desenvolvimento: índice, PDI e formações
+@router.get("/portal/termos")
+def meus_termos(ctx: Contexto = Depends(get_contexto), db: Session = Depends(get_db)):
+    """Meu termo de horas (horista), só leitura: horas de cada mês, horas já lançadas (programadas) e os dias com aula."""
+    from app.services import termos as termos_svc
+    inst = _meu_instrutor(ctx, db)
+    if inst.modalidade != "horista":
+        return {"instrutor": {"id": inst.id, "nome": inst.nome, "modalidade": inst.modalidade}, "meses": [], "proximo": None}
+    cens = _cenarios_do_instrutor(db, inst)
+    cen = cens[max(cens)][0] if cens else db.scalars(select(CenarioPlanejamento).where(
+        CenarioPlanejamento.estado == "publicado", CenarioPlanejamento.tipo != "simulacao").order_by(CenarioPlanejamento.periodo_inicio.desc())).first()
+    return termos_svc.painel(db, inst, cen.id if cen else None, ate=cen.periodo_fim if cen else None, desde=cen.periodo_inicio if cen else None)
+
+
 @router.get("/portal/perfil")
 def meu_perfil(ctx: Contexto = Depends(get_contexto), db: Session = Depends(get_db)):
     """O mesmo perfil que a coordenação vê (ocupação, aderência por curso e área, PDI), do semestre mais recente do instrutor."""

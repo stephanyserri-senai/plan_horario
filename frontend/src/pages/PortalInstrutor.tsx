@@ -5,6 +5,7 @@ import Perfil from "../components/Perfil";
 import { Abas, Badge, Campo, Erro, useCarregar } from "../components/ui";
 import { useApp } from "../contexto";
 import { Aderencia, IndicesAderencia, Ocupacao, Pdi } from "../components/PerfilInstrutor";
+import { PainelTermo } from "../components/QuadroDisponibilidade";
 
 const TIPOS: [string, string][] = [["sugestao", "Sugestão"], ["dificuldade", "Dificuldade"], ["recurso", "Recurso ou material"], ["horario", "Horário"], ["outro", "Outro"]];
 const STATUS: Record<string, [string, string]> = { nova: ["info", "Enviada"], lida: ["alerta", "Lida pela coordenação"], resolvida: ["ok", "Resolvida"] };
@@ -373,11 +374,13 @@ function MeuDesenvolvimento({ registrado }: { registrado: () => void }) {
         <IndicesAderencia ad={d.aderencia} />
       </div>
       <Abas abas={[{ id: "pdi", rotulo: `🎯 Meu PDI${abertos.length ? ` (${abertos.length})` : ""}` }, { id: "registrar", rotulo: "➕ Registrar formação" },
-        { id: "aderencia", rotulo: "📊 Aderência por curso" }, { id: "ocupacao", rotulo: "⏱ Minha ocupação" }]} ativa={sub} mudar={setSub} />
+        { id: "aderencia", rotulo: "📊 Aderência por curso" }, { id: "ocupacao", rotulo: "⏱ Minha ocupação" },
+        ...(d.dados.modalidade === "horista" ? [{ id: "termo", rotulo: "🗓 Meu termo de horas" }] : [])]} ativa={sub} mudar={setSub} />
       {sub === "pdi" && <Pdi id={d.dados.id} url="/api/portal/pdi" somenteLeitura mudou={p.recarregar} />}
       {sub === "registrar" && <RegistrarFormacao d={d} feito={() => { p.recarregar(); registrado(); setSub("pdi"); }} />}
       {sub === "aderencia" && <Aderencia ad={d.aderencia} />}
       {sub === "ocupacao" && <Ocupacao d={d} />}
+      {sub === "termo" && <PainelTermo instId={d.dados.id} nome={d.dados.nome} url="/api/portal/termos" somenteLeitura />}
     </div>
   );
 }

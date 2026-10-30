@@ -1,3 +1,4 @@
+import { PainelTermo } from "./QuadroDisponibilidade";
 import { type ReactNode, useState } from "react";
 import { api, dataBR, qs } from "../api";
 import { useApp } from "../contexto";
@@ -125,10 +126,13 @@ export function PerfilInstrutor({ id, fechar, editar }: { id: number | null; fec
           <IndicesAderencia ad={d.aderencia} />
           {editar && <button className="btn" onClick={editar}>Editar cadastro</button>}
         </div>
-        <Abas abas={[{ id: "geral", rotulo: "Visão geral" }, { id: "ocupacao", rotulo: "Ocupação" }, { id: "competencias", rotulo: "Competências e certificações" },
+        <Abas abas={[{ id: "geral", rotulo: "Visão geral" }, { id: "ocupacao", rotulo: "Ocupação" },
+          ...(d.dados.modalidade === "horista" ? [{ id: "termo", rotulo: `⏱ Termo de horas${d.termos && !d.termos.atual?.tem_termo ? " ⚠" : ""}` }] : []),
+          { id: "competencias", rotulo: "Competências e certificações" },
           { id: "aderencia", rotulo: "Aderência aos cursos" }, { id: "pdi", rotulo: "PDI" }]} ativa={aba} mudar={setAba} />
         {aba === "geral" && <VisaoGeral d={d} />}
         {aba === "ocupacao" && <Ocupacao d={d} />}
+        {aba === "termo" && <PainelTermo instId={d.dados.id} nome={d.dados.nome} />}
         {aba === "competencias" && <Competencias d={d} mudou={p.recarregar} />}
         {aba === "aderencia" && <Aderencia ad={d.aderencia} />}
         {aba === "pdi" && <Pdi id={d.dados.id} mudou={p.recarregar} />}

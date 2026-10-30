@@ -1148,3 +1148,15 @@ li.sem-marcador { list-style: none; margin-left: -18px; }
 .sub-cand .sub-cand-cab { display: flex; flex-direction: row; flex-wrap: wrap; gap: 6px; align-items: center; }
 .sub-cand .sub-cand-cab .tag-presenca { margin-left: 0; }
 .sub-grupo > .badge { white-space: normal; max-width: 100%; }
+
+/* termo de horas no perfil do instrutor: próximo mês (feito no fim do mês) e meses */
+.termo-painel { display: grid; gap: 12px; }
+.termo-proximo { border: 1px solid var(--borda); border-left: 4px solid var(--alerta); background: var(--alerta-bg); border-radius: 12px; padding: 10px 14px; display: grid; gap: 6px; }
+.termo-proximo.feito { border-left-color: var(--ok); background: var(--ok-bg); }
+.termo-proximo-cab { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.termo-proximo-cab > div { display: flex; flex-direction: column; flex: 1; min-width: 180px; }
+.termo-proximo-ico { font-size: 1.4rem; }
+.termo-sugestao { display: grid; gap: 4px; font-size: .88rem; }
+.termo-mes.atual { border-color: var(--primaria); box-shadow: 0 0 0 1px var(--primaria) inset; }
+.termo-leitura { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: baseline; }
+.cap { text-transform: capitalize; }

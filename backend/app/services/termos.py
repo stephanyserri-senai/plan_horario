@@ -87,6 +87,63 @@ def listar(db: Session, inst: Instrutor, cenario_id: int | None, d0: date, d1: d
     return res
 
 
+def dias_com_aula(db: Session, cenario_id: int | None, instrutor_id: int, mes: date) -> list[int]:
+    """Dias da semana em que o instrutor tem aula programada no mês."""
+    if not cenario_id:
+        return []
+    return sorted({d.weekday() for d in db.scalars(select(Alocacao.data).where(
+        Alocacao.cenario_id == cenario_id, Alocacao.instrutor_id == instrutor_id, Alocacao.status != "cancelada",
+        Alocacao.data >= mes, Alocacao.data <= fim_do_mes(mes)))})
+
+
+def proximo_mes(m: date) -> date:
+    return date(m.year + m.month // 12, m.month % 12 + 1, 1)
+
+
+def painel(db: Session, inst: Instrutor, cenario_id: int | None, hoje: date | None = None, ate: date | None = None,
+           desde: date | None = None) -> dict:
+    """Termo de horas do horista para consulta e edição: os meses (do mês passado ao fim do semestre ou ao próximo mês), com
+    as horas programadas e os dias com aula fora do termo; e o termo do PRÓXIMO mês, feito no fim de cada mês, com a sugestão
+    do que precisa entrar nele — inclusive os dias em que foi preciso contar com o instrutor fora do termo deste mês
+    (o que não estava previsto no termo vai para o termo do mês seguinte)."""
+    hoje = hoje or date.today()
+    atual = mes_de(hoje)
+    prox = proximo_mes(atual)
+    d0 = date(atual.year - (1 if atual.month == 1 else 0), 12 if atual.month == 1 else atual.month - 1, 1)
+    if desde:  # o semestre inteiro, quando há um
+        d0 = min(d0, mes_de(desde))
+    d1 = fim_do_mes(max(prox, mes_de(ate) if ate else prox))
+    meses = listar(db, inst, cenario_id, d0, d1)
+    for m in meses:
+        md = _mes_param(m["mes"])
+        m["situacao"] = "passado" if md < atual else "atual" if md == atual else "proximo" if md == prox else "futuro"
+        dias = dias_com_aula(db, cenario_id, inst.id, md)
+        m["dias_com_aula"] = dias
+        m["dias_fora"] = [d for d in dias if m.get("dias_semana") and d not in m["dias_semana"]]
+    por_mes = {m["mes"]: m for m in meses}
+    ma, mp = por_mes.get(atual.isoformat()[:7], {}), por_mes.get(prox.isoformat()[:7], {})
+    motivos, dias_sug = [], set(ma.get("dias_semana") or [])
+    # dias só importam quando o termo restringe os dias (termo sem dias = qualquer dia)
+    if dias_sug or mp.get("dias_semana"):
+        for d in [x for x in ma.get("dias_fora") or [] if x < 6]:
+            motivos.append(f"{DIAS_NOME[d]}: houve aula fora do termo em {rotulo_mes(atual)} — entra no termo de {rotulo_mes(prox)}")
+            dias_sug.add(d)
+        base_prox = set(mp.get("dias_semana") or []) if mp.get("tem_termo") else dias_sug
+        for d in [x for x in mp.get("dias_com_aula") or [] if x < 6]:
+            if d not in base_prox and d not in dias_sug:
+                motivos.append(f"{DIAS_NOME[d]}: já há aula programada em {rotulo_mes(prox)}")
+            dias_sug.add(d)
+    horas_sug = max(float(mp.get("programadas_h") or 0), float(ma.get("horas_aula") or 0) if ma.get("tem_termo") else 0.0)
+    proximo = {"mes": prox.isoformat()[:7], "rotulo": rotulo_mes(prox), "prazo": fim_do_mes(atual).isoformat(), "tem_termo": bool(mp.get("tem_termo")),
+               "faltam_dias": (fim_do_mes(atual) - hoje).days, "programadas_h": mp.get("programadas_h"),
+               "horas_aula": mp.get("horas_aula"), "excedente_h": mp.get("excedente_h") or 0,
+               "sugestao": {"horas_aula": round(horas_sug, 1), "dias_semana": sorted(d for d in dias_sug if d < 6), "motivos": motivos},
+               "pendente": [x for x in motivos if "fora do termo" in x and mp.get("tem_termo") and mp.get("dias_semana")
+                            and DIAS_NOME.index(x.split(":")[0]) not in mp["dias_semana"]]}
+    return {"instrutor": {"id": inst.id, "nome": inst.nome, "modalidade": inst.modalidade, "carga_semanal": float(inst.carga_horaria_contratual or 0)},
+            "hoje": hoje.isoformat(), "mes_atual": atual.isoformat()[:7], "proximo": proximo, "meses": meses}
+
+
 def _mes_param(mes: str | date) -> date:
     if isinstance(mes, date):
         return mes_de(mes)

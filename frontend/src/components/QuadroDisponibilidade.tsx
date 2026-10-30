@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api, qs } from "../api";
+import { api, dataBR, qs } from "../api";
 import { useApp } from "../contexto";
 import { Avatar, BarraPct } from "./PerfilInstrutor";
 import { Badge, Modal, useCarregar } from "./ui";
@@ -100,18 +100,32 @@ function Carga({ l, rotuloMes }: { l: any; rotuloMes: string }) {
   );
 }
 
-/** Termos de horas do horista mês a mês: horas de aula do mês (e outras ocupações) e o que já está programado. */
+/** Termos de horas do horista (janela): o mesmo painel do perfil do instrutor. */
 export function TermosHorista({ inst, fechar }: { inst: any | null; fechar: () => void }) {
+  return (
+    <Modal titulo={`Termos de horas — ${inst?.nome || ""}`} aberto={!!inst} fechar={fechar} largo>
+      {inst && <PainelTermo instId={inst.id} nome={inst.nome} />}
+    </Modal>
+  );
+}
+
+const SIT_MES: Record<string, [string, string]> = { passado: ["neutro", "mês passado"], atual: ["info", "mês atual"], proximo: ["alerta", "próximo mês"], futuro: ["neutro", "futuro"] };
+
+/** Termo de horas do horista mês a mês: horas de aula do mês (e outras ocupações), dias do termo, o que já está programado (horas
+ * lançadas) e os dias com aula fora do termo. O termo é feito no fim de cada mês para o mês seguinte: o painel mostra o prazo e a
+ * sugestão — o que não estava previsto no termo deste mês (dia em que foi preciso contar com o instrutor) entra no do mês seguinte.
+ * `url` + `somenteLeitura`: a visão do próprio instrutor no portal. */
+export function PainelTermo({ instId, nome, url, somenteLeitura }: { instId: number; nome: string; url?: string; somenteLeitura?: boolean }) {
   const { cenario, pode, aviso } = useApp();
-  const r = useCarregar<any>(() => (inst ? api.get(`/api/instrutores/${inst.id}/termos${qs({ cenario_id: cenario?.id })}`) : Promise.resolve(null)), [inst?.id, cenario?.id]);
+  const r = useCarregar<any>(() => api.get(url || `/api/instrutores/${instId}/termos${qs({ cenario_id: cenario?.id })}`), [instId, cenario?.id, url]);
   const [edit, setEdit] = useState<Record<string, any>>({});
   const [ajuste, setAjuste] = useState<any | null>(null);
-  const editavel = pode("cadastros.editar");
+  const editavel = !somenteLeitura && pode("cadastros.editar");
   const salvar = async (m: any) => {
     const v = { horas_aula: m.horas_aula, horas_outras: m.horas_outras || 0, observacao: m.observacao || "", dias_semana: m.dias_semana || [], ...edit[m.mes] };
     if (v.horas_aula === undefined || v.horas_aula === "") { aviso("Informe as horas de aula do termo.", "erro"); return; }
     try {
-      const x = await api.put(`/api/instrutores/${inst.id}/termos/${m.mes}${qs({ cenario_id: cenario?.id })}`, v);
+      const x = await api.put(`/api/instrutores/${instId}/termos/${m.mes}${qs({ cenario_id: cenario?.id })}`, v);
       aviso(x.aviso || `Termo de ${x.rotulo} salvo: ${h(x.horas_aula)} de aula.`, x.aviso ? "erro" : undefined);
       setEdit((e) => { const n = { ...e }; delete n[m.mes]; return n; });
       r.recarregar();
@@ -119,7 +133,7 @@ export function TermosHorista({ inst, fechar }: { inst: any | null; fechar: () =
   };
   const ajustar = async () => {
     try {
-      const x = await api.post(`/api/instrutores/${inst.id}/termos/${ajuste.mes}/ajuste${qs({ cenario_id: cenario?.id })}`,
+      const x = await api.post(`/api/instrutores/${instId}/termos/${ajuste.mes}/ajuste${qs({ cenario_id: cenario?.id })}`,
         { horas_aula: ajuste.horas_aula === "" ? null : ajuste.horas_aula, incluir_dias: ajuste.incluir_dias, motivo: ajuste.motivo, concordancia: ajuste.concordancia });
       aviso(`Termo de ${x.rotulo} ajustado. ${x.ajuste}`);
       setAjuste(null);
@@ -129,24 +143,49 @@ export function TermosHorista({ inst, fechar }: { inst: any | null; fechar: () =
   const campo = (m: any, k: string) => (edit[m.mes]?.[k] ?? m[k] ?? "");
   const mudar = (m: any, k: string, v: any) => setEdit((e) => ({ ...e, [m.mes]: { ...e[m.mes], [k]: v } }));
   const dias = (m: any): number[] => edit[m.mes]?.dias_semana ?? m.dias_semana ?? [];
+  const nomesDias = (ds: number[]) => ds.map((d) => DIAS_CURTOS[d]).join(", ");
+  const px = r.dados?.proximo;
+  if (r.carregando && !r.dados) return <p role="status">Carregando…</p>;
+  if (r.erro) return <div className="erro-box">{r.erro}</div>;
+  if (!r.dados) return null;
+  if (r.dados.instrutor?.modalidade !== "horista") return <p className="sub">{nome} é mensalista: jornada semanal fixa, sem termo de horas.</p>;
   return (
-    <Modal titulo={`Termos de horas — ${inst?.nome || ""}`} aberto={!!inst} fechar={fechar} largo>
-      <p className="sub">O horista recebe todo mês um termo de horas: as horas de aula que ele assume naquele mês (e outras ocupações) e, se for o caso,
-        os dias da semana. O termo é <b>adaptável</b>: numa urgência — alguém num dia ou num total de horas fora do termo — ele pode ser ajustado,
-        desde que o instrutor concorde. Por isso aula fora do termo é alerta, não bloqueio; o que impede é já estar ocupado e a carga máxima do
-        contrato. Na simulação e na previsão de turmas o termo não conta.</p>
-      {r.carregando && !r.dados && <p role="status">Carregando…</p>}
-      {r.erro && <div className="erro-box">{r.erro}</div>}
-      {r.dados && <div className="termos-lista">
+    <div className="termo-painel">
+      <p className="sub">{somenteLeitura
+        ? "Seu termo de horas: as horas de aula de cada mês, os dias combinados e as horas já lançadas na grade. O termo é feito no fim de cada mês para o mês seguinte."
+        : <>O termo de horas define a disponibilidade do horista no mês: as horas de aula, outras ocupações e, se for o caso, os dias da semana. É feito
+          <b> no fim de cada mês para o mês seguinte</b>. Precisou do instrutor num dia fora do termo? Numa urgência ajuste o termo do mês (com a concordância
+          dele) e <b>inclua o dia no termo do mês seguinte</b>.</>}</p>
+      {px && <div className={`termo-proximo ${px.tem_termo ? "feito" : ""}`}>
+        <div className="termo-proximo-cab">
+          <span className="termo-proximo-ico" aria-hidden="true">{px.tem_termo ? "✅" : "🗓"}</span>
+          <div><b>Termo de <span className="cap">{px.rotulo}</span></b>
+            <small className="mudo">{px.tem_termo ? `já registrado: ${h(px.horas_aula)} de aula · ${h(px.programadas_h || 0)} já lançadas${px.excedente_h > 0 ? ` (${h(px.excedente_h)} acima do termo)` : ""}` : `a fazer até ${dataBR(px.prazo)}${px.faltam_dias >= 0 ? ` (${px.faltam_dias === 0 ? "hoje" : `faltam ${px.faltam_dias} dia(s)`})` : ""}`}</small></div>
+          {editavel && !px.tem_termo && <button className="btn btn-primario btn-pequeno" onClick={() => setEdit((e) => ({ ...e, [px.mes]: {
+            horas_aula: px.sugestao.horas_aula || "", dias_semana: px.sugestao.dias_semana } }))}>Usar a sugestão</button>}
+        </div>
+        {(px.sugestao.motivos.length > 0 || !px.tem_termo) && <div className="termo-sugestao">
+          {!px.tem_termo && <span>Sugestão: <b>{h(px.sugestao.horas_aula)}</b> de aula{px.sugestao.dias_semana.length ? <> · dias <b>{nomesDias(px.sugestao.dias_semana)}</b></> : ""}</span>}
+          {px.sugestao.motivos.length > 0 && <ul className="lista-limpa">{px.sugestao.motivos.map((x: string) => <li key={x}><small>• {x}</small></li>)}</ul>}
+          {px.pendente.length > 0 && <small className="alerta-txt">⚠ O termo de {px.rotulo} ainda não tem esse(s) dia(s): revise-o.</small>}
+        </div>}
+      </div>}
+      <div className="termos-lista">
         {r.dados.meses.map((m: any) => {
           const sujo = !!edit[m.mes];
+          const [tomSit, rotSit] = SIT_MES[m.situacao] || ["neutro", ""];
           return (
-            <div key={m.mes} className={`termo-mes ${m.tem_termo ? "" : "sem"}`}>
-              <div className="termo-cab"><b>{m.rotulo}</b>{!m.tem_termo && <Badge tipo="alerta">sem termo</Badge>}
+            <div key={m.mes} className={`termo-mes ${m.tem_termo ? "" : "sem"} ${m.situacao === "atual" ? "atual" : ""}`}>
+              <div className="termo-cab"><b>{m.rotulo}</b><Badge tipo={tomSit}>{rotSit}</Badge>{!m.tem_termo && <Badge tipo="alerta">sem termo</Badge>}
                 {m.excedente_h > 0 && <Badge tipo="alerta">{h(m.excedente_h)} acima do termo</Badge>}
-                {editavel && <button className="btn-link termo-urg" onClick={() => setAjuste({ mes: m.mes, rotulo: m.rotulo, horas_aula: m.tem_termo ? m.horas_aula : "",
+                {m.dias_fora?.length > 0 && <Badge tipo="alerta">aula fora do termo: {nomesDias(m.dias_fora)}</Badge>}
+                {editavel && m.situacao !== "passado" && <button className="btn-link termo-urg" onClick={() => setAjuste({ mes: m.mes, rotulo: m.rotulo, horas_aula: m.tem_termo ? m.horas_aula : "",
                   dias_termo: m.dias_semana || [], incluir_dias: [], motivo: "", concordancia: false })}>⚡ Ajuste por urgência</button>}</div>
-              <div className="termo-campos">
+              {somenteLeitura ? <div className="termo-leitura">
+                {m.tem_termo ? <><span><b>{h(m.horas_aula)}</b> de aula{m.horas_outras ? ` + ${h(m.horas_outras)} de outras ocupações` : ""}</span>
+                  <span>Dias: <b>{m.dias_semana?.length ? nomesDias(m.dias_semana) : "qualquer dia"}</b></span>
+                  {m.observacao && <small className="mudo">{m.observacao}</small>}</> : <span className="mudo">Termo ainda não registrado.</span>}
+              </div> : <div className="termo-campos">
                 <label>Horas de aula no mês<input type="number" min={0} max={220} step={0.5} value={campo(m, "horas_aula")} disabled={!editavel}
                   onChange={(e) => mudar(m, "horas_aula", e.target.value)} /></label>
                 <label>Outras ocupações (h)<input type="number" min={0} max={220} step={0.5} value={campo(m, "horas_outras")} disabled={!editavel}
@@ -158,10 +197,11 @@ export function TermosHorista({ inst, fechar }: { inst: any | null; fechar: () =
                 <label className="termo-obs">Observação<input value={campo(m, "observacao")} disabled={!editavel} placeholder="ex.: turmas e UCs do termo"
                   onChange={(e) => mudar(m, "observacao", e.target.value)} /></label>
                 {editavel && <button className={`btn ${sujo ? "btn-primario" : ""}`} disabled={!sujo} onClick={() => salvar(m)}>{m.tem_termo ? "Salvar alteração" : "Registrar termo"}</button>}
-              </div>
+              </div>}
               {m.programadas_h != null && <div className="termo-prog">
                 {m.tem_termo && <BarraPct valor={m.pct} fina neutra />}
-                <small className="mudo">{h(m.programadas_h)} de aula programadas no mês{m.tem_termo ? ` · ${m.pct}% do termo` : ""}</small>
+                <small className="mudo">{h(m.programadas_h)} de aula lançadas no mês{m.tem_termo ? ` · ${Number(m.pct).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}% do termo` : ""}
+                  {m.dias_com_aula?.length ? ` · aulas às ${nomesDias(m.dias_com_aula).toLowerCase()}` : ""}</small>
               </div>}
               {ajuste?.mes === m.mes && <div className="termo-ajuste">
                 <b>⚡ Ajuste por urgência — {m.rotulo}</b>
@@ -176,7 +216,8 @@ export function TermosHorista({ inst, fechar }: { inst: any | null; fechar: () =
                     onChange={(e) => setAjuste({ ...ajuste, motivo: e.target.value })} /></label>
                 </div>
                 <label className="concorda"><input type="checkbox" checked={ajuste.concordancia} onChange={(e) => setAjuste({ ...ajuste, concordancia: e.target.checked })} />
-                  {inst?.nome} concordou com o ajuste do termo</label>
+                  {nome} concordou com o ajuste do termo</label>
+                <small className="mudo">Lembre de incluir o dia também no termo do mês seguinte.</small>
                 <div className="acoes-linha">
                   <button className="btn" onClick={() => setAjuste(null)}>Cancelar</button>
                   <button className="btn btn-primario" disabled={!ajuste.concordancia || ajuste.motivo.trim().length < 5} onClick={ajustar}>Ajustar o termo</button>
@@ -185,7 +226,7 @@ export function TermosHorista({ inst, fechar }: { inst: any | null; fechar: () =
             </div>
           );
         })}
-      </div>}
-    </Modal>
+      </div>
+    </div>
   );
 }

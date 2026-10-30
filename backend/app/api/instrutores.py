@@ -326,18 +326,16 @@ def quadro_disponibilidade(q: str = "", modalidade: str = "", cenario_id: int | 
 
 @router.get("/instrutores/{iid}/termos")
 def termos_instrutor(iid: int, cenario_id: int | None = None, ctx: Contexto = Depends(requer("cadastros.ler")), db: Session = Depends(get_db)):
-    """Termos de horas do horista mês a mês no semestre, com as horas de aula já programadas em cada mês."""
+    """Termo de horas do horista: do mês passado ao fim do semestre (ou ao próximo mês), com as horas e os dias de aula já
+    programados em cada mês, e o termo do próximo mês (feito no fim do mês) com a sugestão do que precisa entrar nele."""
     from app.services import termos as termos_svc
     inst = _instrutor(db, ctx, iid)
     cen = db.get(CenarioPlanejamento, cenario_id) if cenario_id else None
+    desde = ate = None
     if cen is not None:
         from app.services.indicadores import periodo_padrao
-        d0, d1 = periodo_padrao(db, cen)
-    else:
-        d0 = termos_svc.mes_de(date.today())
-        d1 = termos_svc.fim_do_mes(date(d0.year + (d0.month + 4) // 12, (d0.month + 4) % 12 + 1, 1))
-    return {"instrutor": {"id": inst.id, "nome": inst.nome, "modalidade": inst.modalidade, "carga_semanal": float(inst.carga_horaria_contratual or 0)},
-            "meses": termos_svc.listar(db, inst, cen.id if cen else None, d0, d1)}
+        desde, ate = periodo_padrao(db, cen)
+    return termos_svc.painel(db, inst, cen.id if cen else None, ate=ate, desde=desde)
 
 
 @router.put("/instrutores/{iid}/termos/{mes}")
