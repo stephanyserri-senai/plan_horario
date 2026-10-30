@@ -1202,3 +1202,25 @@ li.sem-marcador { list-style: none; margin-left: -18px; }
 .gt-outro input { width: 96px; }
 .gt-t { display: inline-flex; flex-direction: column; align-items: center; line-height: 1.15; }
 .gt-t small { font-size: .6rem; font-weight: 600; opacity: .9; white-space: nowrap; }
+
+/* termo = horas pagas: cores por situação (aula, planejamento, projeto, urgência) e totais */
+.gt-t.v-aula { background: #1f4e79; border-color: #1f4e79; color: #fff; }
+.gt-t.v-pl { background: #7b5ea7; border-color: #7b5ea7; color: #fff; }
+.gt-t.v-pj { background: #1e8a7a; border-color: #1e8a7a; color: #fff; }
+.gt-t.v-urgencia { background: #d9822b; border-color: #d9822b; color: #fff; }
+.gt-t.fora { background: var(--erro-bg); border-color: var(--erro); color: var(--erro); }
+.gt-tipo { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--borda); background: var(--superficie); color: var(--texto);
+  border-radius: 999px; padding: 4px 12px; font: inherit; font-size: .82rem; cursor: pointer; }
+.gt-tipo.on { border-color: var(--texto); box-shadow: 0 0 0 1px var(--texto) inset; font-weight: 700; }
+.gt-tot-cor { width: 12px; height: 12px; border-radius: 4px; display: inline-block; background: var(--borda); flex: none; }
+.v-aula > .gt-tot-cor { background: #1f4e79; } .v-pl > .gt-tot-cor { background: #7b5ea7; }
+.v-pj > .gt-tot-cor { background: #1e8a7a; } .v-urgencia > .gt-tot-cor { background: #d9822b; }
+.v-livre > .gt-tot-cor { background: transparent; border: 1px dashed var(--mudo); }
+.gt-totais { display: flex; flex-wrap: wrap; gap: 8px; }
+.gt-tot { display: flex; align-items: center; gap: 8px; background: var(--fundo); border-radius: 10px; padding: 6px 12px; min-width: 150px; }
+.gt-tot > span:last-child { display: flex; flex-direction: column; }
+.gt-tot b { font-size: 1rem; } .gt-tot small { color: var(--mudo); font-size: .72rem; }
+.gt-tot.total { background: var(--info-bg); border: 1px solid var(--info); }
+.gt-tot.total b { font-size: 1.15rem; color: var(--info); }
+.gt-leg { display: inline-flex; align-items: center; gap: 4px; }
+.termo-grade-total { flex-direction: column; align-items: flex-start; }

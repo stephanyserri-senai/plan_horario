@@ -48,7 +48,7 @@ UC transversal/técnica, substituição, solicitações, quadro 5:4...) estão e
   todos são ocupados; critério `prioridade_mensalista` no solver (hora de horista custa; `equilibrio_carga` por grupo) e
   `planejamento.mensalistas_primeiro` / ordenação de `substituicao.candidatos` nas listas de instrutores. Termo só no perfil do instrutor (a antiga aba "Disponibilidade e termos de horas" saiu de Instrutores).
   Termo feito no fim do mês para o mês seguinte (regra TERMO_MES_SEGUINTE): `termos.painel` (meses + `proximo` com prazo e sugestão — dia fora do
-  termo vai para o mês seguinte), aba "Termo de horas" no perfil (`PainelTermo` + `GradeTermo`: mês por semanas, dia × turno M/V/N/S com aula ou PL e horário do dia
+  termo vai para o mês seguinte), aba "Termo de horas" no perfil (`PainelTermo` + `GradeTermo`: mês por semanas, dia × turno M/V/N/S com aula, pl, pj ou urgencia (tempo pago, cores e total) e horário do dia
   em `termos_horas.agenda` — célula {tipo, ini, fim}; horas contadas pelo horário, `HORARIOS_TURNO`; `termos.cobre`/`turno_da_aula` na validação; `dias_semana` derivado para o gerador; editável) e no portal (`GET /api/portal/termos`, só leitura).
 - Versão da matriz: cada uma tem sua lista de UCs; em `rascunho` a lista é editável, depois de cadastrada (vigente/encerrada) fica fixa
   (código, nome, carga, modalidade, categoria; incluir/retirar) — `VERSAO_CADASTRADA` em `api/cadastros._regras_uc`; mudar = nova versão.

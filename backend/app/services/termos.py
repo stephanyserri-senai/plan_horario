@@ -66,7 +66,10 @@ def horas_programadas(db: Session, cenario_id: int, instrutor_id: int, mes: date
 TURNOS_TERMO = ("M", "V", "N", "S")
 NOME_TURNO = {"M": "matutino", "V": "vespertino", "N": "noturno", "S": "sábado"}
 HORAS_TURNO = {"M": 220 / 60, "V": 220 / 60, "N": 200 / 60, "S": 220 / 60}  # sem horário: 4 aulas de 55 min (de dia) ou 50 min (à noite)
-HORAS_PL = 4.0  # turno de planejamento sem horário
+HORAS_PL = 4.0  # turno de planejamento/projeto sem horário
+# o termo é o tempo PAGO para o instrutor estar disponível: aula, planejamento (PL), projeto (PJ) ou ajuste de urgência
+TIPOS_TERMO = {"aula": "Aula", "pl": "Planejamento (PL)", "pj": "Projeto (PJ)", "urgencia": "Ajuste de urgência"}
+DE_AULA = ("aula", "urgencia")  # turnos em que ele pode estar em sala (urgência = pago para cobrir aula fora do previsto)
 # horários de entrada e saída usuais de cada turno (dependem do turno de entrada do instrutor e do curso); outro horário também vale
 HORARIOS_TURNO = {"M": [("07:30", "11:30"), ("08:00", "12:00")], "V": [("13:30", "17:30"), ("13:00", "17:30"), ("13:00", "17:00")],
                   "N": [("18:30", "22:00"), ("18:00", "22:00")], "S": [("09:00", "13:00"), ("08:00", "12:00")]}
@@ -92,7 +95,7 @@ def horas_cel(tn: str, v) -> float:
     j = janela_cel(v)
     if j:
         return (_min(j[1]) - _min(j[0])) / 60
-    return HORAS_TURNO[tn] if tipo_cel(v) == "aula" else HORAS_PL
+    return HORAS_TURNO[tn] if tipo_cel(v) in DE_AULA else HORAS_PL
 
 
 def turno_da_aula(inicio) -> str:
@@ -105,7 +108,7 @@ def cobre(t: TermoHoras, inicio, fim=None) -> bool:
     """A aula cai num turno com aula no termo, dentro do horário daquele dia? (termo sem agenda: vale o dia da semana)."""
     if t.agenda:
         v = (t.agenda.get(inicio.date().isoformat()) or {}).get(turno_da_aula(inicio))
-        if tipo_cel(v) != "aula":
+        if tipo_cel(v) not in DE_AULA:
             return False
         j = janela_cel(v)
         if j and fim is not None:
@@ -116,10 +119,13 @@ def cobre(t: TermoHoras, inicio, fim=None) -> bool:
 
 def resumo_agenda(agenda: dict | None) -> dict:
     cel = [(d, tn, v) for d, ts in (agenda or {}).items() for tn, v in ts.items()]
-    aula = [c for c in cel if tipo_cel(c[2]) == "aula"]
-    pl = [c for c in cel if tipo_cel(c[2]) == "pl"]
-    return {"turnos_aula": len(aula), "turnos_pl": len(pl), "horas_aula": round(sum(horas_cel(c[1], c[2]) for c in aula), 1),
-            "horas_pl": round(sum(horas_cel(c[1], c[2]) for c in pl), 1), "dias": len({c[0] for c in cel})}
+    por = {k: [c for c in cel if tipo_cel(c[2]) == k] for k in TIPOS_TERMO}
+    horas = {k: round(sum(horas_cel(c[1], c[2]) for c in v), 1) for k, v in por.items()}
+    aula = por["aula"] + por["urgencia"]
+    return {"turnos_aula": len(aula), "turnos_pl": len(por["pl"]) + len(por["pj"]),
+            "horas_aula": round(horas["aula"] + horas["urgencia"], 1), "horas_pl": round(horas["pl"] + horas["pj"], 1),
+            "por_tipo": {k: {"turnos": len(por[k]), "horas": horas[k], "rotulo": TIPOS_TERMO[k]} for k in TIPOS_TERMO},
+            "total_pago_h": round(sum(horas.values()), 1), "dias": len({c[0] for c in cel})}
 
 
 def _agenda(agenda, m: date) -> dict | None:
@@ -144,8 +150,8 @@ def _agenda(agenda, m: date) -> dict | None:
             tipo = tipo_cel(v)
             if tipo in (None, "", "livre"):
                 continue
-            if tn not in validos or tipo not in ("aula", "pl"):
-                raise EntradaInvalida(f"Turno {tn}={tipo} inválido em {d:%d/%m} (use {', '.join(validos)} com aula ou pl).")
+            if tn not in validos or tipo not in TIPOS_TERMO:
+                raise EntradaInvalida(f"Turno {tn}={tipo} inválido em {d:%d/%m} (use {', '.join(validos)} com aula, pl, pj ou urgencia).")
             j = janela_cel(v)
             if j:
                 try:
@@ -256,8 +262,11 @@ def painel(db: Session, inst: Instrutor, cenario_id: int | None, hoje: date | No
     for d, ts in (ma.get("agenda") or {}).items():
         for tn, v in ts.items():
             atual_v = padrao.get(date.fromisoformat(d).weekday(), {}).get(tn)
-            if tipo_cel(atual_v) != "aula":  # aula prevalece; o horário do dia vai junto
-                padrao.setdefault(date.fromisoformat(d).weekday(), {})[tn] = v if isinstance(v, dict) else {"tipo": v}
+            if tipo_cel(atual_v) not in DE_AULA:  # aula prevalece; o horário do dia vai junto
+                novo = dict(v) if isinstance(v, dict) else {"tipo": v}
+                if novo["tipo"] == "urgencia":  # o que foi urgência neste mês entra como aula prevista no próximo termo
+                    novo["tipo"] = "aula"
+                padrao.setdefault(date.fromisoformat(d).weekday(), {})[tn] = novo
     for f in ma.get("fora") or []:
         padrao.setdefault(date.fromisoformat(f["data"]).weekday(), {}).setdefault(f["turno"], {"tipo": "aula"})
         if tipo_cel(padrao[date.fromisoformat(f["data"]).weekday()][f["turno"]]) != "aula":
@@ -331,7 +340,7 @@ def salvar(db: Session, ctx, inst: Instrutor, mes, horas_aula, horas_outras=0, o
     if grade is not None:
         t.agenda = grade or None
     if t.agenda:  # com a grade, os dias da semana do termo saem dela (dias com aula)
-        t.dias_semana = sorted({date.fromisoformat(d).weekday() for d, ts in t.agenda.items() if any(tipo_cel(v) == "aula" for v in ts.values())}) or None
+        t.dias_semana = sorted({date.fromisoformat(d).weekday() for d, ts in t.agenda.items() if any(tipo_cel(v) in DE_AULA for v in ts.values())}) or None
     else:
         t.dias_semana = _dias(dias_semana)
     db.flush()
@@ -384,15 +393,15 @@ def ajustar(db: Session, ctx, inst: Instrutor, mes, motivo: str, concordancia: b
         for x in incluir_turnos:
             dd = date.fromisoformat(str(x["data"])[:10])
             tn = x.get("turno") or "M"
-            if mes_de(dd) == m and tipo_cel(ag.get(dd.isoformat(), {}).get(tn)) != "aula":
-                cel = {"tipo": "aula"}
+            if mes_de(dd) == m and tipo_cel(ag.get(dd.isoformat(), {}).get(tn)) not in DE_AULA:
+                cel = {"tipo": "urgencia"}  # o turno incluído por urgência fica marcado como tal (é pago como ajuste de urgência)
                 if x.get("ini") and x.get("fim"):
                     cel.update(ini=x["ini"], fim=x["fim"])
                 ag.setdefault(dd.isoformat(), {})[tn] = cel
                 novas.append(f"{dd:%d/%m} {NOME_TURNO.get(tn, tn)}")
         if novas:
             t.agenda = ag
-            t.dias_semana = sorted({date.fromisoformat(d).weekday() for d, ts in ag.items() if any(tipo_cel(v) == "aula" for v in ts.values())}) or None
+            t.dias_semana = sorted({date.fromisoformat(d).weekday() for d, ts in ag.items() if any(tipo_cel(v) in DE_AULA for v in ts.values())}) or None
             mudou.append("inclui " + ", ".join(novas))
     novos = _dias(incluir_dias) or []
     if novos and t.dias_semana:

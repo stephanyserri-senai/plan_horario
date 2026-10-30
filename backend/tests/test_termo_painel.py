@@ -69,7 +69,7 @@ def test_termo_por_dia_e_turno(db, mundo):
     # ajuste por urgência inclui a célula (segunda de manhã)
     t = termos.ajustar(db, m.ctx, m.i1, "2026-08", "Substituição urgente", True, incluir_turnos=[{"data": SEG.isoformat(), "turno": "M"}])
     db.commit()
-    assert t["agenda"][SEG.isoformat()] == {"M": {"tipo": "aula"}} and 0 in t["dias_semana"]
+    assert t["agenda"][SEG.isoformat()] == {"M": {"tipo": "urgencia"}} and 0 in t["dias_semana"]
     assert "TERMO_FORA_DOS_DIAS" not in oc(SEG, 0)
 
 
@@ -97,3 +97,19 @@ def test_horario_de_entrada_e_saida_por_dia(db, mundo):
                                                                                     minutos_aula=100, instrutor_id=m.i1.id))]
     assert "TERMO_FORA_DOS_DIAS" not in oc(ter)  # 07:30–11:30 cobre
     assert "TERMO_FORA_DOS_DIAS" in oc(qua)  # quarta começa às 08:00: aula às 07:30 fica fora
+
+
+def test_termo_e_tempo_pago_aula_pl_projeto_e_urgencia(db, mundo):
+    m = mundo
+    m.i1.modalidade = "horista"
+    db.commit()
+    seg, ter, qua, sab = SEG, SEG + timedelta(days=1), SEG + timedelta(days=2), SEG + timedelta(days=5)
+    grade = {seg.isoformat(): {"M": {"tipo": "aula", "ini": "07:30", "fim": "11:30"}},
+             ter.isoformat(): {"V": {"tipo": "pj", "ini": "13:00", "fim": "17:30"}},
+             qua.isoformat(): {"N": {"tipo": "urgencia", "ini": "18:00", "fim": "22:00"}},
+             sab.isoformat(): {"S": {"tipo": "pl", "ini": "09:00", "fim": "13:00"}}}
+    r = termos.salvar(db, m.ctx, m.i1, "2026-08", 8, 8.5, None, m.cen.id, agenda=grade)
+    pt = r["resumo_agenda"]["por_tipo"]
+    assert (pt["aula"]["horas"], pt["pl"]["horas"], pt["pj"]["horas"], pt["urgencia"]["horas"]) == (4.0, 4.0, 4.5, 4.0)
+    assert r["resumo_agenda"]["total_pago_h"] == 16.5 and r["resumo_agenda"]["horas_aula"] == 8.0
+    assert r["dias_semana"] == [0, 2]  # aula e urgência: dias em que pode estar em sala

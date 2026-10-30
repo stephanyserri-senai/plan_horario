@@ -193,7 +193,8 @@ export function PainelTermo({ instId, nome, url, somenteLeitura }: { instId: num
                 {m.tem_termo ? <><span><b>{h(m.horas_aula)}</b> de aula{m.horas_outras ? ` + ${h(m.horas_outras)} de outras ocupações` : ""}</span>
                   <span>Dias: <b>{m.dias_semana?.length ? nomesDias(m.dias_semana) : "qualquer dia"}</b></span>
                   {m.observacao && <small className="mudo">{m.observacao}</small>}</> : <span className="mudo">Termo ainda não registrado.</span>}
-                {m.tem_termo && Object.keys(m.agenda || {}).length > 0 && <GradeTermo mes={m.mes} agenda={m.agenda} aulas={m.aulas_por_data || {}} horarios={m.horarios_aulas} />}
+                {m.tem_termo && Object.keys(m.agenda || {}).length > 0 && <>
+                  <GradeTermo mes={m.mes} agenda={m.agenda} aulas={m.aulas_por_data || {}} horarios={m.horarios_aulas} /><TotaisTermo agenda={m.agenda} /></>}
               </div> : <div className="termo-campos">
                 <label>Horas de aula no mês<input type="number" min={0} max={220} step={0.5} value={campo(m, "horas_aula")} disabled={!editavel}
                   onChange={(e) => mudar(m, "horas_aula", e.target.value)} /></label>
@@ -205,14 +206,15 @@ export function PainelTermo({ instId, nome, url, somenteLeitura }: { instId: num
               </div>}
               {!somenteLeitura && <div className="termo-grade-bloco">
                 <button className="btn-link" onClick={() => alternar(m)}>{aberto(m) ? "▾" : "▸"} 📅 Grade do mês por dia e turno
-                  {Object.keys(agenda(m)).length ? ` (${resumoGrade(agenda(m)).turnosAula} turno(s) de aula · ${resumoGrade(agenda(m)).turnosPl} de PL)` : " (sem grade: vale qualquer dia)"}</button>
+                  {Object.keys(agenda(m)).length ? ` (${h(resumoGrade(agenda(m)).total)} pagas em ${resumoGrade(agenda(m)).turnos} turno(s))` : " (sem grade: vale qualquer dia)"}</button>
                 {aberto(m) && <>
                   {!Object.keys(agenda(m)).length && m.dias_semana?.length > 0 && <small className="mudo">Termo antigo por dia da semana ({nomesDias(m.dias_semana)}). Marque a grade para definir dia e turno.</small>}
                   <GradeTermo mes={m.mes} agenda={agenda(m)} aulas={m.aulas_por_data || {}} horarios={m.horarios_aulas} mudar={editavel ? (ag) => mudar(m, "agenda", ag) : undefined} />
                   {editavel && Object.keys(agenda(m)).length > 0 && (() => { const r = resumoGrade(agenda(m)); return (
-                    <div className="termo-grade-total"><span>Pela grade: <b>{h(r.horasAula)}</b> de aula ({r.turnosAula} turnos) · <b>{h(r.horasPl)}</b> de planejamento ({r.turnosPl} turnos)</span>
+                    <div className="termo-grade-total"><TotaisTermo agenda={agenda(m)} />
                       <button className="btn btn-pequeno" onClick={() => setEdit((e) => ({ ...e, [m.mes]: { ...e[m.mes], horas_aula: Math.round(r.horasAula * 10) / 10, horas_outras: Math.round(r.horasPl * 10) / 10 } }))}>
-                        Usar estes totais nas horas do termo</button></div>); })()}
+                        Usar estes totais nas horas do termo</button>
+                      <small className="mudo">Horas de aula = aula + ajuste de urgência ({h(r.horasAula)}); outras ocupações = planejamento + projeto ({h(r.horasPl)}).</small></div>); })()}
                 </>}
               </div>}
               {m.programadas_h != null && <div className="termo-prog">
@@ -264,16 +266,35 @@ type Cel = { tipo: string; ini?: string; fim?: string };
 type Agenda = Record<string, Record<string, Cel | string>>;
 const cel = (v: any): Cel | null => (!v ? null : typeof v === "string" ? { tipo: v } : v);
 const minutos = (x: string) => { const [h, m] = x.split(":").map(Number); return h * 60 + m; };
-const horasCel = (tn: string, c: Cel) => (c.ini && c.fim ? (minutos(c.fim) - minutos(c.ini)) / 60 : c.tipo === "aula" ? HORAS_TURNO[tn] : 4);
+// o termo é o tempo PAGO para estar disponível: aula, planejamento, projeto ou ajuste de urgência (cada um com uma cor)
+const TIPOS: { k: string; rotulo: string; sigla: string }[] = [
+  { k: "aula", rotulo: "Aula", sigla: "" }, { k: "pl", rotulo: "Planejamento (PL)", sigla: "PL" },
+  { k: "pj", rotulo: "Projeto (PJ)", sigla: "PJ" }, { k: "urgencia", rotulo: "Ajuste de urgência", sigla: "URG" }];
+const DE_AULA = ["aula", "urgencia"];
+const horasCel = (tn: string, c: Cel) => (c.ini && c.fim ? (minutos(c.fim) - minutos(c.ini)) / 60 : DE_AULA.includes(c.tipo) ? HORAS_TURNO[tn] : 4);
 const curto = (x?: string) => (x ? x.replace(/^0/, "").replace(":00", "h").replace(":", "h") : "");
 
 function resumoGrade(agenda: Agenda) {
-  let turnosAula = 0, turnosPl = 0, horasAula = 0, horasPl = 0;
+  const por: Record<string, { turnos: number; horas: number }> = Object.fromEntries(TIPOS.map((t) => [t.k, { turnos: 0, horas: 0 }]));
   for (const ts of Object.values(agenda)) for (const [tn, v] of Object.entries(ts)) {
-    const c = cel(v); if (!c) continue;
-    if (c.tipo === "aula") { turnosAula++; horasAula += horasCel(tn, c); } else if (c.tipo === "pl") { turnosPl++; horasPl += horasCel(tn, c); }
+    const c = cel(v); if (!c || !por[c.tipo]) continue;
+    por[c.tipo].turnos++; por[c.tipo].horas += horasCel(tn, c);
   }
-  return { turnosAula, turnosPl, horasAula, horasPl };
+  const horasAula = por.aula.horas + por.urgencia.horas, horasPl = por.pl.horas + por.pj.horas;
+  return { por, turnosAula: por.aula.turnos + por.urgencia.turnos, turnosPl: por.pl.turnos + por.pj.turnos, horasAula, horasPl,
+    total: horasAula + horasPl, turnos: Object.values(por).reduce((t, x) => t + x.turnos, 0) };
+}
+
+/** Horas pagas do termo pela grade: cada situação com a sua cor e o total. */
+export function TotaisTermo({ agenda }: { agenda: Agenda }) {
+  const r = resumoGrade(agenda);
+  return (
+    <div className="gt-totais">
+      {TIPOS.map((t) => <div key={t.k} className={`gt-tot v-${t.k}`}><span className="gt-tot-cor" aria-hidden="true" />
+        <span><b>{h(r.por[t.k].horas)}</b><small>{t.rotulo} · {r.por[t.k].turnos} turno(s)</small></span></div>)}
+      <div className="gt-tot total"><span><b>{h(r.total)}</b><small>Total pago no mês · {r.turnos} turno(s)</small></span></div>
+    </div>
+  );
 }
 
 /** Grade do termo no mês, separada por semanas (segunda a sábado): em cada dia, os turnos — manhã, tarde, noite e o turno de sábado —
@@ -283,7 +304,7 @@ function resumoGrade(agenda: Agenda) {
  * cabeçalho, aplica o pincel em todas as semanas daquele dia. Ponto = aula já lançada; vermelho = aula fora do termo. Sem `mudar`: só leitura. */
 export function GradeTermo({ mes, agenda, aulas, horarios, mudar }: { mes: string; agenda: Agenda; aulas: Record<string, string[]>;
   horarios?: Record<string, Record<string, string[]>>; mudar?: (a: Agenda) => void }) {
-  const [tipo, setTipo] = useState<"aula" | "pl" | "livre">("aula");
+  const [tipo, setTipo] = useState<string>("aula");
   const [hor, setHor] = useState<Record<string, string>>({ M: HORARIOS.M[0], V: HORARIOS.V[0], N: HORARIOS.N[0], S: HORARIOS.S[0] });
   const [outro, setOutro] = useState<Record<string, string>>({ M: "07:00-11:00", V: "13:00-17:00", N: "18:00-22:00", S: "08:00-12:00" });
   const [a, mm] = mes.split("-").map(Number);
@@ -335,8 +356,9 @@ export function GradeTermo({ mes, agenda, aulas, horarios, mudar }: { mes: strin
       {mudar && <div className="gt-pincel">
         <div className="gt-pincel-tipo" role="radiogroup" aria-label="O que marcar">
           <span className="mudo">Marcar:</span>
-          {([["aula", "Aula"], ["pl", "PL (planejamento)"], ["livre", "Apagar"]] as const).map(([v, r]) =>
-            <button key={v} type="button" role="radio" aria-checked={tipo === v} className={`chip-filtro ${tipo === v ? "on" : ""}`} onClick={() => setTipo(v)}>{r}</button>)}
+          {[...TIPOS.map((t) => [t.k, t.rotulo]), ["livre", "Apagar"]].map(([v, r]) =>
+            <button key={v} type="button" role="radio" aria-checked={tipo === v} className={`gt-tipo v-${v} ${tipo === v ? "on" : ""}`} onClick={() => setTipo(v)}>
+              <span className="gt-tot-cor" aria-hidden="true" />{r}</button>)}
         </div>
         {tipo !== "livre" && <div className="gt-pincel-hor">
           {["M", "V", "N", "S"].map((tn) => <label key={tn}><span>{ROT_TURNO[tn]}</span>
@@ -372,18 +394,18 @@ export function GradeTermo({ mes, agenda, aulas, horarios, mudar }: { mes: strin
                     const c = cel(agenda[k]?.[tn]);
                     const tem = lancadas.includes(tn);
                     const ha = horarios?.[k]?.[tn];  // horário das aulas lançadas: fora do horário do termo naquele dia também conta como fora
-                    const cobre = c?.tipo === "aula" && (!c.ini || !c.fim || !ha || (minutos(c.ini) <= minutos(ha[0]) && minutos(ha[1]) <= minutos(c.fim)));
+                    const cobre = !!c && DE_AULA.includes(c.tipo) && (!c.ini || !c.fim || !ha || (minutos(c.ini) <= minutos(ha[0]) && minutos(ha[1]) <= minutos(c.fim)));
                     return <button key={tn} type="button" disabled={!mudar} onClick={() => clicar(k, tn)}
                       className={`gt-t ${c ? `v-${c.tipo}` : ""} ${tem ? (cobre ? "com-aula" : "fora") : ""}`}
-                      title={`${ROT_TURNO[tn]}: ${c ? `${c.tipo === "aula" ? "aula" : "planejamento (PL)"}${c.ini ? ` ${c.ini}–${c.fim}` : ""}` : "livre"}${tem ? ` · aula lançada${ha ? ` ${ha[0]}–${ha[1]}` : ""}${cobre ? "" : " (fora do termo)"}` : ""}`}>
-                      <span>{tn === "S" ? "Sáb" : tn}{c?.tipo === "pl" ? " PL" : ""}{tem && <i aria-hidden="true">•</i>}</span>
+                      title={`${ROT_TURNO[tn]}: ${c ? `${TIPOS.find((t) => t.k === c.tipo)?.rotulo || c.tipo}${c.ini ? ` ${c.ini}–${c.fim}` : ""}` : "livre"}${tem ? ` · aula lançada${ha ? ` ${ha[0]}–${ha[1]}` : ""}${cobre ? "" : " (fora do termo)"}` : ""}`}>
+                      <span>{tn === "S" ? "Sáb" : tn}{c && TIPOS.find((t) => t.k === c.tipo)?.sigla ? ` ${TIPOS.find((t) => t.k === c.tipo)?.sigla}` : ""}{tem && <i aria-hidden="true">•</i>}</span>
                       {c?.ini && <small>{curto(c.ini)}–{curto(c.fim)}</small>}</button>;
                   })}
                 </div>
               </div>);
           })}
         </div>))}
-      <div className="gt-legenda"><span className="gt-t v-aula"><span>M</span></span> aula <span className="gt-t v-pl"><span>M PL</span></span> planejamento
+      <div className="gt-legenda">{TIPOS.map((t) => <span key={t.k} className="gt-leg"><span className={`gt-t v-${t.k}`}><span>M{t.sigla ? ` ${t.sigla}` : ""}</span></span> {t.rotulo.charAt(0).toLowerCase() + t.rotulo.slice(1)}</span>)}
         <span className="gt-t"><span>M</span></span> livre <span className="gt-t v-aula com-aula"><span>M<i>•</i></span></span> aula lançada
         <span className="gt-t fora"><span>M<i>•</i></span></span> aula fora do termo (dia, turno ou horário)</div>
     </div>
