@@ -271,6 +271,7 @@ const TIPOS: { k: string; rotulo: string; sigla: string }[] = [
   { k: "aula", rotulo: "Aula", sigla: "" }, { k: "pl", rotulo: "Planejamento (PL)", sigla: "PL" },
   { k: "pj", rotulo: "Projeto (PJ)", sigla: "PJ" }, { k: "urgencia", rotulo: "Ajuste de urgência", sigla: "URG" }];
 const DE_AULA = ["aula", "urgencia"];
+const MAX_SEMANA = 44;  // ninguém trabalha mais de 44 h por semana
 const horasCel = (tn: string, c: Cel) => (c.ini && c.fim ? (minutos(c.fim) - minutos(c.ini)) / 60 : DE_AULA.includes(c.tipo) ? HORAS_TURNO[tn] : 4);
 const curto = (x?: string) => (x ? x.replace(/^0/, "").replace(":00", "h").replace(":", "h") : "");
 
@@ -380,7 +381,10 @@ export function GradeTermo({ mes, agenda, aulas, horarios, mudar }: { mes: strin
             <button key={tn} type="button" title={`Aplicar em ${ROT_TURNO[tn].toLowerCase()} de todas as ${nome.toLowerCase()}s do mês`} onClick={() => coluna(dow, tn)}>{tn === "S" ? "todos" : tn}</button>)}</span>}
         </div>)}
       </div>
-      {semanas.filter((sem) => sem.some((d) => doMes(d))).map((sem, i) => (
+      {semanas.filter((sem) => sem.some((d) => doMes(d))).map((sem, i) => {
+        // total pago na semana (aula + PL + PJ + urgência): ninguém trabalha mais de 44 h por semana
+        const totSem = sem.filter(doMes).reduce((t, d) => t + Object.entries(agenda[iso(d)] || {}).reduce((x, [tn, v]) => { const c = cel(v); return x + (c ? horasCel(tn, c) : 0); }, 0), 0);
+        return (
         <div key={i} className="gt-semana">
           {sem.map((d) => {
             const k = iso(d);
@@ -404,7 +408,9 @@ export function GradeTermo({ mes, agenda, aulas, horarios, mudar }: { mes: strin
                 </div>
               </div>);
           })}
-        </div>))}
+          {totSem > 0 && <div className={`gt-sem-total ${totSem > MAX_SEMANA + 1e-6 ? "acima" : ""}`}>
+            Semana: <b>{h(totSem)}</b>{totSem > MAX_SEMANA + 1e-6 ? ` — acima do limite de ${MAX_SEMANA} h por semana` : ` de ${MAX_SEMANA} h`}</div>}
+        </div>); })}
       <div className="gt-legenda">{TIPOS.map((t) => <span key={t.k} className="gt-leg"><span className={`gt-t v-${t.k}`}><span>M{t.sigla ? ` ${t.sigla}` : ""}</span></span> {t.rotulo.charAt(0).toLowerCase() + t.rotulo.slice(1)}</span>)}
         <span className="gt-t"><span>M</span></span> livre <span className="gt-t v-aula com-aula"><span>M<i>•</i></span></span> aula lançada
         <span className="gt-t fora"><span>M<i>•</i></span></span> aula fora do termo (dia, turno ou horário)</div>

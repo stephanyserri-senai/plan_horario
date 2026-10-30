@@ -599,6 +599,16 @@ def validar_aula(b: BaseDados, a: AulaProposta, ignorar: set[int] | None = None)
         if min_sem > lim * 60:
             regra90 = " = 90% da jornada; o restante fica para planejamento" if lim < float(instrutor.limite_ch_letiva) - 1e-6 else ""
             add(BLOQUEIO, "LIMITE_SEMANAL", f"{instrutor.nome} somaria {min_sem / 60:.1f} h letivas na semana (limite {lim:.1f} h{regra90}).", "instrutor", instrutor.id)
+        # ninguém trabalha mais de 44 h por semana: aulas + planejamento, projeto e outras reservas da agenda do instrutor
+        from app.services.regras_aula import MAX_HORAS_SEMANA
+        ini_sem = datetime.combine(seg, datetime.min.time())
+        reservas = [x for x in b.bloqueios("instrutor", instrutor.id, ini_sem, ini_sem + timedelta(days=7))
+                    if x.tipo in ("planejamento", "projeto", "treinamento", "atividade_administrativa", "atividade_pedagogica")]
+        min_reserva = sum((min(x.fim, ini_sem + timedelta(days=7)) - max(x.inicio, ini_sem)).total_seconds() / 60 for x in reservas)
+        if min_sem + min_reserva > MAX_HORAS_SEMANA * 60 + 1e-6:
+            add(BLOQUEIO, "LIMITE_44H", f"{instrutor.nome} somaria {(min_sem + min_reserva) / 60:.1f} h de trabalho na semana "
+                                        f"({min_sem / 60:.1f} h de aula + {min_reserva / 60:.1f} h de PL/PJ e outras): ninguém trabalha mais de "
+                                        f"{MAX_HORAS_SEMANA:g} h por semana.", "instrutor", instrutor.id)
         if instrutor.modalidade == "horista":
             # horista: o termo de horas do mês define as horas (e os dias) previstas; é ajustável numa urgência, com a
             # concordância do instrutor — por isso é alerta. O que impede é estar ocupado e o limite do contrato (acima).

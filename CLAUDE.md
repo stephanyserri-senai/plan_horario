@@ -40,6 +40,8 @@ UC transversal/técnica, substituição, solicitações, quadro 5:4...) estão e
   O mesmo perfil vai ao portal (`GET /api/portal/perfil`, `/api/portal/pdi`, só leitura); o instrutor registra formações em
   `POST /api/portal/formacoes`: habilita as UCs na hora (`aderencia.marcar_competencia`), conclui o item do PDI e cria observação
   tipo `formacao` para a coordenação. Índice por área da equipe em `aderencia.equipe()["por_area"]`.
+- **Ninguém trabalha mais de 44 h por semana** (regra LIMITE_44H, `regras_aula.MAX_HORAS_SEMANA`): aula + PL/PJ/TR + urgência e
+  outras somadas. Cadastro/importação (carga até 44 h), termo (`termos._limite_semanal`), validação (bloqueio LIMITE_44H) e gerador.
 - Modalidade: mensalista = jornada semanal fixa (teto de 90%); horista = termo de horas mensal (`termos_horas`, `services/termos.py`:
   horas de aula do mês e, opcional, dias da semana). O termo é ajustável numa urgência com a concordância do instrutor
   (`termos.ajustar`, ação `ajustar_termo`), então aula fora do termo é ALERTA (TERMO_HORAS_MES / TERMO_FORA_DOS_DIAS); o que impede

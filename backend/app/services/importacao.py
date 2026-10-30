@@ -446,10 +446,12 @@ def _preparar_estrutura(db, r, v, E, A):
 
 
 def _regra_90(d, E):
-    """Aulas em no máximo 90% dos turnos da jornada (40 h → 36 h; 20 h → 16 h); vazio = o máximo."""
-    from app.services.regras_aula import teto_letivo
+    """Aulas em no máximo 90% dos turnos da jornada (40 h → 36 h; 20 h → 16 h); vazio = o máximo. Jornada até 44 h por semana."""
+    from app.services.regras_aula import MAX_HORAS_SEMANA, teto_letivo
     if not d.get("carga_horaria_contratual"):
         return
+    if d["carga_horaria_contratual"] > MAX_HORAS_SEMANA:
+        E.append(f"carga contratual de {d['carga_horaria_contratual']:g} h: ninguém pode trabalhar mais de {MAX_HORAS_SEMANA:g} h por semana")
     teto = teto_letivo(d["carga_horaria_contratual"])
     if not teto:
         return

@@ -169,6 +169,24 @@ def _agenda(agenda, m: date) -> dict | None:
     return res
 
 
+def horas_por_semana(agenda: dict | None) -> dict[str, float]:
+    """Horas pagas da grade por semana (segunda da semana → horas)."""
+    res: dict[str, float] = {}
+    for d, ts in (agenda or {}).items():
+        dd = date.fromisoformat(d)
+        k = (dd - timedelta(days=dd.weekday())).isoformat()
+        res[k] = res.get(k, 0.0) + sum(horas_cel(tn, v) for tn, v in ts.items())
+    return res
+
+
+def _limite_semanal(agenda: dict):
+    from app.services.regras_aula import MAX_HORAS_SEMANA
+    for seg, horas in sorted(horas_por_semana(agenda).items()):
+        if horas > MAX_HORAS_SEMANA + 1e-6:
+            raise EntradaInvalida(f"Semana de {date.fromisoformat(seg):%d/%m}: {f'{horas:.1f}'.replace('.', ',')} h no termo. Ninguém trabalha "
+                                  f"mais de {MAX_HORAS_SEMANA:g} h por semana (aula, planejamento, projeto e urgência somados).")
+
+
 def termo_dict(t: TermoHoras, programadas: float | None = None) -> dict:
     d = {"id": t.id, "mes": t.mes.isoformat()[:7], "rotulo": rotulo_mes(t.mes), "horas_aula": float(t.horas_aula),
          "horas_outras": float(t.horas_outras or 0), "observacao": t.observacao, "dias_semana": sorted(t.dias_semana) if t.dias_semana else [],
@@ -338,6 +356,7 @@ def salvar(db: Session, ctx, inst: Instrutor, mes, horas_aula, horas_outras=0, o
     t.horas_aula, t.horas_outras, t.observacao, t.atualizado_por_id = ha, ho, (observacao or None), getattr(ctx, "id", None)
     grade = _agenda(agenda, m)
     if grade is not None:
+        _limite_semanal(grade)
         t.agenda = grade or None
     if t.agenda:  # com a grade, os dias da semana do termo saem dela (dias com aula)
         t.dias_semana = sorted({date.fromisoformat(d).weekday() for d, ts in t.agenda.items() if any(tipo_cel(v) in DE_AULA for v in ts.values())}) or None
@@ -400,6 +419,7 @@ def ajustar(db: Session, ctx, inst: Instrutor, mes, motivo: str, concordancia: b
                 ag.setdefault(dd.isoformat(), {})[tn] = cel
                 novas.append(f"{dd:%d/%m} {NOME_TURNO.get(tn, tn)}")
         if novas:
+            _limite_semanal(ag)
             t.agenda = ag
             t.dias_semana = sorted({date.fromisoformat(d).weekday() for d, ts in ag.items() if any(tipo_cel(v) in DE_AULA for v in ts.values())}) or None
             mudou.append("inclui " + ", ".join(novas))

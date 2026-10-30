@@ -340,6 +340,9 @@ def montar_entrada(db: Session, cenario: CenarioPlanejamento, escopo: dict, peso
         uns = sorted({i.unidade_id, *db.scalars(select(InstrutorUnidade.unidade_id).where(InstrutorUnidade.instrutor_id == i.id))})
         unidades.update(uns)
         lim_sem = limite_letivo_efetivo(i)
+        if reservas:  # 44 h por semana no total: o PL/PJ fixo da semana também conta
+            from app.services.regras_aula import MAX_HORAS_SEMANA
+            lim_sem = min(lim_sem, max(0.0, MAX_HORAS_SEMANA - sum(f - ini for _d, ini, f in reservas) / 60))
         # geração do semestre: o horista fica, de preferência, dentro do termo do mês (horas e dias); na simulação de
         # turmas o termo não conta (é ajustável) — só a ocupação e a carga máxima do contrato
         if i.modalidade == "horista" and termos_h.get(i.id) and not simulacao:

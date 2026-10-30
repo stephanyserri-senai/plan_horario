@@ -229,6 +229,9 @@ def _regras_especificas(db: Session, ent: str, obj, dados: dict, novo: bool):
     if ent == "instrutores":
         c = dados.get("carga_horaria_contratual", getattr(obj, "carga_horaria_contratual", None))
         l = dados.get("limite_ch_letiva", getattr(obj, "limite_ch_letiva", None))
+        from app.services.regras_aula import MAX_HORAS_SEMANA
+        if c is not None and float(c) > MAX_HORAS_SEMANA:
+            raise ConflitoValidacao(f"Ninguém pode trabalhar mais de {MAX_HORAS_SEMANA:g} h por semana: a carga contratual vai até {MAX_HORAS_SEMANA:g} h.")
         if c is not None and l is not None and float(l) > float(c):
             raise ConflitoValidacao("O limite de carga letiva não pode exceder a carga contratual.")
         from app.services.regras_aula import teto_letivo

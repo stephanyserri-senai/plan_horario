@@ -160,6 +160,11 @@ def catalogo() -> list[dict]:
           "fora do termo é alerta; o que impede, para horista e mensalista, é já estar ocupado e a carga máxima do contrato. A geração do "
           "semestre procura manter o horista dentro do termo; a simulação e a previsão de turmas não olham o termo.",
           ["disponibilidade e termos", "validação", "gerador", "simulador", "riscos", "substituição"])
+    regra("LIMITE_44H", "Instrutores", "obrigatoria", "No máximo 44 h de trabalho por semana",
+          "Ninguém trabalha mais de 44 h por semana — mensalista ou horista, somando aula, planejamento (PL), projeto (PJ), treinamento, "
+          "ajuste de urgência e outras atividades. A carga contratual vai até 44 h; o termo de horas não aceita semana acima de 44 h; "
+          "a validação bloqueia a aula que passaria do limite (aulas + PL/PJ da semana) e o gerador desconta o PL/PJ fixo da semana.",
+          ["cadastro", "importação", "termo de horas", "validação", "gerador", "substituição"], {"max_horas_semana": 44})
     regra("MENSALISTA_PRIMEIRO", "Instrutores", "preferencia", "Mensalistas ocupados primeiro",
           "Todos os instrutores devem ser ocupados, mas na distribuição das aulas o mensalista (jornada garantida) tem prioridade: recebe "
           "primeiro, e o horista fica com o que os mensalistas habilitados não conseguem cobrir (ocupados, no teto de 90% ou sem a UC). "

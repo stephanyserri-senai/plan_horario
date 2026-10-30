@@ -1224,3 +1224,5 @@ li.sem-marcador { list-style: none; margin-left: -18px; }
 .gt-tot.total b { font-size: 1.15rem; color: var(--info); }
 .gt-leg { display: inline-flex; align-items: center; gap: 4px; }
 .termo-grade-total { flex-direction: column; align-items: flex-start; }
+.gt-sem-total { grid-column: 1 / -1; justify-self: end; font-size: .74rem; color: var(--mudo); margin-top: -2px; }
+.gt-sem-total.acima { color: var(--erro); font-weight: 700; }

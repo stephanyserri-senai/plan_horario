@@ -123,6 +123,8 @@ def turnos_por_dia(max_horas_dia) -> int:
 # O turno que sobra fica para planejamento (PL), projeto (PJ) ou reserva. Vale no cadastro, na importação,
 # na validação das aulas e no gerador de horários.
 OCUPACAO_MAXIMA = 0.9
+# Ninguém trabalha mais de 44 h por semana (aula + planejamento + projeto + qualquer outra hora paga), mensalista ou horista.
+MAX_HORAS_SEMANA = 44.0
 
 
 def teto_letivo(carga_semanal) -> float:
@@ -135,7 +137,7 @@ def limite_letivo_efetivo(inst) -> float:
     """Limite semanal de aulas do instrutor: o cadastrado, sem passar dos 90% da jornada."""
     teto = teto_letivo(inst.carga_horaria_contratual)
     lim = float(inst.limite_ch_letiva or teto)
-    return min(lim, teto) if teto > 0 else lim
+    return min(lim, teto, MAX_HORAS_SEMANA) if teto > 0 else min(lim, MAX_HORAS_SEMANA)
 
 
 def horas_dia_pela_carga(carga_semanal) -> float:
