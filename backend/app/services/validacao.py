@@ -612,7 +612,7 @@ def validar_aula(b: BaseDados, a: AulaProposta, ignorar: set[int] | None = None)
                                                    f"({float(termo.horas_aula):g} h): ajuste o termo com a concordância do instrutor.", "instrutor", instrutor.id)
                 from app.services.termos import NOME_TURNO, cobre, turno_da_aula
                 if termo.agenda:  # termo por dia e turno (grade do mês)
-                    if not cobre(termo, a.inicio):
+                    if not cobre(termo, a.inicio, a.fim):
                         tn = turno_da_aula(a.inicio)
                         add(ALERTA, "TERMO_FORA_DOS_DIAS", f"{d:%d/%m} ({DIAS_NOME[dia] if dia < 6 else 'domingo'}, {NOME_TURNO[tn]}) não está com aula no termo de "
                                                            f"{rotulo_mes(mes_de(d))} de {instrutor.nome}: numa urgência, ajuste o termo com a concordância do "

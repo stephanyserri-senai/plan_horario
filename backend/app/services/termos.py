@@ -65,8 +65,34 @@ def horas_programadas(db: Session, cenario_id: int, instrutor_id: int, mes: date
 # termo por dia e turno (grade do mês): M = matutino, V = vespertino, N = noturno, S = sábado; cada célula é aula ou PL
 TURNOS_TERMO = ("M", "V", "N", "S")
 NOME_TURNO = {"M": "matutino", "V": "vespertino", "N": "noturno", "S": "sábado"}
-HORAS_TURNO = {"M": 220 / 60, "V": 220 / 60, "N": 200 / 60, "S": 220 / 60}  # 4 aulas de 55 min (de dia) ou 50 min (à noite)
-HORAS_PL = 4.0  # turno de planejamento
+HORAS_TURNO = {"M": 220 / 60, "V": 220 / 60, "N": 200 / 60, "S": 220 / 60}  # sem horário: 4 aulas de 55 min (de dia) ou 50 min (à noite)
+HORAS_PL = 4.0  # turno de planejamento sem horário
+# horários de entrada e saída usuais de cada turno (dependem do turno de entrada do instrutor e do curso); outro horário também vale
+HORARIOS_TURNO = {"M": [("07:30", "11:30"), ("08:00", "12:00")], "V": [("13:30", "17:30"), ("13:00", "17:30"), ("13:00", "17:00")],
+                  "N": [("18:30", "22:00"), ("18:00", "22:00")], "S": [("09:00", "13:00"), ("08:00", "12:00")]}
+FAIXA_TURNO = {"M": ("06:00", "13:00"), "V": ("12:00", "18:30"), "N": ("17:30", "23:00"), "S": ("06:00", "18:30")}
+
+
+def tipo_cel(v) -> str | None:
+    """Célula da grade: "aula" | "pl" (antigo) ou {"tipo": "aula"|"pl", "ini": "HH:MM", "fim": "HH:MM"}."""
+    return v.get("tipo") if isinstance(v, dict) else v
+
+
+def janela_cel(v) -> tuple[str, str] | None:
+    return (v["ini"], v["fim"]) if isinstance(v, dict) and v.get("ini") and v.get("fim") else None
+
+
+def _min(hhmm: str) -> int:
+    h, m = hhmm.split(":")
+    return int(h) * 60 + int(m)
+
+
+def horas_cel(tn: str, v) -> float:
+    """Horas que o turno conta no termo: pelo horário de entrada e saída do dia (ex.: 13:00–17:30 = 4,5 h); sem horário, o padrão."""
+    j = janela_cel(v)
+    if j:
+        return (_min(j[1]) - _min(j[0])) / 60
+    return HORAS_TURNO[tn] if tipo_cel(v) == "aula" else HORAS_PL
 
 
 def turno_da_aula(inicio) -> str:
@@ -75,19 +101,25 @@ def turno_da_aula(inicio) -> str:
     return "M" if inicio.hour < 12 else "V" if inicio.hour < 18 else "N"
 
 
-def cobre(t: TermoHoras, inicio) -> bool:
-    """A aula cai num turno com aula no termo? (termo sem agenda: vale o dia da semana)."""
+def cobre(t: TermoHoras, inicio, fim=None) -> bool:
+    """A aula cai num turno com aula no termo, dentro do horário daquele dia? (termo sem agenda: vale o dia da semana)."""
     if t.agenda:
-        return (t.agenda.get(inicio.date().isoformat()) or {}).get(turno_da_aula(inicio)) == "aula"
+        v = (t.agenda.get(inicio.date().isoformat()) or {}).get(turno_da_aula(inicio))
+        if tipo_cel(v) != "aula":
+            return False
+        j = janela_cel(v)
+        if j and fim is not None:
+            return _min(j[0]) <= inicio.hour * 60 + inicio.minute and fim.hour * 60 + fim.minute <= _min(j[1])
+        return True
     return not t.dias_semana or inicio.weekday() in t.dias_semana
 
 
 def resumo_agenda(agenda: dict | None) -> dict:
     cel = [(d, tn, v) for d, ts in (agenda or {}).items() for tn, v in ts.items()]
-    aula = [c for c in cel if c[2] == "aula"]
-    pl = [c for c in cel if c[2] == "pl"]
-    return {"turnos_aula": len(aula), "turnos_pl": len(pl), "horas_aula": round(sum(HORAS_TURNO[c[1]] for c in aula), 1),
-            "horas_pl": round(HORAS_PL * len(pl), 1), "dias": len({c[0] for c in cel})}
+    aula = [c for c in cel if tipo_cel(c[2]) == "aula"]
+    pl = [c for c in cel if tipo_cel(c[2]) == "pl"]
+    return {"turnos_aula": len(aula), "turnos_pl": len(pl), "horas_aula": round(sum(horas_cel(c[1], c[2]) for c in aula), 1),
+            "horas_pl": round(sum(horas_cel(c[1], c[2]) for c in pl), 1), "dias": len({c[0] for c in cel})}
 
 
 def _agenda(agenda, m: date) -> dict | None:
@@ -109,11 +141,23 @@ def _agenda(agenda, m: date) -> dict | None:
         validos = ("S",) if d.weekday() == 5 else ("M", "V", "N")
         cel = {}
         for tn, v in (ts or {}).items():
-            if v in (None, "", "livre"):
+            tipo = tipo_cel(v)
+            if tipo in (None, "", "livre"):
                 continue
-            if tn not in validos or v not in ("aula", "pl"):
-                raise EntradaInvalida(f"Turno {tn}={v} inválido em {d:%d/%m} (use {', '.join(validos)} com aula ou pl).")
-            cel[tn] = v
+            if tn not in validos or tipo not in ("aula", "pl"):
+                raise EntradaInvalida(f"Turno {tn}={tipo} inválido em {d:%d/%m} (use {', '.join(validos)} com aula ou pl).")
+            j = janela_cel(v)
+            if j:
+                try:
+                    a0, a1 = _min(j[0]), _min(j[1])
+                except (ValueError, AttributeError):
+                    raise EntradaInvalida(f"Horário inválido em {d:%d/%m}: use HH:MM.")
+                f0, f1 = (_min(x) for x in FAIXA_TURNO[tn])
+                if not (f0 <= a0 < a1 <= f1):
+                    raise EntradaInvalida(f"Horário {j[0]}–{j[1]} em {d:%d/%m} não cabe no turno {NOME_TURNO[tn]} ({FAIXA_TURNO[tn][0]}–{FAIXA_TURNO[tn][1]}).")
+                cel[tn] = {"tipo": tipo, "ini": j[0], "fim": j[1]}
+            else:
+                cel[tn] = {"tipo": tipo}
         if cel:
             res[d.isoformat()] = cel
     return res
@@ -176,17 +220,23 @@ def painel(db: Session, inst: Instrutor, cenario_id: int | None, hoje: date | No
     for m in meses:
         md = _mes_param(m["mes"])
         m["situacao"] = "passado" if md < atual else "atual" if md == atual else "proximo" if md == prox else "futuro"
-        inicios = [] if not cenario_id else list(db.scalars(select(Alocacao.inicio).where(
+        pares = [] if not cenario_id else list(db.execute(select(Alocacao.inicio, Alocacao.fim).where(
             Alocacao.cenario_id == cenario_id, Alocacao.instrutor_id == inst.id, Alocacao.status != "cancelada",
             Alocacao.data >= md, Alocacao.data <= fim_do_mes(md))))
+        inicios = [p_[0] for p_ in pares]
         por_data: dict[str, set] = {}
         for i in inicios:
             por_data.setdefault(i.date().isoformat(), set()).add(turno_da_aula(i))
         m["aulas_por_data"] = {k: sorted(v, key=TURNOS_TERMO.index) for k, v in sorted(por_data.items())}
+        hor: dict[str, dict[str, list]] = {}  # horário das aulas lançadas em cada dia e turno (para conferir com o horário do termo)
+        for i, f_ in pares:
+            x = hor.setdefault(i.date().isoformat(), {}).setdefault(turno_da_aula(i), [f"{i:%H:%M}", f"{f_:%H:%M}"])
+            x[0], x[1] = min(x[0], f"{i:%H:%M}"), max(x[1], f"{f_:%H:%M}")
+        m["horarios_aulas"] = hor
         dias = sorted({i.weekday() for i in inicios})
         m["dias_com_aula"] = dias
         t = termos_.get(md)
-        fora = sorted({(i.date().isoformat(), turno_da_aula(i)) for i in inicios if t is not None and not cobre(t, i)})
+        fora = sorted({(i.date().isoformat(), turno_da_aula(i)) for i, f_ in pares if t is not None and not cobre(t, i, f_)})
         m["fora"] = [{"data": d, "turno": tn} for d, tn in fora]
         m["dias_fora"] = sorted({date.fromisoformat(d).weekday() for d, _ in fora})
     por_mes = {m["mes"]: m for m in meses}
@@ -205,12 +255,17 @@ def painel(db: Session, inst: Instrutor, cenario_id: int | None, hoje: date | No
     padrao: dict[int, dict[str, str]] = {}
     for d, ts in (ma.get("agenda") or {}).items():
         for tn, v in ts.items():
-            padrao.setdefault(date.fromisoformat(d).weekday(), {})[tn] = v if padrao.get(date.fromisoformat(d).weekday(), {}).get(tn) != "aula" else "aula"
+            atual_v = padrao.get(date.fromisoformat(d).weekday(), {}).get(tn)
+            if tipo_cel(atual_v) != "aula":  # aula prevalece; o horário do dia vai junto
+                padrao.setdefault(date.fromisoformat(d).weekday(), {})[tn] = v if isinstance(v, dict) else {"tipo": v}
     for f in ma.get("fora") or []:
-        padrao.setdefault(date.fromisoformat(f["data"]).weekday(), {})[f["turno"]] = "aula"
+        padrao.setdefault(date.fromisoformat(f["data"]).weekday(), {}).setdefault(f["turno"], {"tipo": "aula"})
+        if tipo_cel(padrao[date.fromisoformat(f["data"]).weekday()][f["turno"]]) != "aula":
+            padrao[date.fromisoformat(f["data"]).weekday()][f["turno"]] = {"tipo": "aula"}
     for d, ts in (mp.get("aulas_por_data") or {}).items():
         for tn in ts:
-            padrao.setdefault(date.fromisoformat(d).weekday(), {})[tn] = "aula"
+            if tipo_cel(padrao.get(date.fromisoformat(d).weekday(), {}).get(tn)) != "aula":
+                padrao.setdefault(date.fromisoformat(d).weekday(), {})[tn] = {"tipo": "aula"}
     agenda_sug = {}
     if ma.get("agenda") or padrao:
         dd = prox
@@ -276,7 +331,7 @@ def salvar(db: Session, ctx, inst: Instrutor, mes, horas_aula, horas_outras=0, o
     if grade is not None:
         t.agenda = grade or None
     if t.agenda:  # com a grade, os dias da semana do termo saem dela (dias com aula)
-        t.dias_semana = sorted({date.fromisoformat(d).weekday() for d, ts in t.agenda.items() if "aula" in ts.values()}) or None
+        t.dias_semana = sorted({date.fromisoformat(d).weekday() for d, ts in t.agenda.items() if any(tipo_cel(v) == "aula" for v in ts.values())}) or None
     else:
         t.dias_semana = _dias(dias_semana)
     db.flush()
@@ -329,12 +384,15 @@ def ajustar(db: Session, ctx, inst: Instrutor, mes, motivo: str, concordancia: b
         for x in incluir_turnos:
             dd = date.fromisoformat(str(x["data"])[:10])
             tn = x.get("turno") or "M"
-            if mes_de(dd) == m and ag.get(dd.isoformat(), {}).get(tn) != "aula":
-                ag.setdefault(dd.isoformat(), {})[tn] = "aula"
+            if mes_de(dd) == m and tipo_cel(ag.get(dd.isoformat(), {}).get(tn)) != "aula":
+                cel = {"tipo": "aula"}
+                if x.get("ini") and x.get("fim"):
+                    cel.update(ini=x["ini"], fim=x["fim"])
+                ag.setdefault(dd.isoformat(), {})[tn] = cel
                 novas.append(f"{dd:%d/%m} {NOME_TURNO.get(tn, tn)}")
         if novas:
             t.agenda = ag
-            t.dias_semana = sorted({date.fromisoformat(d).weekday() for d, ts in ag.items() if "aula" in ts.values()}) or None
+            t.dias_semana = sorted({date.fromisoformat(d).weekday() for d, ts in ag.items() if any(tipo_cel(v) == "aula" for v in ts.values())}) or None
             mudou.append("inclui " + ", ".join(novas))
     novos = _dias(incluir_dias) or []
     if novos and t.dias_semana:

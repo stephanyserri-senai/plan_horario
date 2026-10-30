@@ -49,7 +49,7 @@ def test_termo_por_dia_e_turno(db, mundo):
     grade = {ter.isoformat(): {"M": "aula"}, qua.isoformat(): {"V": "aula"}, sab.isoformat(): {"S": "pl"}}
     r = termos.salvar(db, m.ctx, m.i1, "2026-08", 20, 4, None, m.cen.id, agenda=grade)
     db.commit()
-    assert r["agenda"] == grade and r["dias_semana"] == [1, 2]
+    assert r["agenda"][ter.isoformat()] == {"M": {"tipo": "aula"}} and r["dias_semana"] == [1, 2]
     assert r["resumo_agenda"]["turnos_aula"] == 2 and r["resumo_agenda"]["turnos_pl"] == 1
     # turno de sábado só "S"; data de outro mês recusada
     import pytest
@@ -69,5 +69,31 @@ def test_termo_por_dia_e_turno(db, mundo):
     # ajuste por urgência inclui a célula (segunda de manhã)
     t = termos.ajustar(db, m.ctx, m.i1, "2026-08", "Substituição urgente", True, incluir_turnos=[{"data": SEG.isoformat(), "turno": "M"}])
     db.commit()
-    assert t["agenda"][SEG.isoformat()] == {"M": "aula"} and 0 in t["dias_semana"]
+    assert t["agenda"][SEG.isoformat()] == {"M": {"tipo": "aula"}} and 0 in t["dias_semana"]
     assert "TERMO_FORA_DOS_DIAS" not in oc(SEG, 0)
+
+
+def test_horario_de_entrada_e_saida_por_dia(db, mundo):
+    from app.core.errors import EntradaInvalida
+    from app.services.validacao import AulaProposta, BaseDados, validar_aula
+    import pytest
+    m = mundo
+    m.i1.modalidade = "horista"
+    db.commit()
+    ter, qua = SEG + timedelta(days=1), SEG + timedelta(days=2)
+    # terça 07:30–11:30, quarta 08:00–12:00 e uma tarde de 13:00–17:30 (4,5 h)
+    grade = {ter.isoformat(): {"M": {"tipo": "aula", "ini": "07:30", "fim": "11:30"}},
+             qua.isoformat(): {"M": {"tipo": "aula", "ini": "08:00", "fim": "12:00"}, "V": {"tipo": "pl", "ini": "13:00", "fim": "17:30"}}}
+    r = termos.salvar(db, m.ctx, m.i1, "2026-08", 8, 4.5, None, m.cen.id, agenda=grade)
+    db.commit()
+    assert r["resumo_agenda"]["horas_aula"] == 8.0 and r["resumo_agenda"]["horas_pl"] == 4.5
+    with pytest.raises(EntradaInvalida):  # horário fora da faixa do turno
+        termos.salvar(db, m.ctx, m.i1, "2026-08", 8, 0, agenda={ter.isoformat(): {"M": {"tipo": "aula", "ini": "13:00", "fim": "17:00"}}})
+    db.rollback()
+    tuc = m.tuc(db, m.t1, m.uc_a)
+    def oc(dia):  # aula 07:30–09:10
+        ini = datetime.combine(dia, m.periodos[0].hora_inicio)
+        return [o.regra for o in validar_aula(BaseDados(db, m.cen.id), AulaProposta(turma_uc_id=tuc.id, inicio=ini, fim=ini + timedelta(minutes=100),
+                                                                                    minutos_aula=100, instrutor_id=m.i1.id))]
+    assert "TERMO_FORA_DOS_DIAS" not in oc(ter)  # 07:30–11:30 cobre
+    assert "TERMO_FORA_DOS_DIAS" in oc(qua)  # quarta começa às 08:00: aula às 07:30 fica fora

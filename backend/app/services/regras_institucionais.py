@@ -196,7 +196,10 @@ def catalogo() -> list[dict]:
     regra("TERMO_MES_SEGUINTE", "Instrutores", "obrigatoria", "Termo de horas: feito no fim do mês para o mês seguinte",
           "O termo de horas do horista é o que diz se ele está disponível: as horas de aula do mês, outras ocupações e a grade do mês por "
           "semana, dia e turno (manhã, tarde, noite e o turno de sábado), cada turno com aula ou planejamento (PL) — ex.: sábado pago "
-          "para planejamento de quem não tem disponibilidade na semana; pode ser só um turno no dia. Aula fora de um turno com aula no termo é alerta. "
+          "para planejamento de quem não tem disponibilidade na semana; pode ser só um turno no dia. Cada turno marcado leva o horário de "
+          "entrada e saída daquele dia, que depende do turno de entrada do instrutor e do curso (manhã 07:30–11:30 ou 08:00–12:00; tarde "
+          "13:30–17:30, 13:00–17:30 ou 13:00–17:00; noite 18:30–22:00 ou 18:00–22:00; ou outro), e as horas do termo são contadas por esse "
+          "horário. Aula fora de um turno com aula no termo, ou fora do horário daquele dia, é alerta. "
           "É feito no fim de cada mês para o mês seguinte. Se foi preciso contar com o instrutor num dia que não estava previsto no termo, "
           "esse dia deve entrar no termo do mês seguinte (numa urgência, o termo do mês é ajustado com a concordância dele). O perfil do "
           "instrutor tem a aba Termo de horas (consulta e alteração), com o prazo e a sugestão do próximo termo; no portal o instrutor "

@@ -263,7 +263,12 @@ def substituir(db: Session, ctx, cenario_id: int, aulas: list[Alocacao], substit
             x = termos_ajustar.setdefault(a.data.replace(day=1), {"dias": set(), "turnos": []})
             if any(o.regra == "TERMO_FORA_DOS_DIAS" for o in fora):
                 x["dias"].add(a.data.weekday())
-                x["turnos"].append({"data": a.data.isoformat(), "turno": turno_da_aula(a.inicio)})
+                tn = turno_da_aula(a.inicio)
+                ja = next((c for c in x["turnos"] if c["data"] == a.data.isoformat() and c["turno"] == tn), None)
+                if ja is None:
+                    x["turnos"].append({"data": a.data.isoformat(), "turno": tn, "ini": f"{a.inicio:%H:%M}", "fim": f"{a.fim:%H:%M}"})
+                else:  # o horário do turno cobre todas as aulas assumidas naquele dia
+                    ja["ini"], ja["fim"] = min(ja["ini"], f"{a.inicio:%H:%M}"), max(ja["fim"], f"{a.fim:%H:%M}")
         reserva = _reserva(b, sub.id, a.inicio, a.fim)
         if reserva is None and (falta := _sem_antecedencia(a.data)):
             falhas.append({**rot, "motivos": [falta]})
