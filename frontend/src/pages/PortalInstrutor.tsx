@@ -4,8 +4,9 @@ import { CompetenciasUCs, JornadaInstrutor } from "../components/CamposEspeciais
 import Perfil from "../components/Perfil";
 import { Abas, Badge, Campo, Erro, useCarregar } from "../components/ui";
 import { useApp } from "../contexto";
-import { Aderencia, IndicesAderencia, Ocupacao, Pdi } from "../components/PerfilInstrutor";
+import { Aderencia, IndicesAderencia, JornadaMensalista, Ocupacao, Pdi } from "../components/PerfilInstrutor";
 import { PainelTermo } from "../components/QuadroDisponibilidade";
+import { MinhasImpressoes } from "../components/Impressoes";
 
 const TIPOS: [string, string][] = [["sugestao", "Sugestão"], ["dificuldade", "Dificuldade"], ["recurso", "Recurso ou material"], ["horario", "Horário"], ["outro", "Outro"]];
 const STATUS: Record<string, [string, string]> = { nova: ["info", "Enviada"], lida: ["alerta", "Lida pela coordenação"], resolvida: ["ok", "Resolvida"] };
@@ -50,11 +51,13 @@ export default function PortalInstrutor({ trocarSenha }: { trocarSenha: () => vo
             { id: "desenv", rotulo: "📈 Meu desenvolvimento" },
             { id: "obs", rotulo: `💬 Minhas observações${respostas ? ` (${respostas} resposta${respostas > 1 ? "s" : ""})` : ""}` },
             { id: "solic", rotulo: `📝 Solicitações${aguardando ? ` (${aguardando} aguardando)` : ""}` },
+            { id: "impressoes", rotulo: "🖨 Impressões" },
             { id: "notif", rotulo: `🔔 Notificações${novas ? ` (${novas})` : ""}` }]} ativa={aba} mudar={setAba} />
           {aba === "turmas" && <MinhasTurmas aoEnviar={obs.recarregar} />}
           {aba === "dados" && eu.dados && <MeusDados eu={eu.dados} salvo={eu.recarregar} />}
           {aba === "desenv" && <MeuDesenvolvimento registrado={() => { obs.recarregar(); eu.recarregar(); }} />}
           {aba === "obs" && <MinhasObservacoes lista={obs.dados} />}
+          {aba === "impressoes" && <MinhasImpressoes />}
           {aba === "solic" && eu.dados && <MinhasSolicitacoes lista={solic.dados} turnos={eu.dados.turnos} mudou={solic.recarregar} />}
           {aba === "notif" && <Notificacoes lista={notifs.dados} mudou={notifs.recarregar} ir={(a) => { irPara(a); if (a === "dados") eu.recarregar(); if (a === "obs") obs.recarregar(); if (a === "solic") solic.recarregar(); }} />}
         </>}
@@ -375,12 +378,13 @@ function MeuDesenvolvimento({ registrado }: { registrado: () => void }) {
       </div>
       <Abas abas={[{ id: "pdi", rotulo: `🎯 Meu PDI${abertos.length ? ` (${abertos.length})` : ""}` }, { id: "registrar", rotulo: "➕ Registrar formação" },
         { id: "aderencia", rotulo: "📊 Aderência por curso" }, { id: "ocupacao", rotulo: "⏱ Minha ocupação" },
-        ...(d.dados.modalidade === "horista" ? [{ id: "termo", rotulo: "🗓 Meu termo de horas" }] : [])]} ativa={sub} mudar={setSub} />
+        { id: "termo", rotulo: d.dados.modalidade === "horista" ? "🗓 Meu termo de horas" : "🗓 Minha jornada" }]} ativa={sub} mudar={setSub} />
       {sub === "pdi" && <Pdi id={d.dados.id} url="/api/portal/pdi" somenteLeitura mudou={p.recarregar} />}
       {sub === "registrar" && <RegistrarFormacao d={d} feito={() => { p.recarregar(); registrado(); setSub("pdi"); }} />}
       {sub === "aderencia" && <Aderencia ad={d.aderencia} />}
       {sub === "ocupacao" && <Ocupacao d={d} />}
-      {sub === "termo" && <PainelTermo instId={d.dados.id} nome={d.dados.nome} url="/api/portal/termos" somenteLeitura />}
+      {sub === "termo" && (d.dados.modalidade === "horista" ? <PainelTermo instId={d.dados.id} nome={d.dados.nome} url="/api/portal/termos" somenteLeitura />
+        : <JornadaMensalista d={d} portal />)}
     </div>
   );
 }

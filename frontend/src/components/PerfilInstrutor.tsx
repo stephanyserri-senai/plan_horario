@@ -127,12 +127,12 @@ export function PerfilInstrutor({ id, fechar, editar, abaInicial }: { id: number
           {editar && <button className="btn" onClick={editar}>Editar cadastro</button>}
         </div>
         <Abas abas={[{ id: "geral", rotulo: "Visão geral" }, { id: "ocupacao", rotulo: "Ocupação" },
-          ...(d.dados.modalidade === "horista" ? [{ id: "termo", rotulo: `⏱ Termo de horas${d.termos && !d.termos.atual?.tem_termo ? " ⚠" : ""}` }] : []),
+          { id: "termo", rotulo: d.dados.modalidade === "horista" ? `⏱ Termo de horas${d.termos && !d.termos.atual?.tem_termo ? " ⚠" : ""}` : "⏱ Jornada / termo" },
           { id: "competencias", rotulo: "Competências e certificações" },
           { id: "aderencia", rotulo: "Aderência aos cursos" }, { id: "pdi", rotulo: "PDI" }]} ativa={aba} mudar={setAba} />
         {aba === "geral" && <VisaoGeral d={d} />}
         {aba === "ocupacao" && <Ocupacao d={d} />}
-        {aba === "termo" && <PainelTermo instId={d.dados.id} nome={d.dados.nome} />}
+        {aba === "termo" && (d.dados.modalidade === "horista" ? <PainelTermo instId={d.dados.id} nome={d.dados.nome} /> : <JornadaMensalista d={d} />)}
         {aba === "competencias" && <Competencias d={d} mudou={p.recarregar} />}
         {aba === "aderencia" && <Aderencia ad={d.aderencia} />}
         {aba === "pdi" && <Pdi id={d.dados.id} mudou={p.recarregar} />}
@@ -501,6 +501,21 @@ export function Ocupacao({ d }: { d: any }) {
         </div>
         {d.termos && <p className="sub">Horista: termo de {d.termos.atual?.rotulo} {d.termos.atual?.tem_termo ? `com ${d.termos.atual.horas_aula} h de aula` : "ainda não registrado"} (ajustável numa urgência, com a concordância do instrutor).</p>}
       </section>
+    </div>
+  );
+}
+
+/** Mensalista: não tem termo de horas (é do horista); a jornada semanal é fixa, com aulas até 90% dela e no máximo 44 h por semana. */
+export function JornadaMensalista({ d, portal }: { d: any; portal?: boolean }) {
+  const c = Number(d.dados.carga_contratual || 0), l = Number(d.dados.limite_letivo || 0);
+  return (
+    <div className="termo-proximo feito">
+      <div className="termo-proximo-cab"><span className="termo-proximo-ico" aria-hidden="true">🗓</span>
+        <div><b>Mensalista: jornada semanal fixa de {c} h</b>
+          <small className="mudo">Aulas até {l} h por semana (limite cadastrado, no máximo 90% da jornada); o restante é planejamento (PL) e projeto (PJ). Ninguém passa de 44 h por semana.</small></div></div>
+      <p className="sub">O termo de horas é do <b>horista</b>: é ele que recebe todo mês as horas pagas (aula, planejamento, projeto e urgência) na grade por dia e turno.
+        {!portal && " Para lançar um termo para este instrutor, mude a modalidade dele para horista no cadastro."}</p>
+      {d.semestre && <p className="sub">No semestre: {d.semestre.media_semanal_h} h de aula por semana em média ({d.semestre.pct_contrato}% do contrato).</p>}
     </div>
   );
 }

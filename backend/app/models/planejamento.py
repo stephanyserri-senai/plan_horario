@@ -424,6 +424,36 @@ class SolicitacaoInstrutor(Base):
     criado_em: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
+class SolicitacaoImpressao(Base):
+    """Pedido de impressão do instrutor (material de aula), feito pelo portal até a quinta-feira da semana anterior ao uso;
+    a coordenação atende e dá o retorno (em produção, pronta para retirar, entregue ou recusada)."""
+    __tablename__ = "solicitacoes_impressao"
+    __table_args__ = (
+        CheckConstraint("status in ('pendente','em_producao','pronta','entregue','recusada','cancelada')", name="impressao_status_check"),
+        CheckConstraint("copias > 0", name="impressao_copias_check"),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    instrutor_id: Mapped[int] = mapped_column(ForeignKey("instrutores.id", ondelete="CASCADE"), index=True)
+    turma_id: Mapped[int | None] = mapped_column(ForeignKey("turmas.id", ondelete="SET NULL"))
+    titulo: Mapped[str] = mapped_column(String(200))
+    descricao: Mapped[str | None] = mapped_column(Text)
+    arquivo_url: Mapped[str | None] = mapped_column(String(500))  # link do arquivo (Drive, OneDrive...), para PDF grande
+    arquivo_nome: Mapped[str | None] = mapped_column(String(200))  # PDF enviado com o pedido (até 4 MB)
+    arquivo_tamanho: Mapped[int | None] = mapped_column(Integer)
+    arquivo_pdf: Mapped[bytes | None] = mapped_column(LargeBinary, deferred=True)
+    copias: Mapped[int] = mapped_column(Integer)
+    paginas: Mapped[int | None] = mapped_column(Integer)
+    frente_verso: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    colorido: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    data_uso: Mapped[date] = mapped_column(Date)  # dia em que o material será usado
+    prazo: Mapped[date] = mapped_column(Date)  # quinta-feira da semana anterior ao uso
+    status: Mapped[str] = mapped_column(String(20), default="pendente", server_default="pendente")
+    resposta: Mapped[str | None] = mapped_column(Text)  # retorno da coordenação (ex.: pronto na sala 12)
+    atendido_por_id: Mapped[int | None] = mapped_column(ForeignKey("usuarios.id", ondelete="SET NULL"))
+    atendido_em: Mapped[datetime | None] = mapped_column(DateTime)
+    criado_em: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
 class Notificacao(Base):
     """Aviso para o instrutor no portal (mudança no cadastro dele, substituição, horário publicado, resposta...)."""
     __tablename__ = "notificacoes"

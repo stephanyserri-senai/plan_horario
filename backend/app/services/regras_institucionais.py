@@ -219,6 +219,11 @@ def catalogo() -> list[dict]:
           "Menu Substituições: busca-se o instrutor, vê-se o que ele estaria fazendo no período (aula a aula) e marcam-se as aulas; o sistema "
           "indica quem pode assumir pela disponibilidade no dia e no horário — livres da área, de outra área/sem a UC (exceção), horistas "
           "fora do termo (com aprovação), livres em parte — com o mensalista antes do horista.", ["substituição"])
+    regra("IMPRESSAO_PRAZO", "Substituições e solicitações", "obrigatoria", "Pedido de impressão até a quinta da semana anterior",
+          "O instrutor pede a impressão do material pelo portal (o que imprimir, dia de uso, turma, cópias, páginas, frente e verso, "
+          "colorido e o PDF do material — até 4 MB — ou o link do arquivo) até a quinta-feira da semana anterior ao uso — para usar de segunda a sábado da semana S, até a "
+          "quinta da semana S-1; depois disso o portal não aceita para aquela data. A coordenação dá o retorno (em produção, pronta para "
+          "retirar, entregue ou recusada com o motivo) e o instrutor é avisado no portal.", ["portal", "coordenação"], {"dia_limite": "quinta-feira"})
     regra("SOLICITACOES", "Substituições e solicitações", "obrigatoria", "Solicitações do instrutor",
           "Pelo portal o instrutor pede folga ou substituição, com justificativa; o coordenador aprova ou recusa. Folga aprovada vira bloqueio na agenda e as aulas afetadas recebem sugestão de substituto.",
           ["portal", "coordenação"])

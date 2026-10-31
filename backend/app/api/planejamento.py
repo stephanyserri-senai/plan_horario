@@ -858,6 +858,11 @@ def painel(cenario_id: int, ctx: Contexto = Depends(requer("alocacoes.ler")), db
         n = pendentes(db, ctx.unidades)
         if n:
             atencao.append({"tipo": "alerta", "texto": f"{n} solicitação(ões) de folga/substituição aguardando sua decisão", "link": "/solicitacoes"})
+        from app.services.impressoes import listar as _impressoes
+        imp = [x for x in _impressoes(db, unidades=ctx.unidades) if x["status"] in ("pendente", "em_producao")]
+        if imp:
+            atencao.append({"tipo": "alerta", "texto": f"{len(imp)} pedido(s) de impressão a atender (o mais próximo para {imp[0]['data_uso'][8:10]}/{imp[0]['data_uso'][5:7]})",
+                            "link": "/impressoes"})
     return {
         "semestre": {"id": cen.id, "nome": cen.nome, "estado": est, "inicio": cen.periodo_inicio.isoformat() if cen.periodo_inicio else None,
                      "fim": cen.periodo_fim.isoformat() if cen.periodo_fim else None},

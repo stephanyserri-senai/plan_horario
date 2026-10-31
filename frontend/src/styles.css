@@ -1226,3 +1226,26 @@ li.sem-marcador { list-style: none; margin-left: -18px; }
 .termo-grade-total { flex-direction: column; align-items: flex-start; }
 .gt-sem-total { grid-column: 1 / -1; justify-self: end; font-size: .74rem; color: var(--mudo); margin-top: -2px; }
 .gt-sem-total.acima { color: var(--erro); font-weight: 700; }
+
+/* pedidos de impressão (portal e coordenação) */
+.imp-portal { display: grid; gap: 12px; }
+.imp-form { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px 14px; align-items: end; }
+.imp-form input, .imp-form select { width: 100%; }
+.imp-opcoes { display: flex; gap: 14px; flex-wrap: wrap; padding-bottom: 6px; }
+.imp-lista { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); align-items: start; }
+.imp-card { background: var(--superficie); border: 1px solid var(--borda); border-left: 4px solid var(--borda); border-radius: 12px; padding: 10px 12px; display: grid; gap: 6px; }
+.imp-card.st-pendente { border-left-color: #d9822b; } .imp-card.st-em_producao { border-left-color: #2f6fab; }
+.imp-card.st-pronta { border-left-color: #1e7d4f; } .imp-card.st-recusada { border-left-color: var(--erro); }
+.imp-card.st-entregue, .imp-card.st-cancelada { opacity: .75; }
+.imp-card-cab { display: flex; align-items: flex-start; gap: 8px; }
+.imp-ico { font-size: 1.2rem; }
+.imp-card-tit { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.imp-card-det { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: .85rem; }
+.imp-desc, .imp-resp { margin: 0; font-size: .85rem; }
+.imp-resp { background: var(--fundo); border-radius: 8px; padding: 6px 8px; }
+.imp-atender { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.imp-atender input { flex: 1 1 200px; }
+.erro-txt { color: var(--erro); }
+.imp-opcoes label { display: inline-flex; flex-direction: row; align-items: center; gap: 6px; }
+.imp-card-cab .badge { flex: none; white-space: nowrap; }
+.imp-form input[type=checkbox] { width: auto; }

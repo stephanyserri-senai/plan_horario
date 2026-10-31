@@ -61,6 +61,11 @@ UC transversal/técnica, substituição, solicitações, quadro 5:4...) estão e
   clicar na aula abre o pop-up: só a aula, o dia, a UC no período ou tudo →
   `GET /api/substituicoes/candidatos?alocacao_ids=`). Horista fora do termo/disponibilidade = grupo `aprovacao`; `POST /api/substituicoes`
   com `aprovado_supervisao` e `concordancia` relaxa a disponibilidade (exceção "aprovada pela supervisão") e ajusta o termo do mês.
+- Pedidos de impressão (regra IMPRESSAO_PRAZO): `services/impressoes.py`, tabela `solicitacoes_impressao`; portal (aba Impressões,
+  `/api/portal/impressoes`, PDF até 4 MB em `arquivo_pdf` via `POST .../{id}/pdf`, baixa em `GET .../{id}/pdf`) até a quinta da semana
+  anterior ao uso (`prazo_para`); coordenação em `/impressoes` (`PUT /api/impressoes/{id}`:
+  em_producao → pronta → entregue, ou recusada com motivo; notifica o instrutor). Aba de termo/jornada no perfil vale para todos
+  (mensalista vê a jornada fixa).
 - Riscos: `services/resolucoes.sugerir` dá uma correção por caso (acao para `services/sugestoes.aplicar`); trocar sala e
   remarcar valem também com o horário publicado (ajuste operacional, como a substituição).
 

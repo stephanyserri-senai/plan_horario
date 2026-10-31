@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 
-from fastapi import APIRouter, Body, Depends
+from fastapi import APIRouter, Body, Depends, File, UploadFile
 from fastapi.responses import Response
 from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
@@ -468,6 +468,98 @@ def cancelar_solicitacao(sid: int, ctx: Contexto = Depends(get_contexto), db: Se
     s = solicitacoes.cancelar(db, ctx, _meu_instrutor(ctx, db), sid)
     db.commit()
     return solicitacoes.serializar(db, s)
+
+
+# ============================================================================ pedidos de impressão
+@router.get("/portal/impressoes")
+def minhas_impressoes(ctx: Contexto = Depends(get_contexto), db: Session = Depends(get_db)):
+    """Meus pedidos de impressão, as minhas turmas (para indicar no pedido) e a regra do prazo."""
+    from app.services import impressoes
+    inst = _meu_instrutor(ctx, db)
+    cens = _cenarios_do_instrutor(db, inst)
+    turmas = {}
+    for _cen, aulas in cens.values():
+        for a in aulas:
+            if a.turma_id not in turmas:
+                t = db.get(Turma, a.turma_id)
+                turmas[a.turma_id] = t.codigo if t else str(a.turma_id)
+    hoje = impressoes.hoje()
+    # primeiro dia de uso ainda possível: segunda da semana seguinte se hoje é até quinta; senão, a segunda depois dessa
+    seg = hoje - timedelta(days=hoje.weekday()) + timedelta(days=7 if hoje.weekday() <= impressoes.DIA_LIMITE else 14)
+    return {"pedidos": impressoes.listar(db, instrutor_id=inst.id), "turmas": [{"id": k, "codigo": v} for k, v in sorted(turmas.items(), key=lambda x: x[1])],
+            "hoje": hoje.isoformat(), "primeiro_uso_possivel": seg.isoformat()}
+
+
+@router.post("/portal/impressoes")
+def pedir_impressao(d: dict = Body(...), ctx: Contexto = Depends(get_contexto), db: Session = Depends(get_db)):
+    """Pede uma impressão (até a quinta-feira da semana anterior ao uso); a coordenação recebe o pedido."""
+    from app.services import impressoes
+    s = impressoes.criar(db, ctx, _meu_instrutor(ctx, db), d)
+    db.commit()
+    return impressoes.serializar(db, s)
+
+
+@router.post("/portal/impressoes/{sid}/pdf")
+async def enviar_pdf_impressao(sid: int, arquivo: UploadFile = File(...), ctx: Contexto = Depends(get_contexto), db: Session = Depends(get_db)):
+    """PDF do material (até 4 MB), anexado ao pedido de impressão."""
+    from app.services import impressoes
+    conteudo = await arquivo.read(impressoes.MAX_PDF + 1)
+    s = impressoes.anexar_pdf(db, ctx, _meu_instrutor(ctx, db), sid, arquivo.filename or "material.pdf", conteudo)
+    db.commit()
+    return impressoes.serializar(db, s)
+
+
+def _resposta_pdf(s, conteudo: bytes) -> Response:
+    from urllib.parse import quote
+    return Response(conteudo, media_type="application/pdf",
+                    headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(s.arquivo_nome or 'material.pdf')}"})
+
+
+@router.get("/portal/impressoes/{sid}/pdf")
+def baixar_meu_pdf(sid: int, ctx: Contexto = Depends(get_contexto), db: Session = Depends(get_db)):
+    from app.services import impressoes
+    inst = _meu_instrutor(ctx, db)
+    s, conteudo = impressoes.pdf(db, sid)
+    if s.instrutor_id != inst.id:
+        raise NaoEncontrado("Pedido de impressão não encontrado.")
+    return _resposta_pdf(s, conteudo)
+
+
+@router.get("/impressoes/{sid}/pdf")
+def baixar_pdf_impressao(sid: int, ctx: Contexto = Depends(requer("solicitacoes.aprovar")), db: Session = Depends(get_db)):
+    """PDF do pedido, para a coordenação imprimir."""
+    from app.services import impressoes
+    s, conteudo = impressoes.pdf(db, sid)
+    ctx.exigir_unidade(db.get(Instrutor, s.instrutor_id).unidade_id)
+    return _resposta_pdf(s, conteudo)
+
+
+@router.post("/portal/impressoes/{sid}/cancelar")
+def cancelar_impressao(sid: int, ctx: Contexto = Depends(get_contexto), db: Session = Depends(get_db)):
+    from app.services import impressoes
+    s = impressoes.cancelar(db, ctx, _meu_instrutor(ctx, db), sid)
+    db.commit()
+    return impressoes.serializar(db, s)
+
+
+@router.get("/impressoes")
+def listar_impressoes(status: str | None = None, ctx: Contexto = Depends(requer("solicitacoes.aprovar")), db: Session = Depends(get_db)):
+    """Pedidos de impressão dos instrutores (coordenação)."""
+    from app.services import impressoes
+    return impressoes.listar(db, status=status, unidades=ctx.unidades)
+
+
+@router.put("/impressoes/{sid}")
+def atender_impressao(sid: int, d: dict = Body(...), ctx: Contexto = Depends(requer("solicitacoes.aprovar")), db: Session = Depends(get_db)):
+    """Retorno da coordenação: {"status": em_producao | pronta | entregue | recusada, "resposta"?}. O instrutor é avisado."""
+    from app.services import impressoes
+    from app.models import SolicitacaoImpressao
+    s = db.get(SolicitacaoImpressao, sid)
+    if s is not None:
+        ctx.exigir_unidade(db.get(Instrutor, s.instrutor_id).unidade_id)
+    s = impressoes.atender(db, ctx, sid, d.get("status") or "", d.get("resposta"))
+    db.commit()
+    return impressoes.serializar(db, s)
 
 
 @router.get("/solicitacoes-instrutores")
