@@ -455,6 +455,33 @@ class SolicitacaoImpressao(Base):
     criado_em: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
+class AgendamentoAmbiente(Base):
+    """Pedido de uso de um ambiente (sala/laboratório) num dia e turno, feito pelo instrutor no portal (ou pela supervisão).
+    Pendente segura o horário; confirmado vira bloqueio do ambiente (o gerador e a validação respeitam)."""
+    __tablename__ = "agendamentos_ambiente"
+    __table_args__ = (
+        CheckConstraint("status in ('pendente','confirmado','recusado','cancelado')", name="agendamentos_status_check"),
+        CheckConstraint("fim > inicio", name="agendamentos_periodo_check"),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ambiente_id: Mapped[int] = mapped_column(ForeignKey("ambientes.id", ondelete="CASCADE"), index=True)
+    instrutor_id: Mapped[int | None] = mapped_column(ForeignKey("instrutores.id", ondelete="CASCADE"), index=True)
+    solicitado_por_id: Mapped[int | None] = mapped_column(ForeignKey("usuarios.id", ondelete="SET NULL"))
+    turma_id: Mapped[int | None] = mapped_column(ForeignKey("turmas.id", ondelete="SET NULL"))
+    turno_id: Mapped[int | None] = mapped_column(ForeignKey("turnos.id", ondelete="SET NULL"))
+    data: Mapped[date] = mapped_column(Date, index=True)
+    inicio: Mapped[datetime] = mapped_column(DateTime)
+    fim: Mapped[datetime] = mapped_column(DateTime)
+    finalidade: Mapped[str] = mapped_column(Text)
+    participantes: Mapped[int | None] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(20), default="pendente", server_default="pendente")
+    resposta: Mapped[str | None] = mapped_column(Text)
+    decidido_por_id: Mapped[int | None] = mapped_column(ForeignKey("usuarios.id", ondelete="SET NULL"))
+    decidido_em: Mapped[datetime | None] = mapped_column(DateTime)
+    bloqueio_id: Mapped[int | None] = mapped_column(ForeignKey("bloqueios.id", ondelete="SET NULL"))
+    criado_em: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
 class Notificacao(Base):
     """Aviso para o instrutor no portal (mudança no cadastro dele, substituição, horário publicado, resposta...)."""
     __tablename__ = "notificacoes"

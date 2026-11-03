@@ -219,6 +219,12 @@ def catalogo() -> list[dict]:
           "Menu Substituições: busca-se o instrutor, vê-se o que ele estaria fazendo no período (aula a aula) e marcam-se as aulas; o sistema "
           "indica quem pode assumir pela disponibilidade no dia e no horário — livres da área, de outra área/sem a UC (exceção), horistas "
           "fora do termo (com aprovação), livres em parte — com o mensalista antes do horista.", ["substituição"])
+    regra("AGENDAMENTO_AMBIENTE", "Substituições e solicitações", "obrigatoria", "Agendamento de ambientes",
+          "O instrutor agenda salas e laboratórios pelo portal, numa grade por semana com cada ambiente em cada dia e turno: livre, com "
+          "aula da grade publicada, bloqueado (manutenção, evento), reservado ou aguardando. Só pede horário livre, de hoje em diante, "
+          "dentro da capacidade do ambiente; o pedido já segura o horário. A supervisão confirma — vira bloqueio do ambiente, que o "
+          "gerador e a validação respeitam — ou recusa com o motivo, e também agenda direto. Cancelar libera o ambiente.",
+          ["portal", "supervisão", "validação", "gerador"])
     regra("IMPRESSAO_PRAZO", "Substituições e solicitações", "obrigatoria", "Pedido de impressão até a quinta da semana anterior",
           "O instrutor pede a impressão do material pelo portal (o que imprimir, dia de uso, turma, cópias, páginas, frente e verso, "
           "colorido e o PDF do material — até 4 MB — ou o link do arquivo) até a quinta-feira da semana anterior ao uso — para usar de segunda a sábado da semana S, até a "

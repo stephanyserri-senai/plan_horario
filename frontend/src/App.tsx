@@ -28,6 +28,7 @@ import Relatorios from "./pages/Relatorios";
 import Simulador from "./pages/Simulador";
 import Substituicoes from "./pages/Substituicoes";
 import Impressoes from "./components/Impressoes";
+import Agendamentos from "./components/AgendaAmbientes";
 import Usuarios from "./pages/Usuarios";
 
 type Item = { para: string; rotulo: string; icone: string; acao?: string };
@@ -46,6 +47,7 @@ const MENU: { grupo: string; itens: Item[] }[] = [
     { para: "/substituicoes", rotulo: "Substituições", icone: "🔁", acao: "alocacoes.ler" },
     { para: "/solicitacoes", rotulo: "Solicitações dos instrutores", icone: "📝", acao: "solicitacoes.aprovar" },
     { para: "/impressoes", rotulo: "Pedidos de impressão", icone: "🖨", acao: "solicitacoes.aprovar" },
+    { para: "/agendamentos", rotulo: "Agendamento de ambientes", icone: "🏫", acao: "alocacoes.ler" },
     { para: "/epis", rotulo: "EPIs das turmas", icone: "🦺", acao: "cadastros.ler" },
   ] },
   { grupo: "Cadastros", itens: [
@@ -249,6 +251,7 @@ export default function App() {
             <Route path="/solicitacoes" element={<Solicitacoes />} />
             <Route path="/substituicoes" element={<Substituicoes />} />
             <Route path="/impressoes" element={<Impressoes />} />
+            <Route path="/agendamentos" element={<Agendamentos />} />
             <Route path="/epis" element={<Epis />} />
             <Route path="/auditoria" element={<Auditoria />} />
             <Route path="*" element={<Navigate to="/" />} />

@@ -75,6 +75,10 @@ UC transversal/técnica, substituição, solicitações, quadro 5:4...) estão e
   anterior ao uso (`prazo_para`); coordenação em `/impressoes` (`PUT /api/impressoes/{id}`:
   em_producao → pronta → entregue, ou recusada com motivo; notifica o instrutor). Aba de termo/jornada no perfil vale para todos
   (mensalista vê a jornada fixa).
+- Agendamento de ambientes (regra AGENDAMENTO_AMBIENTE; substitui a planilha): `services/agendamentos.py`, tabela `agendamentos_ambiente`;
+  grade ambientes × dias × turnos (`grade`: aula da grade PUBLICADA, bloqueio, reservado, pendente, feriado, livre) em
+  `GET /api/ambientes/agenda` e `/api/portal/ambientes/agenda`; pedido do portal fica pendente e segura o horário; a supervisão
+  confirma (cria `Bloqueio` tipo evento no ambiente → gerador/validação respeitam) ou recusa com motivo; página `/agendamentos`.
 - Riscos: `services/resolucoes.sugerir` dá uma correção por caso (acao para `services/sugestoes.aplicar`); trocar sala e
   remarcar valem também com o horário publicado (ajuste operacional, como a substituição).
 

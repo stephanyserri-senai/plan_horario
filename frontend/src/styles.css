@@ -1250,3 +1250,42 @@ li.sem-marcador { list-style: none; margin-left: -18px; }
 .imp-card-cab .badge { flex: none; white-space: nowrap; }
 .imp-form input[type=checkbox] { width: auto; }
 .primeiro-acesso .btn-link { align-self: center; }
+
+/* agendamento de ambientes: grade semanal ambientes × dias × turnos */
+.ag { display: grid; gap: 12px; }
+.ag-barra { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; background: var(--superficie); border: 1px solid var(--borda); border-radius: 12px; padding: 10px 12px; }
+.ag-semana { display: flex; align-items: center; gap: 6px; }
+.ag-semana input[type=date] { width: 150px; }
+.ag-check { display: inline-flex; align-items: center; gap: 6px; font-size: .85rem; }
+.ag-legenda { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: .78rem; }
+.ag-legenda .ag-c { padding: 2px 10px; border-radius: 6px; }
+.ag-tabela-wrap { overflow: auto; max-height: 70vh; border: 1px solid var(--borda); border-radius: 12px; background: var(--superficie); }
+.ag-tabela { border-collapse: separate; border-spacing: 0; font-size: .78rem; min-width: 100%; }
+.ag-tabela th, .ag-tabela td { border-bottom: 1px solid var(--borda); border-right: 1px solid var(--borda); padding: 0; text-align: center; }
+.ag-tabela thead th { position: sticky; top: 0; background: var(--superficie); z-index: 2; padding: 4px 6px; }
+.ag-tabela thead tr:nth-child(2) th { top: 26px; }
+.ag-dia.hoje { color: var(--primaria); }
+.ag-turno { font-weight: 600; color: var(--mudo); min-width: 38px; }
+.ag-amb { position: sticky; left: 0; background: var(--superficie); z-index: 1; text-align: left !important; padding: 6px 10px !important; min-width: 190px; }
+.ag-amb small { display: block; font-weight: 400; }
+thead .ag-amb { z-index: 3; }
+.ag-c { height: 34px; min-width: 38px; }
+.ag-c span { display: block; padding: 2px; font-size: .68rem; line-height: 1.1; overflow: hidden; }
+.ag-c button { width: 100%; height: 100%; min-height: 32px; border: 0; background: transparent; color: var(--ok); font-weight: 700; font-size: 1rem; cursor: pointer; }
+.ag-c button:hover, .ag-c button:focus-visible { background: color-mix(in srgb, var(--ok) 22%, transparent); }
+.ag-c.e-livre { background: var(--ok-bg); }
+.ag-c.e-aula { background: var(--fundo); color: var(--mudo); }
+.ag-c.e-pendente { background: var(--alerta-bg); color: var(--alerta); }
+.ag-c.e-reservado { background: var(--info-bg); color: var(--info); }
+.ag-c.e-bloqueado, .ag-c.e-indisponivel { background: var(--erro-bg); color: var(--erro); }
+.ag-c.e-feriado { background: repeating-linear-gradient(45deg, var(--fundo), var(--fundo) 4px, var(--superficie) 4px, var(--superficie) 8px); color: var(--mudo); }
+.ag-c.meu { box-shadow: inset 0 0 0 2px var(--primaria); font-weight: 700; }
+.ag-c.passado { opacity: .5; }
+.ag-pendentes, .ag-lista { background: var(--superficie); border: 1px solid var(--borda); border-radius: 12px; padding: 10px 12px; display: grid; gap: 6px; }
+.ag-pendentes { border-left: 4px solid var(--alerta); }
+.ag-pendentes h3, .ag-lista h3 { margin: 0 0 4px; font-size: .95rem; }
+.ag-pedido { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; align-items: center; padding: 6px 0; border-top: 1px solid var(--borda); }
+.ag-pedido > span:first-child { display: flex; flex-direction: column; }
+.ag-pedido.st-cancelado, .ag-pedido.st-recusado { opacity: .7; }
+.ag-resp { color: var(--texto); }
+.ag-resumo { background: var(--fundo); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; line-height: 1.6; }

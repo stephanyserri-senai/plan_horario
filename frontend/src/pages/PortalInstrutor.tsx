@@ -7,6 +7,7 @@ import { useApp } from "../contexto";
 import { Aderencia, IndicesAderencia, JornadaMensalista, Ocupacao, Pdi } from "../components/PerfilInstrutor";
 import { PainelTermo } from "../components/QuadroDisponibilidade";
 import { MinhasImpressoes } from "../components/Impressoes";
+import { AgendaAmbientes } from "../components/AgendaAmbientes";
 
 const TIPOS: [string, string][] = [["sugestao", "Sugestão"], ["dificuldade", "Dificuldade"], ["recurso", "Recurso ou material"], ["horario", "Horário"], ["outro", "Outro"]];
 const STATUS: Record<string, [string, string]> = { nova: ["info", "Enviada"], lida: ["alerta", "Lida pela supervisão"], resolvida: ["ok", "Resolvida"] };
@@ -52,12 +53,14 @@ export default function PortalInstrutor({ trocarSenha }: { trocarSenha: () => vo
             { id: "obs", rotulo: `💬 Minhas observações${respostas ? ` (${respostas} resposta${respostas > 1 ? "s" : ""})` : ""}` },
             { id: "solic", rotulo: `📝 Solicitações${aguardando ? ` (${aguardando} aguardando)` : ""}` },
             { id: "impressoes", rotulo: "🖨 Impressões" },
+            { id: "ambientes", rotulo: "🏫 Agendar ambiente" },
             { id: "notif", rotulo: `🔔 Notificações${novas ? ` (${novas})` : ""}` }]} ativa={aba} mudar={setAba} />
           {aba === "turmas" && <MinhasTurmas aoEnviar={obs.recarregar} />}
           {aba === "dados" && eu.dados && <MeusDados eu={eu.dados} salvo={eu.recarregar} />}
           {aba === "desenv" && <MeuDesenvolvimento registrado={() => { obs.recarregar(); eu.recarregar(); }} />}
           {aba === "obs" && <MinhasObservacoes lista={obs.dados} />}
           {aba === "impressoes" && <MinhasImpressoes />}
+          {aba === "ambientes" && <div className="card"><h2>🏫 Agendar ambiente</h2><AgendaAmbientes portal /></div>}
           {aba === "solic" && eu.dados && <MinhasSolicitacoes lista={solic.dados} turnos={eu.dados.turnos} mudou={solic.recarregar} />}
           {aba === "notif" && <Notificacoes lista={notifs.dados} mudou={notifs.recarregar} ir={(a) => { irPara(a); if (a === "dados") eu.recarregar(); if (a === "obs") obs.recarregar(); if (a === "solic") solic.recarregar(); }} />}
         </>}

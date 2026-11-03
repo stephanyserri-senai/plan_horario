@@ -8,7 +8,7 @@ from app.models.cadastros import (  # noqa: F401
     UCTipoAmbiente, Unidade, UnidadeCurricular,
 )
 from app.models.planejamento import (  # noqa: F401
-    Alocacao, AlocacaoRecurso, Atividade, CenarioPlanejamento, ExcecaoAutorizada, ExecucaoOtimizacao,
+    AgendamentoAmbiente, Alocacao, AlocacaoRecurso, Atividade, CenarioPlanejamento, ExcecaoAutorizada, ExecucaoOtimizacao,
     HistoricoAuditoria, Importacao, Notificacao, ObservacaoInstrutor, OcorrenciaValidacao, ParametrosOtimizacao, PermissaoEscopo,
     PermissaoPerfil, RegistroDecisao, ResultadoOtimizacao, SimulacaoCapacidade, SolicitacaoImpressao, SolicitacaoInstrutor, Usuario, Validacao,
     VersaoPlanejamento, TODOS_GRUPOS, ESTADOS_CENARIO,
