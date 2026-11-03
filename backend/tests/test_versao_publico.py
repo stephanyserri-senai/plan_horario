@@ -67,7 +67,7 @@ def test_planilha_cria_versao_por_publico(db, mundo):
 
 
 def test_importar_turma_sem_versao_e_sem_inicio(db, mundo):
-    """Sem a versão da matriz: a vigente do curso; sem o início: o do semestre (com aviso). Sem término continua erro."""
+    """Sem a versão da matriz: a vigente do curso; sem o início: o do semestre (com aviso); sem término: o fim do semestre (pendente)."""
     from app.services import importacao
     m = mundo
     m.matriz.situacao = "vigente"
@@ -78,8 +78,31 @@ def test_importar_turma_sem_versao_e_sem_inicio(db, mundo):
     imp = importacao.gerar_previa(db, m.ctx, "turmas.csv", csv_, tipo="turmas")
     db.commit()
     itens = {i["dados"].get("codigo") if i.get("dados") else i["linha"]: i for i in imp.previa["itens"]}
-    nova = next(i for i in imp.previa["itens"] if i["acao"] == "criar")
+    nova, sem_fim = imp.previa["itens"]
+    assert nova["acao"] == "criar" and sem_fim["acao"] == "criar"
     assert any("início do semestre (03/08/2026)" in a for a in nova["avisos"]) and any("usada a 1" in a for a in nova["avisos"])
-    sem_fim = next(i for i in imp.previa["itens"] if i["acao"] == "erro")
-    assert any(e.startswith("Término: obrigatório") for e in sem_fim["erros"])
+    assert any("término não informado" in a and "PENDENTE" in a for a in sem_fim["avisos"])
     assert len(itens) == 2
+
+
+def test_turma_com_pendencias_entra_assim_mesmo(db, mundo):
+    """Sem código, sem código do curso (achado pelo nome) e sem término: a turma entra, com as pendências marcadas."""
+    from app.models import Turma
+    from app.services import importacao
+    m = mundo
+    m.matriz.situacao = "vigente"
+    db.commit()
+    csv_ = ("Código da turma;Nome da turma;Código do curso;Versão da matriz;Público / versão do curso;Unidade;Turno;Alunos;Início;Término\n"
+            ";Curso 1;;;;U1;;20;;\n"
+            "T-REP;Turma A;C1;;;U1;;20;;10/12/2026\n"
+            "T-REP;Turma B;C1;;;U1;;20;;10/12/2026\n"
+            ";Curso inexistente;;;;U1;;20;;\n").encode()
+    imp = importacao.gerar_previa(db, m.ctx, "turmas.csv", csv_, tipo="turmas")
+    db.commit()
+    acoes = [i["acao"] for i in imp.previa["itens"]]
+    assert acoes == ["criar", "criar", "criar", "erro"], imp.previa["itens"]
+    importacao.confirmar(db, m.ctx, imp.id, ignorar_erros=True)
+    db.commit()
+    pend = db.query(Turma).filter(Turma.codigo == "PEND-C1-01").one()
+    assert pend.data_fim.isoformat() == "2026-12-18" and "término a confirmar" in pend.restricoes and "código provisório" in pend.restricoes
+    assert db.query(Turma).filter(Turma.codigo == "T-REP-2").one().restricoes.startswith("PENDENTE")

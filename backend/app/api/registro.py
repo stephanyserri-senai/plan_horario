@@ -51,7 +51,7 @@ ENTIDADES: dict[str, dict] = {
     "recursos": {"model": Recurso, "rotulo": "Recursos e equipamentos", "grupo": "Ambientes", "label": "{codigo} – {nome}", "busca": ["codigo", "nome", "tipo"],
                  "unidade_col": "unidade_id", "opcoes": {"situacao": ["disponivel", "manutencao", "indisponivel"]}},
     "recursos_ambientes": {"model": RecursoAmbiente, "rotulo": "Equipamentos instalados em ambientes", "grupo": "Ambientes", "label": "{recurso_id}", "busca": []},
-    "turmas": {"model": Turma, "rotulo": "Turmas", "grupo": "Acadêmico", "label": "{codigo} – {nome}", "busca": ["codigo", "nome"], "unidade_col": "unidade_id", "obrigatorios": ["area_id"],
+    "turmas": {"model": Turma, "rotulo": "Turmas", "grupo": "Acadêmico", "label": "{codigo} – {nome}", "busca": ["codigo", "nome", "restricoes"], "unidade_col": "unidade_id", "obrigatorios": ["area_id"],
                "dias": ["dias_possiveis", "dias_ead"], "ocultar": ["simulacao_id"],
                "extras": {"_numero": {"tipo": "string", "rotulo": "Número da turma"},
                           "_tipo_oferta": {"tipo": "oferta", "rotulo": "Tipo de oferta"}},

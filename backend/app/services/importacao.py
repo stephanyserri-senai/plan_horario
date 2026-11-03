@@ -197,11 +197,11 @@ SPECS: dict[str, dict] = {
         "sequencia": ("int", False, ["ordem"]), "tipos_ambiente": ("str", False, ["tipo_ambiente", "ambiente_tipo"]),
         "certificacao_exigida": ("str", False, ["certificacao"]), "divide_grupos": ("bool", False, []), "capacidade_max": ("int", False, [])}},
     "turmas": {"chave": ["codigo"], "campos": {
-        "codigo": ("str", True, ["turma", "cod_turma", "codigo_turma", "codigo_da_turma"]), "nome": ("str", False, ["nome_turma", "nome_da_turma"]),
-        "curso_codigo": ("str", True, ["curso", "codigo_do_curso"]), "versao": ("str", False, ["versao_matriz", "matriz", "versao_da_matriz"]),
+        "codigo": ("str", False, ["turma", "cod_turma", "codigo_turma", "codigo_da_turma"]), "nome": ("str", False, ["nome_turma", "nome_da_turma"]),
+        "curso_codigo": ("str", False, ["curso", "codigo_do_curso"]), "versao": ("str", False, ["versao_matriz", "matriz", "versao_da_matriz"]),
         "oferta": ("str", False, ["publico_versao_do_curso", "publico_versao", "publico", "versao_do_curso", "tipo_de_oferta", "oferta"]),
         "unidade_codigo": ("str", True, ["unidade"]), "turno_codigo": ("str", False, ["turno"]), "qtd_alunos": ("int", False, ["alunos", "quantidade_alunos"]),
-        "data_inicio": ("date", False, ["inicio"]), "data_fim": ("date", True, ["fim", "termino"]), "dias_possiveis": ("dias", False, ["dias", "dias_de_aula"]),
+        "data_inicio": ("date", False, ["inicio"]), "data_fim": ("date", False, ["fim", "termino"]), "dias_possiveis": ("dias", False, ["dias", "dias_de_aula"]),
         "dias_ead": ("dias", False, ["dias_ead", "dias_ead_turma_80_20", "ead"]), "num_grupos": ("int", False, ["grupos"]), "area": ("str", False, ["area_tecnologica"])}},
     "turma_ucs": {"chave": ["turma_codigo", "uc_codigo"], "campos": {
         "turma_codigo": ("str", True, ["turma"]), "uc_codigo": ("str", True, ["uc", "codigo_uc"]), "situacao": ("str", False, []),
@@ -430,6 +430,49 @@ def _semestre_para(db: Session, ate: date | None) -> tuple[date, date] | None:
     hoje = date.today()
     c = next((c for c in cs if c.periodo_inicio <= hoje <= c.periodo_fim), None) or max(cs, key=lambda c: c.periodo_inicio)
     return c.periodo_inicio, c.periodo_fim
+
+
+def _completar_turma(db: Session, r: "Resolvedor", v: dict, E: list, A: list) -> list[str]:
+    """Turma com dados faltando entra assim mesmo, com o que faltou marcado como pendente (a preencher depois na tela):
+    curso pelo nome da turma, término = fim do semestre, código provisório PEND-SIGLA-NN e código repetido no arquivo com sufixo."""
+    import unicodedata
+    pend: list[str] = []
+    norm = lambda t: " ".join("".join(c for c in unicodedata.normalize("NFD", str(t or "")).lower() if unicodedata.category(c) != "Mn").split())  # noqa: E731
+    if not v.get("curso_codigo"):
+        nome = norm(v.get("nome"))
+        cursos = [c for c in db.scalars(select(Curso).where(Curso.ativo.is_(True))) if nome and norm(c.nome) == nome] if nome else []
+        if len(cursos) == 1:
+            v["curso_codigo"] = cursos[0].codigo
+            A.append(f"código do curso vazio: identificado pelo nome ({cursos[0].codigo})")
+        else:
+            E.append("Código do curso vazio e o nome da turma não identifica um curso cadastrado: informe o curso")
+            return pend
+    if not v.get("data_fim"):
+        sem = _semestre_para(db, None)
+        if sem:
+            v["data_fim"] = sem[1]
+            pend.append("término a confirmar")
+            A.append(f"término não informado: usado o fim do semestre ({sem[1]:%d/%m/%Y}) — PENDENTE, ajuste depois")
+        else:
+            E.append("Término: obrigatório (coluna vazia) — não há semestre cadastrado para usar")
+    vistos = r.__dict__.setdefault("_codigos_turma", set())
+    if not v.get("codigo"):
+        sigla = (v.get("curso_codigo") or "TURMA").upper()
+        k = 1
+        while f"PEND-{sigla}-{k:02d}" in vistos or r.turma(f"PEND-{sigla}-{k:02d}") is not None:
+            k += 1
+        v["codigo"] = f"PEND-{sigla}-{k:02d}"
+        pend.append("código provisório")
+        A.append(f"código da turma vazio: criada como {v['codigo']} — PENDENTE, troque pelo código definitivo")
+    elif v["codigo"].lower() in {c.lower() for c in vistos}:
+        base, k = v["codigo"], 2
+        while f"{base}-{k}".lower() in {c.lower() for c in vistos}:
+            k += 1
+        v["codigo"] = f"{base}-{k}"
+        pend.append("código repetido na planilha")
+        A.append(f"código {base} repetido na planilha: esta linha entrou como {v['codigo']} — PENDENTE, confira")
+    vistos.add(v["codigo"])
+    return pend
 
 
 def _converter(tipo: str, linha: dict, mapa: dict) -> tuple[dict, list[str]]:
@@ -667,7 +710,10 @@ def _preparar(db: Session, r: Resolvedor, tipo: str, v: dict) -> tuple[dict | No
         d["_tipos"] = tipos
         return d, ex, E, A
     if tipo == "turmas":
-        if not v.get("versao") and r.curso(v["curso_codigo"]):
+        pend = _completar_turma(db, r, v, E, A)
+        if not v.get("curso_codigo"):
+            return None, None, E, A
+        if not v.get("versao") and v.get("curso_codigo") and r.curso(v["curso_codigo"]):
             # sem a versão: a vigente do curso para o público (como no formulário); várias sem público definido = erro
             from app.api.cadastros import _matriz_padrao
             pub = (v.get("oferta") or "").strip().upper()
@@ -728,6 +774,8 @@ def _preparar(db: Session, r: Resolvedor, tipo: str, v: dict) -> tuple[dict | No
             E.append(erro)
         if v["data_inicio"] and v["data_fim"] and v["data_fim"] < v["data_inicio"]:
             E.append("Término anterior ao Início")
+        if pend:
+            d["restricoes"] = "PENDENTE (importação): " + "; ".join(pend) + "."
         curso = db.get(Curso, d["curso_id"]) if d.get("curso_id") else None
         if curso and curso.area_id:
             d["area_id"] = curso.area_id  # a turma fica na área do curso; a coluna Área só confere (não recusa a linha)
@@ -736,7 +784,7 @@ def _preparar(db: Session, r: Resolvedor, tipo: str, v: dict) -> tuple[dict | No
                 _area(r, v, {"unidade_id": d.get("unidade_id")}, E2, [], obrigatoria=False)
                 if E2:
                     A.append(f"coluna Área ('{v['area']}') ignorada: a turma fica na área do curso")
-        else:
+        elif curso is not None:  # curso sem área: vale a coluna Área
             _area(r, v, d, E, A, obrigatoria=True)
         return d, r.turma(v["codigo"]), E, A
     if tipo == "turma_ucs":
@@ -863,7 +911,9 @@ def gerar_previa(db: Session, ctx, nome: str, conteudo: bytes, tipo: str | None 
             dados, existente, e2, avisos = _preparar(db, r, tipo, vals)
             erros += e2
         chave = tuple(str(vals.get(k)).lower() for k in SPECS[tipo]["chave"])
-        if chave in vistos:
+        if all(vals.get(k) in (None, "") for k in SPECS[tipo]["chave"]):
+            pass  # sem chave (linha já com erro): não compara com as outras
+        elif chave in vistos:
             erros.append(f"registro duplicado no arquivo (mesma chave da linha {vistos[chave]})")
         else:
             vistos[chave] = n
