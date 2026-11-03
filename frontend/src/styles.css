@@ -1313,3 +1313,5 @@ thead .ag-amb { z-index: 3; }
 .unif-cartao b { font-size: 1.3rem; }
 .unif-cartao input, .unif-cartao select { width: 100%; }
 .unif-gestor { grid-column: 1 / -1; }
+.gestor-linha { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
+.gestor-linha input { flex: 0 1 280px; }

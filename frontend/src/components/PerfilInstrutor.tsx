@@ -130,7 +130,7 @@ export function PerfilInstrutor({ id, fechar, editar, abaInicial }: { id: number
           { id: "termo", rotulo: d.dados.modalidade === "horista" ? `⏱ Termo de horas${d.termos && !d.termos.atual?.tem_termo ? " ⚠" : ""}` : "⏱ Jornada / termo" },
           { id: "competencias", rotulo: "Competências e certificações" }, { id: "uniforme", rotulo: "🥼 Uniforme" },
           { id: "aderencia", rotulo: "Aderência aos cursos" }, { id: "pdi", rotulo: "PDI" }]} ativa={aba} mudar={setAba} />
-        {aba === "geral" && <VisaoGeral d={d} />}
+        {aba === "geral" && <VisaoGeral d={d} mudou={p.recarregar} />}
         {aba === "ocupacao" && <Ocupacao d={d} />}
         {aba === "termo" && (d.dados.modalidade === "horista" ? <PainelTermo instId={d.dados.id} nome={d.dados.nome} /> : <JornadaMensalista d={d} />)}
         {aba === "competencias" && <Competencias d={d} mudou={p.recarregar} />}
@@ -142,11 +142,12 @@ export function PerfilInstrutor({ id, fechar, editar, abaInicial }: { id: number
   );
 }
 
-function VisaoGeral({ d }: { d: any }) {
+function VisaoGeral({ d, mudou }: { d: any; mudou?: () => void }) {
   const s = d.semestre;
   const ag = s?.agenda_h || {};
   return (
     <div className="perfil-geral">
+      <GestorImediato d={d} mudou={mudou} />
       <div className="perfil-kpis">
         <div className="pk"><small>Aulas no semestre</small><b>{s ? s.aulas : "—"}</b><span className="mudo">{s ? `${s.realizadas} dadas · ${s.horas} h` : "escolha o semestre"}</span></div>
         {d.termos ? <div className="pk"><small>Termo de {d.termos.atual?.rotulo || "—"}</small>
@@ -198,7 +199,6 @@ function VisaoGeral({ d }: { d: any }) {
             {d.dados.certificacoes.map((c: any) => <Badge key={c.nome} tipo={c.vencida ? "erro" : "ok"}>{c.nome}{c.valido_ate ? ` até ${dataBR(c.valido_ate)}` : ""}</Badge>)}
           </div>
           <h4>Uniforme</h4>
-          {d.dados.gestor_imediato && <p className="sub">Gestor imediato: <b>{d.dados.gestor_imediato}</b></p>}
           {CAMPOS_UNIFORME.some(([k]) => d.dados.uniforme?.[k]) ? <ul className="lista-limpa disp">
             {CAMPOS_UNIFORME.filter(([k]) => d.dados.uniforme?.[k]).map(([k, rot]) => <li key={k}><b>{rot}</b> <small>{d.dados.uniforme[k]}</small></li>)}
           </ul> : <p className="mudo">Tamanhos não informados (aba Uniforme).</p>}
@@ -538,21 +538,18 @@ const CAMPOS_UNIFORME: [string, string, string[] | null, string][] = [
 function Uniforme({ d, mudou }: { d: any; mudou: () => void }) {
   const { pode, aviso } = useApp();
   const editavel = pode("cadastros.editar");
-  const inicial = () => ({ gestor_imediato: d.dados.gestor_imediato || "", ...Object.fromEntries(CAMPOS_UNIFORME.map(([k]) => [k, d.dados.uniforme?.[k] || ""])) });
+  const inicial = () => ({ ...Object.fromEntries(CAMPOS_UNIFORME.map(([k]) => [k, d.dados.uniforme?.[k] || ""])) });
   const [v, setV] = useState<Record<string, string>>(inicial);
   const [salvando, setSalvando] = useState(false);
   const salvar = async () => {
     setSalvando(true);
-    try { await api.put(`/api/instrutores/${d.dados.id}/uniforme`, v); aviso("Uniforme e gestor salvos."); mudou(); }
+    try { await api.put(`/api/instrutores/${d.dados.id}/uniforme`, v); aviso("Uniforme salvo."); mudou(); }
     catch (e: any) { aviso(e.message, "erro"); } finally { setSalvando(false); }
   };
   const vazio = CAMPOS_UNIFORME.every(([k]) => !v[k]);
   return (
     <div className="unif-perfil">
       <div className="unif-cartoes">
-        <div className="unif-cartao unif-gestor"><small>Gestor imediato</small>
-          {editavel ? <input value={v.gestor_imediato} maxLength={120} placeholder="Nome do gestor" onChange={(e) => setV({ ...v, gestor_imediato: e.target.value })} />
-            : <b>{v.gestor_imediato || "—"}</b>}</div>
         {CAMPOS_UNIFORME.map(([k, rot, ops, dica]) => <div key={k} className="unif-cartao"><small>{rot}</small>
           {!editavel ? <b>{v[k] || "—"}</b>
             : ops ? <select value={v[k]} onChange={(e) => setV({ ...v, [k]: e.target.value })}><option value="">—</option>{ops.map((o) => <option key={o}>{o}</option>)}</select>
@@ -561,6 +558,32 @@ function Uniforme({ d, mudou }: { d: any; mudou: () => void }) {
       </div>
       {vazio && <p className="sub">Tamanhos ainda não informados: o próprio instrutor pode preencher pelo portal (Meus dados), ou preencha aqui.</p>}
       {editavel && <div className="acoes-linha"><button className="btn btn-primario" disabled={salvando} onClick={salvar}>{salvando ? "Salvando…" : "Salvar"}</button></div>}
+    </div>
+  );
+}
+
+/** Gestor imediato do instrutor (Visão geral): quem altera cadastros edita ali mesmo. */
+function GestorImediato({ d, mudou }: { d: any; mudou?: () => void }) {
+  const { pode, aviso } = useApp();
+  const editavel = pode("cadastros.editar") && !!mudou;
+  const [editando, setEditando] = useState(false);
+  const [v, setV] = useState<string>(d.dados.gestor_imediato || "");
+  const salvar = async () => {
+    try { await api.put(`/api/instrutores/${d.dados.id}/uniforme`, { gestor_imediato: v }); aviso("Gestor imediato salvo."); setEditando(false); mudou?.(); }
+    catch (e: any) { aviso(e.message, "erro"); }
+  };
+  return (
+    <div className="gestor-linha">
+      <span className="mudo">👤 Gestor imediato:</span>
+      {editando ? <>
+        <input autoFocus value={v} maxLength={120} placeholder="Nome do gestor" onChange={(e) => setV(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") salvar(); if (e.key === "Escape") setEditando(false); }} />
+        <button className="btn btn-pequeno btn-primario" onClick={salvar}>Salvar</button>
+        <button className="btn btn-pequeno" onClick={() => { setV(d.dados.gestor_imediato || ""); setEditando(false); }}>Cancelar</button>
+      </> : <>
+        <b>{d.dados.gestor_imediato || "não informado"}</b>
+        {editavel && <button className="btn-link" onClick={() => setEditando(true)}>{d.dados.gestor_imediato ? "alterar" : "informar"}</button>}
+      </>}
     </div>
   );
 }
