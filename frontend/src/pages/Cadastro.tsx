@@ -42,7 +42,7 @@ const AJUDA: Record<string, string> = {
   competencias: "Quais unidades curriculares cada instrutor está habilitado a ministrar.",
   disponibilidade_instrutores: "Uma linha por instrutor: os turnos em que pode dar aula em cada dia e a carga conforme a modalidade. Mensalista tem jornada semanal fixa (aulas até 90% dela); horista recebe todo mês um termo de horas, que define as horas de aula do mês e pode mudar. Os turnos e dias se editam no cadastro do instrutor.",
   ucs: "Disciplinas da matriz: carga horária, quantas aulas por semana e o tipo de sala exigido (ex.: laboratório de informática).",
-  cursos: "Navegue por área → curso → versão da matriz → UCs. A sigla do curso (ex.: ELT) entra no código das turmas (HTC-ELT-12); cada tipo de oferta pode ter a sua versão da matriz (ex.: AIT ou HTC). As outras abas trazem as listas completas para consulta e edição em lote.",
+  cursos: "Navegue por área → curso → versão → UCs. O curso tem UMA sigla (ex.: ELT), que entra no código das turmas (HTC-ELT-12); quando o currículo muda por público — PAGANTE, SEDU, AIT… — cada um é uma versão do mesmo curso, com a sua lista de UCs, e a turma escolhe a versão dela.",
   matrizes: "Versões da matriz de cada curso e, dentro de cada versão, a lista de UCs dela (cada versão pode ter UCs diferentes).",
   ambientes: "Salas, laboratórios e oficinas: capacidade de alunos, tipo e equipamentos. O sistema só coloca a aula em sala compatível.",
   tipos_ambiente: "Categorias de sala (ex.: sala teórica, laboratório de informática) usadas para casar disciplina e sala.",
@@ -122,6 +122,7 @@ export function Formulario({ meta, valores, setValores }: { meta: EntMeta; valor
     if (k === "curso_id" && meta.chave === "turmas") {
       const c = cursos.find((x: any) => String(x.id) === String(v));
       if (c?.unidade_id && String(c.unidade_id) !== String(valores.unidade_id)) { n.unidade_id = c.unidade_id; n.turno_id = ""; }
+      n.matriz_id = "";  // a versão (PAGANTE, SEDU, AIT…) é do curso escolhido
     }
     setValores(n);
   };
@@ -136,6 +137,8 @@ export function Formulario({ meta, valores, setValores }: { meta: EntMeta; valor
   const render = (c: CampoMeta) => {
     if (c.tipo === "competencias") return <CompetenciasUCs key={c.nome} valores={valores} set={(v) => set("ucs_competencia", v)} />;
     if (c.tipo === "jornada") return <JornadaInstrutor key={c.nome} valores={valores} setVarios={setVarios} />;
+    if (c.nome === "matriz_id" && meta.chave === "turmas") return <VersaoDoCurso key={c.nome} c={c} cursoId={valores.curso_id} v={valores.matriz_id}
+      set={(v) => set("matriz_id", v)} />;
     return <CampoEntrada key={c.nome} c={c} v={valores[c.nome]} set={(v) => set(c.nome, v)} unidadeId={unidadeCtx}
       excluir={c.nome === "areas_ids" ? valores.area_id : undefined} />;
   };
@@ -603,4 +606,18 @@ function ordenarInstrutores(itens: any[], ordem: string, ad: Record<number, any>
     ocupacao_menor: (x, y) => o(x) - o(y), alertas: (x, y) => a(y) - a(x),
   };
   return f[ordem] ? [...itens].sort((x, y) => f[ordem](x, y) || String(x.nome).localeCompare(String(y.nome))) : itens;
+}
+
+/** Turma: versão do curso (mesma sigla, currículos por público — PAGANTE, SEDU, AIT…), só as versões do curso escolhido. */
+function VersaoDoCurso({ c, cursoId, v, set }: { c: CampoMeta; cursoId: any; v: any; set: (v: any) => void }) {
+  const r = useCarregar<any>(() => (cursoId ? api.get(`/api/cadastros/matrizes?curso_id=${cursoId}&por_pagina=100&ativo=true`) : Promise.resolve(null)), [cursoId]);
+  const vs: any[] = (r.dados?.itens || []).filter((m: any) => m.situacao !== "encerrada");
+  return (
+    <Campo rotulo={c.rotulo} ajuda={c.ajuda}>
+      <select value={v ?? ""} disabled={!cursoId} onChange={(e) => set(e.target.value)}>
+        <option value="">{cursoId ? (vs.length ? "Automática (a vigente do tipo de oferta)" : "— o curso ainda não tem versão —") : "Escolha o curso primeiro"}</option>
+        {vs.map((m: any) => <option key={m.id} value={m.id}>{m.tipo_oferta || "Todos os públicos"} · versão {m.versao}{m.situacao !== "vigente" ? ` (${m.situacao})` : ""}</option>)}
+      </select>
+    </Campo>
+  );
 }

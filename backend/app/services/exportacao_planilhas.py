@@ -326,7 +326,7 @@ def linhas_cadastro(db: Session, tipo: str, unidades=None) -> list[list]:
                 cod = {u.id: u.codigo for u in ucs}
                 for u in ucs:
                     pre = [cod[p] for p in db.scalars(select(UCPrerequisito.prerequisito_id).where(UCPrerequisito.uc_id == u.id)) if p in cod]
-                    res.append([c.codigo, c.nome, areas.get(c.area_id, ""), c.modalidade, c.tipo, c.carga_horaria_total, m.versao, u.codigo, u.nome,
+                    res.append([c.codigo, c.nome, areas.get(c.area_id, ""), c.modalidade, c.tipo, c.carga_horaria_total, m.versao, m.tipo_oferta or "", u.codigo, u.nome,
                                 u.carga_horaria_total, u.encontros_semanais, "; ".join(t.nome for t in u.tipos_ambiente), u.sequencia, "; ".join(pre),
                                 u.certificacao_exigida])
     elif tipo == "ambientes":
@@ -360,12 +360,13 @@ def linhas_cadastro(db: Session, tipo: str, unidades=None) -> list[list]:
                         "; ".join(abrev[d] for d in dias), "; ".join(pleno), "; ".join(sup), "; ".join(cert), i.areas_competencia])
     elif tipo == "turmas":
         cursos = {c.id: c.codigo for c in db.scalars(select(Curso))}
-        matrizes = {m.id: m.versao for m in db.scalars(select(MatrizCurricular))}
+        mz = {m.id: m for m in db.scalars(select(MatrizCurricular))}
         abrev = ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"]
         for t in db.scalars(select(Turma).where(Turma.ativo.is_(True), Turma.simulacao_id.is_(None)).order_by(Turma.codigo)):
             if unidades is not None and t.unidade_id not in unidades:
                 continue
-            res.append([t.codigo, t.nome, cursos.get(t.curso_id), matrizes.get(t.matriz_id), unid.get(t.unidade_id), turnos_nome.get(t.turno_id, ""),
+            res.append([t.codigo, t.nome, cursos.get(t.curso_id), mz[t.matriz_id].versao if t.matriz_id in mz else None,
+                        (mz[t.matriz_id].tipo_oferta or "") if t.matriz_id in mz else "", unid.get(t.unidade_id), turnos_nome.get(t.turno_id, ""),
                         t.qtd_alunos, t.data_inicio.strftime("%d/%m/%Y"), t.data_fim.strftime("%d/%m/%Y"),
                         "; ".join(abrev[d] for d in sorted(t.dias_possiveis or [])), areas.get(t.area_id, ""),
                         "; ".join(abrev[d] for d in sorted(t.dias_ead or []))])

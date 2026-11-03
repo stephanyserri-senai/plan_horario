@@ -17,7 +17,9 @@ UC transversal/técnica, substituição, solicitações, quadro 5:4...) estão e
   (UC de 20 h no matutino = 22 aulas). "hora_aula" (60 min) é só opção nas configurações.
 - Ausências do instrutor: PL (planejamento) e PJ (projeto) ficam na escola; TR (treinamento) libera das aulas
   (não é substituto possível e o gerador evita).
-- Matriz curricular por curso com versões por tipo de oferta (`tipo_oferta`, ex.: AIT, HTC); sem pré-requisitos.
+- Curso com UMA sigla; versões da matriz por público (`matrizes_curriculares.tipo_oferta`, texto livre até 30: PAGANTE, SEDU, AIT, HTC…;
+  única por curso + versão + público); a turma escolhe a versão (`matriz_id` no formulário, filtrado pelo curso; vazio = `_matriz_padrao`);
+  planilha de estrutura/turmas com a coluna "Público / versão do curso" (`oferta`). Sem pré-requisitos.
 - EPIs: cadastrados no curso (`epis_curso`); cada turma recebe o controle (`epis_turma`: quantidade, prazo, comprado/separado,
   entregue) via `services/epis.sincronizar_turma`, chamado ao criar/alterar/duplicar/importar turma. Curso com
   `dispensa_epi` não precisa de EPI (lista vazia, não aparece como pendente).

@@ -348,6 +348,9 @@ def _derivar(db: Session, ent: str, dados: dict, obj=None) -> dict:
                         if tipo == "PFP":  # turma de manhã e tarde (08–12 e 13–17)
                             rot, turno = "PFP (manhã e tarde)", None
                         d["nome"] = f"{curso.nome} {num}" + (f" – {rot}" if rot else "") + (f" ({turno.nome})" if turno else "")
+                        mz = db.get(MatrizCurricular, int(d["matriz_id"])) if d.get("matriz_id") else None
+                        if mz is not None and mz.tipo_oferta and mz.tipo_oferta != tipo:  # público da versão (ex.: SEDU)
+                            d["nome"] += f" · {mz.tipo_oferta}"
         if "dias_ead" in d or "dias_possiveis" in d:
             from app.services.planejamento import dias_com_ead
             ead = d["dias_ead"] if "dias_ead" in d else (obj.dias_ead if obj else [])
@@ -998,7 +1001,7 @@ def nova_versao_matriz(id_: int, dados: dict = Body(...), db: Session = Depends(
     m = db.get(MatrizCurricular, id_)
     if m is None:
         raise NaoEncontrado("Matriz não encontrada.")
-    tipo = (dados.get("tipo_oferta", m.tipo_oferta) or "").strip().upper() or None
+    tipo = (dados.get("tipo_oferta", m.tipo_oferta) or "").strip().upper()[:30] or None  # público/versão (PAGANTE, SEDU, AIT...)
     if not str(dados.get("versao") or "").strip():
         raise EntradaInvalida("Informe o nome da nova versão (ex.: 2027 ou 2027-AIT).")
     nova = MatrizCurricular(curso_id=m.curso_id, versao=str(dados["versao"]).strip(), vigencia_inicio=dados.get("vigencia_inicio") or None, situacao="rascunho",

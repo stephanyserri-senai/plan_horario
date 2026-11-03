@@ -130,3 +130,9 @@ echo "Gerado backend/sql/atualizacao_0021.sql"
   ALEMBIC_DATABASE_URL="postgresql+psycopg://usuario:senha@host/banco" python -m alembic upgrade 0021:0022 --sql
 } > sql/atualizacao_0022.sql
 echo "Gerado backend/sql/atualizacao_0022.sql"
+{
+  echo "-- Atualização 0022 -> 0023: versões do mesmo curso por público (PAGANTE, SEDU, AIT...): o público aceita até 30"
+  echo "-- caracteres e a versão passa a ser única por curso + versão + público. Não apaga nada. Cole no SQL Editor e clique em Run."
+  ALEMBIC_DATABASE_URL="postgresql+psycopg://usuario:senha@host/banco" python -m alembic upgrade 0022:0023 --sql
+} > sql/atualizacao_0023.sql
+echo "Gerado backend/sql/atualizacao_0023.sql"

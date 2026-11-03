@@ -1609,5 +1609,15 @@ ALTER TABLE usuarios ADD COLUMN trocar_senha BOOLEAN DEFAULT false NOT NULL;
 
 UPDATE alembic_version SET version_num='0022' WHERE alembic_version.version_num = '0021';
 
+-- Running upgrade 0022 -> 0023
+
+ALTER TABLE matrizes_curriculares ALTER COLUMN tipo_oferta TYPE VARCHAR(30);
+
+ALTER TABLE matrizes_curriculares DROP CONSTRAINT IF EXISTS matrizes_curriculares_curso_id_versao_key;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_matriz_curso_versao_publico ON matrizes_curriculares (curso_id, versao, (coalesce(tipo_oferta, '')));
+
+UPDATE alembic_version SET version_num='0023' WHERE alembic_version.version_num = '0022';
+
 COMMIT;
 

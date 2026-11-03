@@ -169,6 +169,7 @@ SPECS: dict[str, dict] = {
     "turmas": {"chave": ["codigo"], "campos": {
         "codigo": ("str", True, ["turma", "cod_turma", "codigo_turma", "codigo_da_turma"]), "nome": ("str", False, ["nome_turma", "nome_da_turma"]),
         "curso_codigo": ("str", True, ["curso", "codigo_do_curso"]), "versao": ("str", True, ["versao_matriz", "matriz", "versao_da_matriz"]),
+        "oferta": ("str", False, ["publico_versao_do_curso", "publico_versao", "publico", "versao_do_curso", "tipo_de_oferta", "oferta"]),
         "unidade_codigo": ("str", True, ["unidade"]), "turno_codigo": ("str", False, ["turno"]), "qtd_alunos": ("int", False, ["alunos", "quantidade_alunos"]),
         "data_inicio": ("date", True, ["inicio"]), "data_fim": ("date", True, ["fim", "termino"]), "dias_possiveis": ("dias", False, ["dias", "dias_de_aula"]),
         "dias_ead": ("dias", False, ["dias_ead", "dias_ead_turma_80_20", "ead"]), "num_grupos": ("int", False, ["grupos"]), "area": ("str", False, ["area_tecnologica"])}},
@@ -193,10 +194,11 @@ SPECS: dict[str, dict] = {
         "tempo_preparacao_min": ("int", False, ["preparacao_entre_aulas_min"]),
         "area": ("str", False, ["area_tecnologica", "areas", "areas_que_usam"])}},
     # ---- planilhas únicas (cada linha grava também os registros ligados a ela)
-    "estrutura_curricular": {"chave": ["curso_codigo", "versao", "uc_codigo"], "campos": {
+    "estrutura_curricular": {"chave": ["curso_codigo", "versao", "oferta", "uc_codigo"], "campos": {
         "curso_codigo": ("str", True, ["codigo_do_curso", "cod_curso"]), "curso_nome": ("str", True, ["nome_do_curso", "curso"]),
         "area": ("str", True, ["area_tecnologica"]), "modalidade": ("str", False, []), "tipo_curso": ("str", False, ["tipo_do_curso", "tipo_de_curso"]),
         "ch_curso": ("int", False, ["carga_horaria_do_curso_h", "carga_horaria_do_curso"]), "versao": ("str", False, ["versao_da_matriz", "matriz"]),
+        "oferta": ("str", False, ["publico_versao_do_curso", "publico_versao", "publico", "versao_do_curso", "tipo_de_oferta", "oferta"]),
         "uc_codigo": ("str", True, ["codigo_da_uc", "codigo_da_unidade_curricular", "cod_uc"]),
         "uc_nome": ("str", True, ["nome_da_uc", "unidade_curricular", "nome_da_unidade_curricular"]),
         "carga_horaria_total": ("int", True, ["carga_horaria_da_uc_h", "carga_horaria_da_uc", "ch_da_uc"]),
@@ -327,9 +329,18 @@ class Resolvedor:
     def curso(self, cod):
         return self._get(("c", cod), lambda: self.db.scalar(select(Curso.id).where(func.lower(Curso.codigo) == cod.lower())))
 
-    def matriz(self, curso_cod, versao):
+    def matriz(self, curso_cod, versao, oferta=None):
+        """Versão da matriz do curso; com o público/versão (ex.: PAGANTE, SEDU, AIT), a daquele público."""
         cid = self.curso(curso_cod) if curso_cod else None
-        return self._get(("m", cid, versao), lambda: self.db.scalar(select(MatrizCurricular.id).where(MatrizCurricular.curso_id == cid, MatrizCurricular.versao == versao)) if cid else None)
+        of = (oferta or "").strip().upper() or None
+
+        def busca():
+            ms = self.db.execute(select(MatrizCurricular.id, MatrizCurricular.tipo_oferta).where(
+                MatrizCurricular.curso_id == cid, MatrizCurricular.versao == versao)).all()
+            if of:
+                return next((i for i, t in ms if (t or "").upper() == of), None)
+            return next((i for i, t in ms if not t), None) or (ms[0][0] if len(ms) == 1 else None)
+        return self._get(("m", cid, versao, of), busca if cid else (lambda: None))
 
     def turno(self, unidade_id, cod):
         return self._get(("t", unidade_id, cod), lambda: self.db.scalar(select(Turno.id).where(Turno.unidade_id == unidade_id, (func.lower(Turno.codigo) == cod.lower()) | (func.lower(Turno.nome) == cod.lower()))))
@@ -416,7 +427,8 @@ def _preparar_estrutura(db, r, v, E, A):
         if v.get(k_src) is not None:
             curso[k_dst] = v[k_src]
     _area(r, v, curso, E, A)
-    mid = r.matriz(v["curso_codigo"], versao)
+    oferta = (v.get("oferta") or "").strip().upper()[:30] or None
+    mid = r.matriz(v["curso_codigo"], versao, oferta)
     ex = db.scalars(select(UnidadeCurricular).where(UnidadeCurricular.matriz_id == mid, func.lower(UnidadeCurricular.codigo) == v["uc_codigo"].lower())).first() if mid else None
     d = {"codigo": v["uc_codigo"], "nome": v["uc_nome"], "carga_horaria_total": v["carga_horaria_total"],
          "encontros_semanais": v["encontros_semanais"] or 1, "duracao_bloco_periodos": 4}
@@ -436,7 +448,7 @@ def _preparar_estrutura(db, r, v, E, A):
             E.append("a matriz já é usada por turmas: para mudar a carga horária, use uma nova versão da matriz (coluna 'Versão da matriz')")
     if ex is not None:
         d["matriz_id"] = ex.matriz_id
-    d["_curso"], d["_versao"] = curso, versao
+    d["_curso"], d["_versao"], d["_oferta"] = curso, versao, oferta
     d["_tipos_nomes"] = _lista(v["tipos_ambiente"])
     for t in d["_tipos_nomes"]:
         if not r.tipo_amb(t):
@@ -558,7 +570,7 @@ def _preparar(db: Session, r: Resolvedor, tipo: str, v: dict) -> tuple[dict | No
         ex = db.scalars(select(MatrizCurricular).where(MatrizCurricular.curso_id == cid, MatrizCurricular.versao == v["versao"])).first()
         return {"curso_id": cid, "versao": v["versao"], "vigencia_inicio": v["vigencia_inicio"]}, ex, E, A
     if tipo == "ucs":
-        mid = r.matriz(v["curso_codigo"], v["versao"])
+        mid = r.matriz(v["curso_codigo"], v["versao"], v.get("oferta"))
         if not mid:
             return None, None, [f"matriz {v['curso_codigo']} v{v['versao']} não cadastrada"], A
         ex = db.scalars(select(UnidadeCurricular).where(UnidadeCurricular.matriz_id == mid, func.lower(UnidadeCurricular.codigo) == v["codigo"].lower())).first()
@@ -575,7 +587,7 @@ def _preparar(db: Session, r: Resolvedor, tipo: str, v: dict) -> tuple[dict | No
         d["_tipos"] = tipos
         return d, ex, E, A
     if tipo == "turmas":
-        mid = r.matriz(v["curso_codigo"], v["versao"])
+        mid = r.matriz(v["curso_codigo"], v["versao"], v.get("oferta"))
         uid = r.unidade(v["unidade_codigo"])
         if not mid:
             E.append(f"matriz {v['curso_codigo']} v{v['versao']} não cadastrada")
@@ -640,7 +652,7 @@ def _preparar(db: Session, r: Resolvedor, tipo: str, v: dict) -> tuple[dict | No
             E.append(f"instrutor '{v['matricula']}' não cadastrado")
         q = select(UnidadeCurricular.id).where(func.lower(UnidadeCurricular.codigo) == v["uc_codigo"].lower())
         if v["curso_codigo"] and v["versao"]:
-            q = q.where(UnidadeCurricular.matriz_id == r.matriz(v["curso_codigo"], v["versao"]))
+            q = q.where(UnidadeCurricular.matriz_id == r.matriz(v["curso_codigo"], v["versao"], v.get("oferta")))
         ucs = db.scalars(q).all()
         if len(ucs) != 1:
             E.append(f"UC '{v['uc_codigo']}' {'não encontrada' if not ucs else 'ambígua (informe curso e versão da matriz)'}")
@@ -886,9 +898,11 @@ def _confirmar_estrutura(db: Session, ctx, imp: Importacao, itens: list[dict]) -
             for k, v in c.items():
                 if v is not None and getattr(curso, k) != v:
                     setattr(curso, k, v)
-        mat = db.scalars(select(MatrizCurricular).where(MatrizCurricular.curso_id == curso.id, MatrizCurricular.versao == ext["_versao"])).first()
+        of = ext.get("_oferta")
+        mat = db.scalars(select(MatrizCurricular).where(MatrizCurricular.curso_id == curso.id, MatrizCurricular.versao == ext["_versao"],
+                                                        (func.upper(MatrizCurricular.tipo_oferta) == of) if of else MatrizCurricular.tipo_oferta.is_(None))).first()
         if mat is None:
-            mat = MatrizCurricular(curso_id=curso.id, versao=ext["_versao"], situacao="vigente", ativo=True)
+            mat = MatrizCurricular(curso_id=curso.id, versao=ext["_versao"], tipo_oferta=of, situacao="vigente", ativo=True)
             db.add(mat)
             db.flush()
             rel["matrizes"] += 1

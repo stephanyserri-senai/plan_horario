@@ -15,6 +15,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
@@ -191,14 +192,15 @@ class MatrizCurricular(TimestampMixin, Base):
     """Uma versão de matriz é imutável depois de utilizada por uma turma; novas
     alterações exigem uma nova versão (ver services/cadastros.py)."""
     __tablename__ = "matrizes_curriculares"
-    __table_args__ = (UniqueConstraint("curso_id", "versao"),)
+    # única por curso + versão + público (o mesmo curso tem, p. ex., a 2026 para PAGANTE e a 2026 para SEDU)
+    __table_args__ = (Index("uq_matriz_curso_versao_publico", "curso_id", "versao", text("coalesce(tipo_oferta, '')"), unique=True),)
     id: Mapped[int] = mapped_column(primary_key=True)
     curso_id: Mapped[int] = mapped_column(ForeignKey("cursos.id"), index=True)
     versao: Mapped[str] = mapped_column(String(30))
     vigencia_inicio: Mapped[date | None] = mapped_column(Date)
     situacao: Mapped[str] = mapped_column(String(20), default="rascunho")  # rascunho|vigente|encerrada
-    # versão personalizada para um tipo de oferta (ex.: HTC, AIT); vazio = vale para todas
-    tipo_oferta: Mapped[str | None] = mapped_column(String(10))
+    # público/versão do curso (ex.: PAGANTE, SEDU, AIT, HTC): mesma sigla, currículos diferentes; vazio = vale para todos
+    tipo_oferta: Mapped[str | None] = mapped_column(String(30))
     matriz_origem_id: Mapped[int | None] = mapped_column(ForeignKey("matrizes_curriculares.id"))
     ativo: Mapped[bool] = mapped_column(Boolean, default=True)
 

@@ -40,8 +40,8 @@ def test_modelos_e_importacao_em_planilha_unica(db, mundo):
     db.commit()
     # 1) estrutura curricular: 1 linha por UC; cria curso, matriz, UCs, tipos de sala e pré-requisito
     est = preencher(db, "estrutura_curricular", [
-        ["MEC-TEC", "Técnico em Mecânica", "MECÂNICA", "presencial", "técnico", 1200, "2026.1", "DTM", "Desenho Técnico Mecânico", 40, 1, "Sala de aula", 1, "", ""],
-        ["MEC-TEC", "Técnico em Mecânica", "MECÂNICA", "presencial", "técnico", 1200, "2026.1", "USI", "Usinagem", 60, 2, "Oficina mecânica", 2, "DTM", "NR-12"],
+        ["MEC-TEC", "Técnico em Mecânica", "MECÂNICA", "presencial", "técnico", 1200, "2026.1", "", "DTM", "Desenho Técnico Mecânico", 40, 1, "Sala de aula", 1, "", ""],
+        ["MEC-TEC", "Técnico em Mecânica", "MECÂNICA", "presencial", "técnico", 1200, "2026.1", "", "USI", "Usinagem", 60, 2, "Oficina mecânica", 2, "DTM", "NR-12"],
     ])
     imp, rel = importar(db, m.ctx, "estrutura_curricular", est)
     assert len(imp.previa["itens"]) == 2  # as linhas EXEMPLO foram ignoradas
@@ -84,7 +84,7 @@ def test_modelos_e_importacao_em_planilha_unica(db, mundo):
     assert paulo.nivel == "basico"
 
     # 4) turmas: UCs da matriz ligadas automaticamente
-    tur = preencher(db, "turmas", [["MEC-1", "Mecânica 2026/2 Manhã", "MEC-TEC", "2026.1", "BEIRA-MAR", "Manhã", 28, "03/08/2026", "18/12/2026", "seg a sex", "", "sex"]])
+    tur = preencher(db, "turmas", [["MEC-1", "Mecânica 2026/2 Manhã", "MEC-TEC", "2026.1", "", "BEIRA-MAR", "Manhã", 28, "03/08/2026", "18/12/2026", "seg a sex", "", "sex"]])
     imp, rel = importar(db, m.ctx, "turmas", tur)
     t = db.scalar(select(Turma).where(Turma.codigo == "MEC-1"))
     assert t.area_id == curso.area_id

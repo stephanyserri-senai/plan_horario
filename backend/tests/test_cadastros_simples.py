@@ -100,7 +100,7 @@ def test_cadastros_preenchem_campos_repetidos(db, mundo):
     # metadados: campos automáticos ficam fora do formulário
     meta = {m["chave"]: m for m in c.get("/api/meta/entidades", headers=h).json()}
     sec = {f["nome"]: f["secao"] for f in meta["turmas"]["campos"]}
-    assert sec["unidade_id"] == "auto" and sec["codigo"] == "auto" and sec["_numero"] == "principal" and sec["matriz_id"] == "avancado"
+    assert sec["unidade_id"] == "auto" and sec["codigo"] == "auto" and sec["_numero"] == "principal" and sec["matriz_id"] == "principal"
 
 
 def test_regra_dos_90_por_cento_no_cadastro(db, mundo):

@@ -36,7 +36,7 @@ ENTIDADES: dict[str, dict] = {
     "cursos": {"model": Curso, "rotulo": "Cursos", "grupo": "Acadêmico", "label": "{codigo} – {nome}", "busca": ["codigo", "nome", "eixo_tecnologico"],
                "unidade_col": "unidade_id", "obrigatorios": ["area_id"]},
     "matrizes": {"model": MatrizCurricular, "rotulo": "Matrizes curriculares", "grupo": "Acadêmico", "label": "{versao}", "busca": ["versao"],
-                 "opcoes": {"situacao": ["rascunho", "vigente", "encerrada"], "tipo_oferta": ["HTC", "AIT", "AIB", "QUA", "PFP", "EMP", "APE", "ESP"]}},
+                 "opcoes": {"situacao": ["rascunho", "vigente", "encerrada"]}},
     "ucs": {"model": UnidadeCurricular, "rotulo": "Unidades curriculares", "grupo": "Acadêmico", "label": "{codigo} – {nome}",
             "busca": ["codigo", "nome", "competencias"], "extras": {"tipos_ambiente_ids": {"tipo": "multiref", "ref": "tipos_ambiente", "rotulo": "Tipos de ambiente aceitos"}},
             "opcoes": {"categoria": ["tecnica", "transversal"], "modalidade": ["presencial", "ead"]}},
@@ -84,6 +84,18 @@ TIPOS_OFERTA = [
     {"valor": "ESP", "rotulo": "ESP – Especialização técnica"},
 ]
 
+# Público/versão do mesmo curso (mesma sigla, currículos diferentes): sugestões; vale qualquer outro nome
+PUBLICOS_VERSAO = [
+    {"valor": "PAGANTE", "rotulo": "PAGANTE – aluno pagante"},
+    {"valor": "SEDU", "rotulo": "SEDU – parceria com a Secretaria de Educação"},
+    {"valor": "AIT", "rotulo": "AIT – Aprendizagem industrial técnica"},
+    {"valor": "AIB", "rotulo": "AIB – Aprendizagem industrial básica"},
+    {"valor": "HTC", "rotulo": "HTC – Habilitação técnica"},
+    {"valor": "GRATUIDADE", "rotulo": "GRATUIDADE – vagas gratuitas"},
+    {"valor": "EMP", "rotulo": "EMP – Turma para empresa"},
+    {"valor": "QUA", "rotulo": "QUA – Qualificação profissional"},
+]
+
 # Formulários enxutos: o que aparece de cara, o que fica em "Mais opções" e (implícito) o que é
 # preenchido automaticamente a partir de outro cadastro (não aparece). Entidades sem entrada
 # mostram todos os campos.
@@ -95,8 +107,9 @@ FORMULARIOS: dict[str, dict] = {
                          "codigo": "Usada no código das turmas: tipo de oferta + sigla + número = HTC-ELT-12.",
                          "area_id": "A unidade é a da área."}},
     "matrizes": {"principais": ["curso_id", "versao", "tipo_oferta", "vigencia_inicio", "situacao"], "avancados": ["matriz_origem_id"],
-                 "rotulos": {"tipo_oferta": "Tipo de oferta (versão personalizada)"},
-                 "ajuda": {"tipo_oferta": "Ex.: HTC ou AIT, quando o curso tem currículo próprio para cada oferta. Vazio = vale para todas."}},
+                 "rotulos": {"tipo_oferta": "Público / versão do curso (ex.: PAGANTE, SEDU, AIT)"},
+                 "ajuda": {"tipo_oferta": "O curso tem uma sigla só (ex.: ELT); cada público com currículo próprio — PAGANTE, SEDU, AIT… — é uma "
+                                          "versão. Vazio = vale para todos."}},
     "ucs": {"principais": ["matriz_id", "codigo", "nome", "carga_horaria_total", "modalidade", "categoria", "encontros_semanais", "tipos_ambiente_ids", "sequencia", "certificacao_exigida"],
             "avancados": ["modulo", "ch_teorica", "ch_pratica", "capacidade_min", "capacidade_max", "divide_grupos", "prioridade", "competencias", "restricoes_pedagogicas"],
             "rotulos": {"encontros_semanais": "Dias de aula por semana", "sequencia": "Ordem na matriz", "certificacao_exigida": "Certificação exigida do instrutor",
@@ -110,13 +123,14 @@ FORMULARIOS: dict[str, dict] = {
                   "avancados": ["capacidade_operacional", "localizacao", "tempo_preparacao_min", "maquinas", "requisitos_seguranca"],
                   "rotulos": {"capacidade_fisica": "Lugares", "capacidade_operacional": "Alunos recomendados (padrão: igual aos lugares)",
                               "tipo_ambiente_id": "Tipo de sala"}},
-    "turmas": {"principais": ["curso_id", "_numero", "_tipo_oferta", "turno_id", "qtd_alunos", "modulos", "modulo_atual", "data_inicio", "data_fim",
+    "turmas": {"principais": ["curso_id", "matriz_id", "_numero", "_tipo_oferta", "turno_id", "qtd_alunos", "modulos", "modulo_atual", "data_inicio", "data_fim",
                               "dias_possiveis", "dias_ead"],
-               "avancados": ["matriz_id", "nome", "num_grupos", "prioridade", "necessidades_acessibilidade", "restricoes", "situacao"],
-               "rotulos": {"dias_possiveis": "Dias de aula", "dias_ead": "Dias EAD (turma 80-20)", "matriz_id": "Versão da matriz (padrão: a vigente do curso)",
+               "avancados": ["nome", "num_grupos", "prioridade", "necessidades_acessibilidade", "restricoes", "situacao"],
+               "rotulos": {"dias_possiveis": "Dias de aula", "dias_ead": "Dias EAD (turma 80-20)", "matriz_id": "Versão do curso (PAGANTE, SEDU, AIT…)",
                            "nome": "Nome (padrão: gerado a partir do curso)", "modulos": "Turma modular? Quantos módulos",
                            "modulo_atual": "Módulo em curso"},
-               "ajuda": {"dias_ead": "Nas turmas 80-20, marque a sexta (ou o dia de atividades a distância): o dia sai dos dias de aula "
+               "ajuda": {"matriz_id": "Mesma sigla, versões por público: escolha a da turma (ex.: SEDU). Vazio = a vigente do tipo de oferta, senão a geral.",
+                         "dias_ead": "Nas turmas 80-20, marque a sexta (ou o dia de atividades a distância): o dia sai dos dias de aula "
                                      "presencial e aparece na grade com a etiqueta EAD.",
                          "_numero": "Só o número: o código fica tipo de oferta + sigla do curso + número (ex.: HTC-ELT-12).",
                          "modulos": "Vazio = não modular (código HTC-ELT-12). Modular: um módulo por semestre e o código leva o módulo "
@@ -213,6 +227,8 @@ def campos(chave: str) -> list[dict]:
             f["ajuda"] = form["ajuda"][f["nome"]]
         if f["tipo"] == "oferta":
             f["opcoes"] = TIPOS_OFERTA
+        if chave == "matrizes" and f["nome"] == "tipo_oferta":  # público/versão: sugestões, aceita qualquer nome
+            f["tipo"], f["opcoes"] = "oferta", PUBLICOS_VERSAO
     return sorted(res, key=lambda f: ordem.get(f["nome"], 999))
 
 

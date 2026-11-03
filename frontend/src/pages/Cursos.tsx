@@ -17,7 +17,7 @@ function semCampos(meta: EntMeta | undefined, fixos: string[]): EntMeta | undefi
 
 type Edicao = { ent: "cursos" | "matrizes" | "ucs"; valores: any; fixos: string[]; titulo: string; copiarDe?: number };
 
-/** Cursos, matrizes e UCs por área: área → curso → versão (por tipo de oferta) → UCs, com classificação e carga horária. */
+/** Cursos, matrizes e UCs por área: área → curso → versão (por público: PAGANTE, SEDU, AIT…) → UCs, com classificação e carga horária. */
 export default function EstruturaCurricular({ visao = "estrutura" }: { visao?: string }) {
   const { pode, aviso } = useApp();
   const metas = useMeta();
@@ -163,7 +163,7 @@ export default function EstruturaCurricular({ visao = "estrutura" }: { visao?: s
       </div>}
 
       {!busca && !areaAtual && !curso && arv.dados && <>
-        <p className="sub">Escolha a área para ver os cursos; no curso ficam as versões da matriz (uma por tipo de oferta, ex.: AIT ou HTC) e as UCs.</p>
+        <p className="sub">Escolha a área para ver os cursos; no curso ficam as versões (mesma sigla, um currículo por público — ex.: PAGANTE, SEDU, AIT) e as UCs.</p>
         <div className="cur-grade">
           {areas.map((a: any) => {
             const turmas = a.cursos.reduce((t: number, c: any) => t + c.turmas_ativas.length, 0);
@@ -216,11 +216,11 @@ export default function EstruturaCurricular({ visao = "estrutura" }: { visao?: s
         {curso.turmas_ativas.length > 0 && <div className="cur-turmas"><small className="mudo">Turmas em andamento:</small>
           {curso.turmas_ativas.map((t: string) => <span key={t} className="chip-area">{t}</span>)}</div>}
 
-        <h4 className="cur-sec">Versões da matriz <small className="mudo">— uma por tipo de oferta quando o currículo muda (ex.: AIT e HTC)</small></h4>
+        <h4 className="cur-sec">Versões da matriz <small className="mudo">— mesma sigla, uma versão por público quando o currículo muda (ex.: PAGANTE, SEDU, AIT)</small></h4>
         <div className="versoes" role="tablist" aria-label="Versões da matriz">
           {curso.versoes.map((v: any) => (
             <button key={v.id} role="tab" aria-selected={v.id === versaoId} className={`versao ${v.id === versaoId ? "ativa" : ""}`} onClick={() => setVersaoId(v.id)}>
-              <b>{v.tipo_oferta || "Todas as ofertas"}</b> <span>versão {v.versao}</span>
+              <b>{v.tipo_oferta || "Todos os públicos"}</b> <span>versão {v.versao}</span>
               <small><Badge tipo={SITUACAO[v.situacao] || "info"}>{v.situacao}</Badge> {v.ucs} UC(s) · {v.ch_total} h{v.turmas ? ` · ${v.turmas} turma(s)` : ""}</small>
             </button>))}
           {editavel && <button className="versao versao-nova" onClick={() => { setErro(null); setEdicao(versao
@@ -229,14 +229,14 @@ export default function EstruturaCurricular({ visao = "estrutura" }: { visao?: s
             : { ent: "matrizes", fixos: ["curso_id", "matriz_origem_id", "situacao"], titulo: `Matriz de ${curso.codigo}`,
                 valores: { __novo: true, curso_id: curso.id, versao: String(new Date().getFullYear()), situacao: "rascunho" } }); }}>
             + {versao ? "Nova versão" : "Criar a matriz"}
-            <small>{versao ? "copia as UCs da versão aberta; ex.: uma para AIT e outra para HTC" : "depois cadastre as UCs e conclua o cadastro"}</small>
+            <small>{versao ? "copia as UCs da versão aberta; ex.: uma para PAGANTE e outra para SEDU" : "depois cadastre as UCs e conclua o cadastro"}</small>
           </button>}
         </div>
 
         {!versao && curso.versoes.length === 0 && <div className="cur-vazio">Este curso ainda não tem matriz. Crie a matriz e cadastre as UCs aqui mesmo.</div>}
         {versao && <>
           <div className="cursos-barra">
-            <span className="sub">{versao.tipo_oferta ? `Versão própria das turmas ${versao.tipo_oferta}.` : "Vale para todas as ofertas sem versão própria."}
+            <span className="sub">{versao.tipo_oferta ? `Versão do público ${versao.tipo_oferta}: as turmas desse público usam este currículo.` : "Vale para todos os públicos sem versão própria."}
               {versao.vigencia_inicio ? ` Vigente desde ${dataBR(versao.vigencia_inicio)}.` : ""}
               {ucs.dados?.em_uso_por_turmas ? ` Usada por ${ucs.dados.em_uso_por_turmas} turma(s).` : ""}</span>
             <span className="acoes-linha">
@@ -399,7 +399,7 @@ function ListaCursos({ areas, cursos, abrir, editarCurso, novoCurso, editavel, r
   );
 }
 
-/** Versões da matriz e as UCs de cada uma: cada versão (por tipo de oferta) tem a sua lista de UCs; abra a versão para ver,
+/** Versões da matriz e as UCs de cada uma: cada versão (por público: PAGANTE, SEDU, AIT…) tem a sua lista de UCs; abra a versão para ver,
  * incluir, editar, retirar ou reativar as UCs dela. */
 function ListaVersoes({ areas, cursos, abrir, editarVersao, editarUC, novaUC, concluirVersao, editavel, rev, mudou }: PropsLista) {
   const { aviso } = useApp();
@@ -444,7 +444,7 @@ function ListaVersoes({ areas, cursos, abrir, editarVersao, editarUC, novaUC, co
         <Chips valor={filtro} mudar={setFiltro} op={[["", "Todas"], ["vigente", "Vigentes"], ["rascunho", "Rascunho"], ["encerrada", "Encerradas"],
           ["cert", "🎓 Com UC que exige certificação"], ["fragil", `⚠ Com UC de 0 ou 1 instrutor${nFrageis ? ` (${nFrageis})` : ""}`]]} />
       </div>
-      <p className="sub">Cada curso tem uma matriz e, quando o currículo muda para um tipo de oferta (ex.: AIT ou HTC), uma versão própria — cada versão tem a sua
+      <p className="sub">Cada curso tem uma matriz e, quando o currículo muda para um público (ex.: PAGANTE, SEDU, AIT), uma versão própria com a mesma sigla — cada versão tem a sua
         lista de UCs. Clique na versão para ver as UCs dela. Para criar uma versão, abra o curso e use “+ Nova versão” (copia as UCs).</p>
       <ul className="lst">
         {versoes.map((v: any) => {
@@ -456,7 +456,7 @@ function ListaVersoes({ areas, cursos, abrir, editarVersao, editarUC, novaUC, co
             <li key={v.id} className={`lst-versao ${ab ? "aberta" : ""}`}>
               <div className="lst-linha" onClick={() => alternar(v.id)} role="button" aria-expanded={ab}>
                 <span className="cur-sigla">{v.curso.codigo}</span>
-                <span className="lst-id"><b><span className="lst-seta" aria-hidden="true">{ab ? "▾" : "▸"}</span> {v.tipo_oferta ? `Versão ${v.tipo_oferta}` : "Todas as ofertas"} · {v.versao}</b>
+                <span className="lst-id"><b><span className="lst-seta" aria-hidden="true">{ab ? "▾" : "▸"}</span> {v.tipo_oferta ? `Versão ${v.tipo_oferta}` : "Todos os públicos"} · {v.versao}</b>
                   <small className="mudo">{v.curso.nome}</small></span>
                 <span><Badge tipo={SITUACAO[v.situacao] || "info"}>{v.situacao}</Badge>{v.situacao !== "rascunho" && <span title="Versão cadastrada: lista de UCs fixa"> 🔒</span>}</span>
                 <span className="mudo lst-peq">{v.vigencia_inicio ? `desde ${dataBR(v.vigencia_inicio)}` : "sem data de vigência"}</span>
