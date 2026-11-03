@@ -45,3 +45,27 @@ def test_apagar_curso(db, mundo):
     assert not db.scalar(select(func.count()).select_from(CompetenciaInstrutor).where(CompetenciaInstrutor.uc_id == uid))
     # o curso com turmas ficou intacto
     assert db.get(Curso, m.curso.id) and db.scalar(select(func.count()).select_from(Turma).where(Turma.curso_id == m.curso.id)) == 2
+
+
+def test_apagar_uma_versao_so(db, mundo):
+    m = mundo
+    c = _cli()
+    novo = Curso(codigo="DUO", nome="Curso com duas versões", unidade_id=m.unidade.id)
+    db.add(novo)
+    db.flush()
+    v1 = MatrizCurricular(curso_id=novo.id, versao="1", tipo_oferta="PAGANTE", situacao="vigente")
+    v2 = MatrizCurricular(curso_id=novo.id, versao="100P", tipo_oferta="PAGANTE", situacao="vigente")
+    db.add_all([v1, v2])
+    db.flush()
+    db.add_all([UnidadeCurricular(matriz_id=v1.id, codigo="A", nome="A", carga_horaria_total=20),
+                UnidadeCurricular(matriz_id=v2.id, codigo="A", nome="A", carga_horaria_total=20)])
+    db.commit()
+    p = c.get(f"/api/matrizes/{v2.id}/exclusao").json()
+    assert p["pode_apagar"] and p["ucs"] == 1 and not p["ultima_versao"]
+    v1id, v2id = v1.id, v2.id
+    assert c.delete(f"/api/matrizes/{v2id}").status_code == 200
+    db.expire_all()
+    assert not db.scalar(select(func.count()).select_from(MatrizCurricular).where(MatrizCurricular.id == v2id))
+    assert db.scalar(select(func.count()).select_from(UnidadeCurricular).where(UnidadeCurricular.matriz_id == v1id)) == 1  # a outra ficou
+    # versão com turmas: recusada
+    assert c.delete(f"/api/matrizes/{m.matriz.id}").status_code == 409

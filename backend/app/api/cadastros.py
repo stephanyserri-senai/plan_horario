@@ -1196,3 +1196,65 @@ def apagar_curso(cid: int, db: Session = Depends(get_db), ctx: Contexto = Depend
                         depois={"versoes": len(mids), "ucs": len(ucs), "competencias": info["competencias"], "epis": info["epis"]})
     db.commit()
     return {k: v for k, v in info.items() if not k.startswith("_")}
+
+
+# ============================================================================ apagar uma versão da matriz (sem turmas)
+def _exclusao_versao(db: Session, m: MatrizCurricular) -> dict:
+    from app.models import Alocacao
+    ucs = list(db.scalars(select(UnidadeCurricular.id).where(UnidadeCurricular.matriz_id == m.id)))
+    turmas = db.scalars(select(Turma).where(Turma.matriz_id == m.id, Turma.simulacao_id.is_(None))).all()
+    realizadas = db.scalar(select(func.count()).select_from(Alocacao).where(Alocacao.uc_id.in_(ucs), Alocacao.status == "realizada")) if ucs else 0
+    comp = db.scalar(select(func.count()).select_from(CompetenciaInstrutor).where(CompetenciaInstrutor.uc_id.in_(ucs))) if ucs else 0
+    outras = db.scalar(select(func.count()).select_from(MatrizCurricular).where(MatrizCurricular.curso_id == m.curso_id, MatrizCurricular.id != m.id))
+    c = db.get(Curso, m.curso_id)
+    motivo = None
+    if turmas:
+        motivo = (f"A versão tem {len(turmas)} turma(s) ({', '.join(t.codigo for t in turmas[:5])}{'…' if len(turmas) > 5 else ''}): "
+                  "apague as turmas ou passe-as para outra versão antes.")
+    elif realizadas:
+        motivo = f"Há {realizadas} aula(s) realizada(s) nas UCs desta versão: o histórico não é apagado."
+    return {"versao": {"id": m.id, "versao": m.versao, "publico": m.tipo_oferta, "situacao": m.situacao},
+            "curso": {"id": c.id, "codigo": c.codigo, "nome": c.nome} if c else None,
+            "ucs": len(ucs), "turmas": len(turmas), "competencias": comp, "aulas_realizadas": realizadas,
+            "ultima_versao": not outras, "pode_apagar": motivo is None, "motivo": motivo, "_ucs": ucs}
+
+
+@router.get("/matrizes/{mid}/exclusao")
+def previa_exclusao_versao(mid: int, db: Session = Depends(get_db), ctx: Contexto = Depends(get_contexto)):
+    ctx.exigir("cadastros.editar")
+    m = db.get(MatrizCurricular, mid)
+    if m is None:
+        raise NaoEncontrado("Versão da matriz não encontrada.")
+    return {k: v for k, v in _exclusao_versao(db, m).items() if not k.startswith("_")}
+
+
+@router.delete("/matrizes/{mid}")
+def apagar_versao(mid: int, db: Session = Depends(get_db), ctx: Contexto = Depends(get_contexto)):
+    """Apaga uma versão da matriz (público + versão) com as UCs dela e as competências dos instrutores nessas UCs.
+    Só versão sem turmas. As outras versões do curso não mudam; o curso fica (sem versão, se era a única)."""
+    ctx.exigir("cadastros.editar")
+    m = db.get(MatrizCurricular, mid)
+    if m is None:
+        raise NaoEncontrado("Versão da matriz não encontrada.")
+    c = db.get(Curso, m.curso_id)
+    if c is not None:
+        _verificar_escopo(ctx, "cursos", c)
+    info = _exclusao_versao(db, m)
+    if not info["pode_apagar"]:
+        raise ConflitoValidacao(info["motivo"], codigo="VERSAO_EM_USO")
+    antes = auditoria.snapshot(m)
+    ucs = info["_ucs"]
+    db.execute(delete(Turma).where(Turma.matriz_id == m.id, Turma.simulacao_id.is_not(None)))
+    if ucs:
+        db.execute(delete(CompetenciaInstrutor).where(CompetenciaInstrutor.uc_id.in_(ucs)))
+        db.execute(delete(UCPrerequisito).where(UCPrerequisito.uc_id.in_(ucs) | UCPrerequisito.prerequisito_id.in_(ucs)))
+        db.execute(delete(UCRecurso).where(UCRecurso.uc_id.in_(ucs)))
+        db.execute(delete(UCTipoAmbiente).where(UCTipoAmbiente.uc_id.in_(ucs)))
+        db.execute(delete(UnidadeCurricular).where(UnidadeCurricular.id.in_(ucs)))
+    db.execute(MatrizCurricular.__table__.update().where(MatrizCurricular.matriz_origem_id == m.id).values(matriz_origem_id=None))
+    db.delete(m)
+    db.flush()
+    auditoria.registrar(db, ctx, "versao.apagar", "matrizes_curriculares", mid, antes=antes,
+                        depois={"ucs": len(ucs), "competencias": info["competencias"]})
+    db.commit()
+    return {k: v for k, v in info.items() if not k.startswith("_")}

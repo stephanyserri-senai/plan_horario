@@ -1340,3 +1340,8 @@ thead .ag-amb { z-index: 3; }
 .apagar-curso ul { margin: 0; padding-left: 20px; }
 .btn-apagar-curso { background: var(--erro); color: #fff; border-color: var(--erro); }
 .btn-apagar-curso:disabled { opacity: .5; }
+.cur-publico { align-self: flex-start; font-weight: 700; font-size: .82rem; padding: 3px 10px; border-radius: 999px;
+  background: color-mix(in srgb, var(--primaria, #1f4e79) 10%, var(--superficie)); color: var(--primaria, #1f4e79); }
+.cur-curso-topo { padding-right: 36px; }
+.cur-carga { font-size: .82rem; }
+.cur-nao-vigente { opacity: .8; }

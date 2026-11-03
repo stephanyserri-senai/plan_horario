@@ -159,7 +159,8 @@ export default function EstruturaCurricular({ visao = "estrutura" }: { visao?: s
       {arv.erro && <div className="erro-box">{arv.erro}</div>}
 
       {busca && <div className="cur-grade">
-        {cursos.map((c: any) => <CartaoCurso key={c.id} c={c} abrir={() => { setBusca(""); ir(c.area.id, c.id); }} mostrarArea apagar={editavel ? () => setApagando(c) : undefined} />)}
+        {cursos.map((c: any) => <CartaoCurso key={c.id} c={c} abrir={(v) => { setBusca(""); ir(c.area.id, c.id, v ?? null); }} mostrarArea
+          apagar={editavel ? (v) => setApagando({ curso: c, versao: v }) : undefined} />)}
         {!cursos.length && <div className="cur-vazio">Nenhum curso com “{busca}”.</div>}
       </div>}
 
@@ -192,7 +193,8 @@ export default function EstruturaCurricular({ visao = "estrutura" }: { visao?: s
           <div><h3>{nomeArea(areaAtual.nome)}</h3><small className="mudo">{areaAtual.unidade} · {areaAtual.cursos.length} curso(s) · {areaAtual.instrutores} instrutor(es) na área</small></div>
         </div>
         <div className="cur-grade">
-          {areaAtual.cursos.map((c: any) => <CartaoCurso key={c.id} c={c} abrir={() => ir(areaAtual.id, c.id)} apagar={editavel ? () => setApagando(c) : undefined} />)}
+          {areaAtual.cursos.map((c: any) => <CartaoCurso key={c.id} c={c} abrir={(v) => ir(areaAtual.id, c.id, v ?? null)}
+            apagar={editavel ? (v) => setApagando({ curso: c, versao: v }) : undefined} />)}
           {editavel && <button className="cur-curso cur-novo" onClick={novoCurso}><span className="cur-icone">＋</span><b>Novo curso em {nomeArea(areaAtual.nome)}</b>
             <small className="mudo">Depois crie a matriz e cadastre as UCs aqui mesmo.</small></button>}
           {!areaAtual.cursos.length && !editavel && <div className="cur-vazio">Nenhum curso nesta área.</div>}
@@ -275,8 +277,11 @@ export default function EstruturaCurricular({ visao = "estrutura" }: { visao?: s
         <EpisDoCurso cursoId={curso.id} editavel={editavel} />
       </section>}
       {modal}
-      {apagando && <ApagarCurso curso={apagando} fechar={() => setApagando(null)}
-        apagado={() => { setApagando(null); invalidarOpcoes("cursos"); arv.recarregar(); setRev((x) => x + 1); }} />}
+      {apagando && (apagando.versao
+        ? <ApagarVersao curso={apagando.curso} versao={apagando.versao} fechar={() => setApagando(null)}
+            apagado={() => { setApagando(null); invalidarOpcoes("cursos"); invalidarOpcoes("matrizes"); arv.recarregar(); setRev((x) => x + 1); }} />
+        : <ApagarCurso curso={apagando.curso} fechar={() => setApagando(null)}
+            apagado={() => { setApagando(null); invalidarOpcoes("cursos"); arv.recarregar(); setRev((x) => x + 1); }} />)}
     </div>
   );
 }
@@ -323,23 +328,75 @@ function AvisoVersao({ v, editavel, concluir }: { v: any; editavel: boolean; con
 }
 
 /** Cartão de curso: sigla, nome, tipo, carga, versões da matriz e turmas em andamento. */
-function CartaoCurso({ c, abrir, mostrarArea, apagar }: { c: any; abrir: () => void; mostrarArea?: boolean; apagar?: () => void }) {
-  const ucs = c.versoes.reduce((m: number, v: any) => Math.max(m, v.ucs), 0);
+/** Um cartão para cada versão do curso (público + versão), com as UCs, a carga e as turmas DELA; curso sem versão = um cartão. */
+function CartaoCurso({ c, abrir, mostrarArea, apagar }: { c: any; abrir: (versaoId?: number) => void; mostrarArea?: boolean;
+  apagar?: (versao?: any) => void }) {
+  const topo = (v?: any) => <>
+    <span className="cur-curso-topo"><span className="cur-sigla">{c.codigo}</span>
+      {mostrarArea && <small className="mudo">{icone(c.area.nome)} {nomeArea(c.area.nome)}</small>}</span>
+    <b className="cur-curso-nome">{c.nome}</b>
+    {v && <span className={`cur-publico ${v.situacao === "vigente" ? "vig" : ""}`}>📚 {v.tipo_oferta || "Todos os públicos"} · versão {v.versao}</span>}
+    <small className="mudo">{[c.tipo, c.modalidade].filter(Boolean).join(" · ")}</small></>;
+  const lixeira = (v?: any) => apagar && <button type="button" className="cur-apagar"
+    title={v ? `Apagar a versão ${v.tipo_oferta || "todos"} · v${v.versao} de ${c.codigo}` : `Apagar o curso ${c.codigo}`}
+    aria-label={v ? `Apagar a versão ${v.tipo_oferta || "todos"} v${v.versao}` : `Apagar o curso ${c.codigo}`}
+    onClick={(e) => { e.stopPropagation(); apagar(v); }}>🗑</button>;
+  if (!c.versoes.length) return (
+    <div className="cur-curso-wrap">{lixeira()}
+      <button className="cur-curso" onClick={() => abrir()}>{topo()}
+        <span className="cur-versoes"><span className="chip-area ca-vence">sem versão da matriz</span></span>
+        <span className="cur-rodape"><span>📘 0 UC(s)</span><span>👥 {c.turmas_ativas.length} turma(s)</span></span>
+      </button></div>);
+  return <>{c.versoes.map((v: any) => (
+    <div key={v.id} className="cur-curso-wrap">{lixeira(v)}
+      <button className={`cur-curso ${v.situacao !== "vigente" ? "cur-nao-vigente" : ""}`} onClick={() => abrir(v.id)}>{topo(v)}
+        <small className="cur-carga"><b>{v.ch_total} h</b>{v.ch_ead ? ` · EaD ${v.ch_ead} h · presencial ${v.ch_presencial} h` : ""}
+          {v.situacao !== "vigente" && <> · <i>{v.situacao}</i></>}{v.divisao_a_confirmar ? <> · <span className="alerta-txt">⚠ {v.divisao_a_confirmar} a confirmar</span></> : null}</small>
+        <span className="cur-rodape"><span>📘 {v.ucs} UC(s)</span><span>👥 {v.turmas} turma(s)</span>
+          <span>{c.dispensa_epi ? "🦺 não usa EPI" : `🦺 ${c.epis} EPI(s)`}</span></span>
+      </button></div>))}</>;
+}
+
+/** Apagar UMA versão (público + versão) com as UCs dela; se for a única, o curso também sai. Só sem turmas. */
+function ApagarVersao({ curso, versao, fechar, apagado }: { curso: any; versao: any; fechar: () => void; apagado: () => void }) {
+  const { aviso } = useApp();
+  const p = useCarregar<any>(() => api.get(`/api/matrizes/${versao.id}/exclusao`), [versao.id]);
+  const [txt, setTxt] = useState("");
+  const [indo, setIndo] = useState(false);
+  const d = p.dados;
+  const rot = `${versao.tipo_oferta || "Todos os públicos"} · v${versao.versao}`;
+  const ok = d?.pode_apagar && txt.trim().toUpperCase() === String(curso.codigo).toUpperCase();
+  const apagar = async () => {
+    setIndo(true);
+    try {
+      await api.del(`/api/matrizes/${versao.id}`);
+      if (d.ultima_versao) await api.del(`/api/cursos/${curso.id}`);
+      aviso(d.ultima_versao ? `Curso ${curso.codigo} apagado.` : `Versão ${rot} de ${curso.codigo} apagada.`);
+      apagado();
+    } catch (e: any) { aviso(e.message, "erro"); } finally { setIndo(false); }
+  };
   return (
-    <div className="cur-curso-wrap">
-    {apagar && <button type="button" className="cur-apagar" title={`Apagar o curso ${c.codigo}`} aria-label={`Apagar o curso ${c.codigo}`}
-      onClick={(e) => { e.stopPropagation(); apagar(); }}>🗑</button>}
-    <button className="cur-curso" onClick={abrir}>
-      <span className="cur-curso-topo"><span className="cur-sigla">{c.codigo}</span>
-        {mostrarArea && <small className="mudo">{icone(c.area.nome)} {nomeArea(c.area.nome)}</small>}</span>
-      <b className="cur-curso-nome">{c.nome}</b>
-      <small className="mudo">{[c.tipo, c.modalidade, c.carga_horaria_total ? `${c.carga_horaria_total} h` : null].filter(Boolean).join(" · ")}</small>
-      <span className="cur-versoes">{c.versoes.length ? c.versoes.map((v: any) => <span key={v.id} className={`chip-area ${v.situacao === "vigente" ? "ca-principal" : ""}`}>
-        {v.tipo_oferta || "todas"} · v{v.versao}</span>) : <span className="chip-area ca-vence">sem matriz</span>}</span>
-      <span className="cur-rodape"><span>📘 {ucs} UC(s)</span><span>👥 {c.turmas_ativas.length} turma(s)</span>
-        <span>{c.dispensa_epi ? "🦺 não usa EPI" : `🦺 ${c.epis} EPI(s)`}</span></span>
-    </button>
-    </div>
+    <Modal titulo={`Apagar ${curso.codigo} — ${rot}`} aberto fechar={fechar}>
+      {p.carregando && !d && <p role="status">Conferindo…</p>}
+      {d && <div className="apagar-curso">
+        <p><b>{curso.nome}</b> · versão <b>{rot}</b></p>
+        {!d.pode_apagar ? <div className="erro-box">{d.motivo}</div> : <>
+          <p>Serão apagadas de vez, só desta versão:</p>
+          <ul>
+            <li>{d.ucs} UC(s) da versão {rot}</li>
+            <li>{d.competencias} marcação(ões) de instrutores nessas UCs (competências)</li>
+            {d.ultima_versao && <li><b>É a única versão: o curso {curso.codigo} também será apagado</b> (com os EPIs do curso).</li>}
+          </ul>
+          {!d.ultima_versao && <p className="sub">As outras versões de {curso.codigo} não mudam.</p>}
+          <label className="campo"><span className="campo-rotulo">Para confirmar, digite a sigla <b>{curso.codigo}</b></span>
+            <input value={txt} onChange={(e) => setTxt(e.target.value)} autoFocus /></label>
+        </>}
+        <div className="acoes">
+          <button className="btn" onClick={fechar}>Cancelar</button>
+          {d.pode_apagar && <button className="btn btn-apagar-curso" disabled={!ok || indo} onClick={apagar}>{indo ? "Apagando…" : d.ultima_versao ? "Apagar curso" : "Apagar versão"}</button>}
+        </div>
+      </div>}
+    </Modal>
   );
 }
 
