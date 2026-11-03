@@ -198,10 +198,10 @@ SPECS: dict[str, dict] = {
         "certificacao_exigida": ("str", False, ["certificacao"]), "divide_grupos": ("bool", False, []), "capacidade_max": ("int", False, [])}},
     "turmas": {"chave": ["codigo"], "campos": {
         "codigo": ("str", True, ["turma", "cod_turma", "codigo_turma", "codigo_da_turma"]), "nome": ("str", False, ["nome_turma", "nome_da_turma"]),
-        "curso_codigo": ("str", True, ["curso", "codigo_do_curso"]), "versao": ("str", True, ["versao_matriz", "matriz", "versao_da_matriz"]),
+        "curso_codigo": ("str", True, ["curso", "codigo_do_curso"]), "versao": ("str", False, ["versao_matriz", "matriz", "versao_da_matriz"]),
         "oferta": ("str", False, ["publico_versao_do_curso", "publico_versao", "publico", "versao_do_curso", "tipo_de_oferta", "oferta"]),
         "unidade_codigo": ("str", True, ["unidade"]), "turno_codigo": ("str", False, ["turno"]), "qtd_alunos": ("int", False, ["alunos", "quantidade_alunos"]),
-        "data_inicio": ("date", True, ["inicio"]), "data_fim": ("date", True, ["fim", "termino"]), "dias_possiveis": ("dias", False, ["dias", "dias_de_aula"]),
+        "data_inicio": ("date", False, ["inicio"]), "data_fim": ("date", True, ["fim", "termino"]), "dias_possiveis": ("dias", False, ["dias", "dias_de_aula"]),
         "dias_ead": ("dias", False, ["dias_ead", "dias_ead_turma_80_20", "ead"]), "num_grupos": ("int", False, ["grupos"]), "area": ("str", False, ["area_tecnologica"])}},
     "turma_ucs": {"chave": ["turma_codigo", "uc_codigo"], "campos": {
         "turma_codigo": ("str", True, ["turma"]), "uc_codigo": ("str", True, ["uc", "codigo_uc"]), "situacao": ("str", False, []),
@@ -414,6 +414,24 @@ class Resolvedor:
         return self._get(("a", cod), lambda: self.db.scalar(select(Ambiente.id).where(func.lower(Ambiente.codigo) == cod.lower())))
 
 
+# nome das colunas nas mensagens (como aparecem nos modelos de planilha)
+ROTULO_COLUNA = {"codigo": "Código", "curso_codigo": "Código do curso", "versao": "Versão da matriz", "unidade_codigo": "Unidade",
+                 "data_inicio": "Início", "data_fim": "Término", "nome": "Nome", "matricula": "Matrícula", "uc_codigo": "Código da UC",
+                 "turma_codigo": "Código da turma", "area": "Área"}
+
+
+def _semestre_para(db: Session, ate: date | None) -> tuple[date, date] | None:
+    """Período do semestre (cenário de planejamento) em uso: o que contém hoje, senão o mais recente."""
+    from app.models import CenarioPlanejamento
+    cs = [c for c in db.scalars(select(CenarioPlanejamento).where(CenarioPlanejamento.periodo_inicio.is_not(None),
+                                                                  CenarioPlanejamento.periodo_fim.is_not(None)))]
+    if not cs:
+        return None
+    hoje = date.today()
+    c = next((c for c in cs if c.periodo_inicio <= hoje <= c.periodo_fim), None) or max(cs, key=lambda c: c.periodo_inicio)
+    return c.periodo_inicio, c.periodo_fim
+
+
 def _converter(tipo: str, linha: dict, mapa: dict) -> tuple[dict, list[str]]:
     vals, erros = {}, []
     for campo, (t, obrig, _s) in SPECS[tipo]["campos"].items():
@@ -425,7 +443,7 @@ def _converter(tipo: str, linha: dict, mapa: dict) -> tuple[dict, list[str]]:
             erros.append(f"{campo}: {e}")
             v = None
         if obrig and v in (None, "") and not any(e.startswith(campo) for e in erros):
-            erros.append(f"{campo}: obrigatório")
+            erros.append(f"{ROTULO_COLUNA.get(campo, campo)}: obrigatório (coluna vazia)")
         vals[campo] = v
     return vals, erros
 
@@ -649,9 +667,33 @@ def _preparar(db: Session, r: Resolvedor, tipo: str, v: dict) -> tuple[dict | No
         d["_tipos"] = tipos
         return d, ex, E, A
     if tipo == "turmas":
-        mid = r.matriz(v["curso_codigo"], v["versao"], v.get("oferta"))
+        if not v.get("versao") and r.curso(v["curso_codigo"]):
+            # sem a versão: a vigente do curso para o público (como no formulário); várias sem público definido = erro
+            from app.api.cadastros import _matriz_padrao
+            pub = (v.get("oferta") or "").strip().upper()
+            ms = db.scalars(select(MatrizCurricular).where(MatrizCurricular.curso_id == r.curso(v["curso_codigo"]), MatrizCurricular.ativo.is_(True),
+                                                           MatrizCurricular.situacao != "encerrada")).all()
+            do_pub = [m for m in ms if (m.tipo_oferta or "").upper() == pub] or ([m for m in ms if not m.tipo_oferta] if pub else [])
+            m = (next((x for x in do_pub if x.situacao == "vigente"), None) or (do_pub[0] if do_pub else None)) if do_pub else \
+                (_matriz_padrao(db, r.curso(v["curso_codigo"])) if len({(x.tipo_oferta or "") for x in ms}) <= 1 else None)
+            if m is not None:
+                v["versao"], v["oferta"] = m.versao, m.tipo_oferta
+                A.append(f"versão da matriz não informada: usada a {m.versao}{' de ' + m.tipo_oferta if m.tipo_oferta else ''}")
+        if not v.get("data_inicio"):
+            sem = _semestre_para(db, v.get("data_fim"))
+            if sem and (not v.get("data_fim") or sem[0] <= v["data_fim"]):
+                v["data_inicio"] = sem[0]
+                A.append(f"início não informado: usado o início do semestre ({sem[0]:%d/%m/%Y}); ajuste se a turma começou em outra data")
+            else:
+                E.append("Início: obrigatório (coluna vazia) — não há semestre cadastrado para usar como início")
+        if v.get("curso_codigo") and not r.curso(v["curso_codigo"]):
+            E.append(f"curso '{v['curso_codigo']}' não cadastrado: importe antes a estrutura curricular (cursos, versões e UCs)")
+        elif not v.get("versao"):
+            E.append(f"versão da matriz não informada e o curso {v['curso_codigo']} não tem uma versão em uso"
+                     + (f" para o público {v['oferta']}" if v.get("oferta") else " (ou tem mais de um público: informe o público)"))
+        mid = r.matriz(v["curso_codigo"], v["versao"], v.get("oferta")) if v.get("versao") else None
         uid = r.unidade(v["unidade_codigo"])
-        if not mid:
+        if not mid and v.get("versao"):
             pubs = sorted({(t or "") for t in db.scalars(select(MatrizCurricular.tipo_oferta).where(
                 MatrizCurricular.curso_id == r.curso(v["curso_codigo"]), MatrizCurricular.versao == v["versao"]))}) if r.curso(v["curso_codigo"]) else []
             if len(pubs) > 1 and not (v.get("oferta") or "").strip():
@@ -685,12 +727,17 @@ def _preparar(db: Session, r: Resolvedor, tipo: str, v: dict) -> tuple[dict | No
         if erro:
             E.append(erro)
         if v["data_inicio"] and v["data_fim"] and v["data_fim"] < v["data_inicio"]:
-            E.append("data_fim anterior a data_inicio")
-        if not v["area"] and d.get("curso_id"):
-            curso = db.get(Curso, d["curso_id"])
-            if curso and curso.area_id:
-                d["area_id"] = curso.area_id  # herda a área do curso
-        _area(r, v, d, E, A, obrigatoria=not d.get("area_id"))
+            E.append("Término anterior ao Início")
+        curso = db.get(Curso, d["curso_id"]) if d.get("curso_id") else None
+        if curso and curso.area_id:
+            d["area_id"] = curso.area_id  # a turma fica na área do curso; a coluna Área só confere (não recusa a linha)
+            if (v.get("area") or "").strip():
+                E2: list = []
+                _area(r, v, {"unidade_id": d.get("unidade_id")}, E2, [], obrigatoria=False)
+                if E2:
+                    A.append(f"coluna Área ('{v['area']}') ignorada: a turma fica na área do curso")
+        else:
+            _area(r, v, d, E, A, obrigatoria=True)
         return d, r.turma(v["codigo"]), E, A
     if tipo == "turma_ucs":
         t = r.turma(v["turma_codigo"])

@@ -64,3 +64,22 @@ def test_planilha_cria_versao_por_publico(db, mundo):
     assert set(ms) == {"PAGANTE", "SEDU"}
     n = {k: db.query(UnidadeCurricular).filter(UnidadeCurricular.matriz_id == v.id).count() for k, v in ms.items()}
     assert n == {"PAGANTE": 1, "SEDU": 2}
+
+
+def test_importar_turma_sem_versao_e_sem_inicio(db, mundo):
+    """Sem a versão da matriz: a vigente do curso; sem o início: o do semestre (com aviso). Sem término continua erro."""
+    from app.services import importacao
+    m = mundo
+    m.matriz.situacao = "vigente"
+    db.commit()
+    csv_ = ("Código da turma;Nome da turma;Código do curso;Versão da matriz;Público / versão do curso;Unidade;Turno;Alunos;Início;Término\n"
+            "T-NOVA;Turma nova;C1;;;U1;;20;;10/12/2026\n"
+            "T-SEMFIM;Turma sem fim;C1;;;U1;;20;;\n").encode()
+    imp = importacao.gerar_previa(db, m.ctx, "turmas.csv", csv_, tipo="turmas")
+    db.commit()
+    itens = {i["dados"].get("codigo") if i.get("dados") else i["linha"]: i for i in imp.previa["itens"]}
+    nova = next(i for i in imp.previa["itens"] if i["acao"] == "criar")
+    assert any("início do semestre (03/08/2026)" in a for a in nova["avisos"]) and any("usada a 1" in a for a in nova["avisos"])
+    sem_fim = next(i for i in imp.previa["itens"] if i["acao"] == "erro")
+    assert any(e.startswith("Término: obrigatório") for e in sem_fim["erros"])
+    assert len(itens) == 2
