@@ -42,6 +42,7 @@ export default function EstruturaCurricular({ visao = "estrutura" }: { visao?: s
   const [rev, setRev] = useState(0);  // recarrega as listas depois de salvar
   const arv = useCarregar<any[]>(() => api.get("/api/estrutura-curricular"), []);
   const editavel = pode("cadastros.editar");
+  const [apagando, setApagando] = useState<any>(null);
 
   const areas = arv.dados || [];
   const todosCursos = useMemo(() => areas.flatMap((a: any) => a.cursos.map((c: any) => ({ ...c, area: a }))), [areas]);
@@ -158,7 +159,7 @@ export default function EstruturaCurricular({ visao = "estrutura" }: { visao?: s
       {arv.erro && <div className="erro-box">{arv.erro}</div>}
 
       {busca && <div className="cur-grade">
-        {cursos.map((c: any) => <CartaoCurso key={c.id} c={c} abrir={() => { setBusca(""); ir(c.area.id, c.id); }} mostrarArea />)}
+        {cursos.map((c: any) => <CartaoCurso key={c.id} c={c} abrir={() => { setBusca(""); ir(c.area.id, c.id); }} mostrarArea apagar={editavel ? () => setApagando(c) : undefined} />)}
         {!cursos.length && <div className="cur-vazio">Nenhum curso com “{busca}”.</div>}
       </div>}
 
@@ -191,7 +192,7 @@ export default function EstruturaCurricular({ visao = "estrutura" }: { visao?: s
           <div><h3>{nomeArea(areaAtual.nome)}</h3><small className="mudo">{areaAtual.unidade} · {areaAtual.cursos.length} curso(s) · {areaAtual.instrutores} instrutor(es) na área</small></div>
         </div>
         <div className="cur-grade">
-          {areaAtual.cursos.map((c: any) => <CartaoCurso key={c.id} c={c} abrir={() => ir(areaAtual.id, c.id)} />)}
+          {areaAtual.cursos.map((c: any) => <CartaoCurso key={c.id} c={c} abrir={() => ir(areaAtual.id, c.id)} apagar={editavel ? () => setApagando(c) : undefined} />)}
           {editavel && <button className="cur-curso cur-novo" onClick={novoCurso}><span className="cur-icone">＋</span><b>Novo curso em {nomeArea(areaAtual.nome)}</b>
             <small className="mudo">Depois crie a matriz e cadastre as UCs aqui mesmo.</small></button>}
           {!areaAtual.cursos.length && !editavel && <div className="cur-vazio">Nenhum curso nesta área.</div>}
@@ -274,6 +275,8 @@ export default function EstruturaCurricular({ visao = "estrutura" }: { visao?: s
         <EpisDoCurso cursoId={curso.id} editavel={editavel} />
       </section>}
       {modal}
+      {apagando && <ApagarCurso curso={apagando} fechar={() => setApagando(null)}
+        apagado={() => { setApagando(null); invalidarOpcoes("cursos"); arv.recarregar(); setRev((x) => x + 1); }} />}
     </div>
   );
 }
@@ -320,9 +323,12 @@ function AvisoVersao({ v, editavel, concluir }: { v: any; editavel: boolean; con
 }
 
 /** Cartão de curso: sigla, nome, tipo, carga, versões da matriz e turmas em andamento. */
-function CartaoCurso({ c, abrir, mostrarArea }: { c: any; abrir: () => void; mostrarArea?: boolean }) {
+function CartaoCurso({ c, abrir, mostrarArea, apagar }: { c: any; abrir: () => void; mostrarArea?: boolean; apagar?: () => void }) {
   const ucs = c.versoes.reduce((m: number, v: any) => Math.max(m, v.ucs), 0);
   return (
+    <div className="cur-curso-wrap">
+    {apagar && <button type="button" className="cur-apagar" title={`Apagar o curso ${c.codigo}`} aria-label={`Apagar o curso ${c.codigo}`}
+      onClick={(e) => { e.stopPropagation(); apagar(); }}>🗑</button>}
     <button className="cur-curso" onClick={abrir}>
       <span className="cur-curso-topo"><span className="cur-sigla">{c.codigo}</span>
         {mostrarArea && <small className="mudo">{icone(c.area.nome)} {nomeArea(c.area.nome)}</small>}</span>
@@ -333,6 +339,45 @@ function CartaoCurso({ c, abrir, mostrarArea }: { c: any; abrir: () => void; mos
       <span className="cur-rodape"><span>📘 {ucs} UC(s)</span><span>👥 {c.turmas_ativas.length} turma(s)</span>
         <span>{c.dispensa_epi ? "🦺 não usa EPI" : `🦺 ${c.epis} EPI(s)`}</span></span>
     </button>
+    </div>
+  );
+}
+
+/** Confirmação para apagar o curso: mostra o que sai (versões, UCs, competências dos instrutores, EPIs). Só curso sem turmas. */
+function ApagarCurso({ curso, fechar, apagado }: { curso: any; fechar: () => void; apagado: () => void }) {
+  const { aviso } = useApp();
+  const p = useCarregar<any>(() => api.get(`/api/cursos/${curso.id}/exclusao`), [curso.id]);
+  const [txt, setTxt] = useState("");
+  const [indo, setIndo] = useState(false);
+  const d = p.dados;
+  const ok = d?.pode_apagar && txt.trim().toUpperCase() === String(curso.codigo).toUpperCase();
+  const apagar = async () => {
+    setIndo(true);
+    try { await api.del(`/api/cursos/${curso.id}`); aviso(`Curso ${curso.codigo} apagado.`); apagado(); }
+    catch (e: any) { aviso(e.message, "erro"); } finally { setIndo(false); }
+  };
+  return (
+    <Modal titulo={`Apagar o curso ${curso.codigo}`} aberto fechar={fechar}>
+      {p.carregando && !d && <p role="status">Conferindo…</p>}
+      {d && <div className="apagar-curso">
+        <p><b>{curso.nome}</b></p>
+        {!d.pode_apagar ? <div className="erro-box">{d.motivo}</div> : <>
+          <p>Serão apagados de vez:</p>
+          <ul>
+            <li>{d.versoes} versão(ões) da matriz e {d.ucs} UC(s)</li>
+            <li>{d.competencias} marcação(ões) de instrutores nessas UCs (competências)</li>
+            <li>{d.epis} EPI(s) do curso</li>
+          </ul>
+          <p className="sub">Unidades, áreas, instrutores e salas não mudam. Para recadastrar, reimporte o curso pela planilha.</p>
+          <label className="campo"><span className="campo-rotulo">Para confirmar, digite a sigla <b>{curso.codigo}</b></span>
+            <input value={txt} onChange={(e) => setTxt(e.target.value)} autoFocus /></label>
+        </>}
+        <div className="acoes">
+          <button className="btn" onClick={fechar}>Cancelar</button>
+          {d.pode_apagar && <button className="btn btn-apagar-curso" disabled={!ok || indo} onClick={apagar}>{indo ? "Apagando…" : "Apagar curso"}</button>}
+        </div>
+      </div>}
+    </Modal>
   );
 }
 

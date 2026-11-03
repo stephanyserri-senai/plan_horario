@@ -1132,3 +1132,67 @@ def criar_turnos_padrao(uid: int, ctx: Contexto = Depends(get_contexto), db: Ses
         auditoria.registrar(db, ctx, "turno.criar_padrao", "turnos", t.id, depois=auditoria.snapshot(t))
     db.commit()
     return {"criados": criados, "mensagem": "Turnos criados: manhã (07:30–11:30), tarde (13:30–17:30) e noite (18:30–22:00), com 4 aulas cada e intervalo no meio."}
+
+
+# ============================================================================ apagar curso (sem turmas)
+def _exclusao_curso(db: Session, c: Curso) -> dict:
+    from app.models import Alocacao, EpiCurso
+    mids = list(db.scalars(select(MatrizCurricular.id).where(MatrizCurricular.curso_id == c.id)))
+    ucs = list(db.scalars(select(UnidadeCurricular.id).where(UnidadeCurricular.matriz_id.in_(mids)))) if mids else []
+    turmas = db.scalars(select(Turma).where(Turma.curso_id == c.id, Turma.simulacao_id.is_(None))).all()
+    realizadas = db.scalar(select(func.count()).select_from(Alocacao).where(Alocacao.uc_id.in_(ucs), Alocacao.status == "realizada")) if ucs else 0
+    comp = db.scalar(select(func.count()).select_from(CompetenciaInstrutor).where(CompetenciaInstrutor.uc_id.in_(ucs))) if ucs else 0
+    epis = db.scalar(select(func.count()).select_from(EpiCurso).where(EpiCurso.curso_id == c.id)) or 0
+    motivo = None
+    if turmas:
+        motivo = (f"O curso tem {len(turmas)} turma(s) ({', '.join(t.codigo for t in turmas[:5])}{'…' if len(turmas) > 5 else ''}): "
+                  "apague ou mude essas turmas antes de apagar o curso.")
+    elif realizadas:
+        motivo = f"Há {realizadas} aula(s) realizada(s) nas UCs do curso: o histórico não é apagado."
+    return {"curso": {"id": c.id, "codigo": c.codigo, "nome": c.nome}, "versoes": len(mids), "ucs": len(ucs), "turmas": len(turmas),
+            "competencias": comp, "epis": epis, "aulas_realizadas": realizadas, "pode_apagar": motivo is None, "motivo": motivo,
+            "_mids": mids, "_ucs": ucs}
+
+
+@router.get("/cursos/{cid}/exclusao")
+def previa_exclusao_curso(cid: int, db: Session = Depends(get_db), ctx: Contexto = Depends(get_contexto)):
+    """O que sai ao apagar o curso: versões da matriz, UCs, competências dos instrutores nessas UCs e EPIs do curso."""
+    ctx.exigir("cadastros.editar")
+    c = db.get(Curso, cid)
+    if c is None:
+        raise NaoEncontrado("Curso não encontrado.")
+    return {k: v for k, v in _exclusao_curso(db, c).items() if not k.startswith("_")}
+
+
+@router.delete("/cursos/{cid}")
+def apagar_curso(cid: int, db: Session = Depends(get_db), ctx: Contexto = Depends(get_contexto)):
+    """Apaga o curso com as versões da matriz e as UCs (e as competências dos instrutores nelas). Só curso sem turmas."""
+    from app.models import PdiItem, SimulacaoCapacidade  # noqa: F401
+    ctx.exigir("cadastros.editar")
+    c = db.get(Curso, cid)
+    if c is None:
+        raise NaoEncontrado("Curso não encontrado.")
+    _verificar_escopo(ctx, "cursos", c)
+    info = _exclusao_curso(db, c)
+    if not info["pode_apagar"]:
+        raise ConflitoValidacao(info["motivo"], codigo="CURSO_EM_USO")
+    antes = auditoria.snapshot(c)
+    mids, ucs = info["_mids"], info["_ucs"]
+    # turmas de simulação (previsão de turmas) do curso também saem
+    db.execute(delete(Turma).where(Turma.curso_id == c.id, Turma.simulacao_id.is_not(None)))
+    if ucs:
+        db.execute(delete(CompetenciaInstrutor).where(CompetenciaInstrutor.uc_id.in_(ucs)))
+        db.execute(delete(UCPrerequisito).where(UCPrerequisito.uc_id.in_(ucs) | UCPrerequisito.prerequisito_id.in_(ucs)))
+        db.execute(delete(UCRecurso).where(UCRecurso.uc_id.in_(ucs)))
+        db.execute(delete(UCTipoAmbiente).where(UCTipoAmbiente.uc_id.in_(ucs)))
+        db.execute(delete(UnidadeCurricular).where(UnidadeCurricular.id.in_(ucs)))
+    if mids:
+        db.execute(MatrizCurricular.__table__.update().where(MatrizCurricular.matriz_origem_id.in_(mids)).values(matriz_origem_id=None))
+        db.execute(delete(MatrizCurricular).where(MatrizCurricular.id.in_(mids)))
+    db.execute(PdiItem.__table__.update().where(PdiItem.curso_id == c.id).values(curso_id=None))
+    db.delete(c)  # EPIs do curso saem em cascata
+    db.flush()
+    auditoria.registrar(db, ctx, "curso.apagar", "cursos", cid, antes=antes,
+                        depois={"versoes": len(mids), "ucs": len(ucs), "competencias": info["competencias"], "epis": info["epis"]})
+    db.commit()
+    return {k: v for k, v in info.items() if not k.startswith("_")}

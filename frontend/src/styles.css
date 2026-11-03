@@ -1331,3 +1331,12 @@ thead .ag-amb { z-index: 3; }
 .cargas-sep { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; margin: 8px 0 12px; }
 .cargas-sep > div { background: var(--superficie); border: 1px solid var(--borda); border-radius: 12px; padding: 8px 12px; display: grid; gap: 2px; }
 .cargas-sep b { font-size: 1.3rem; } .cargas-sep span { font-size: .8rem; color: var(--texto-mudo, #667); }
+.cur-curso-wrap { position: relative; display: flex; }
+.cur-curso-wrap > .cur-curso { flex: 1; }
+.cur-apagar { position: absolute; top: 10px; right: 10px; z-index: 1; border: 1px solid var(--borda); background: var(--superficie); border-radius: 8px;
+  width: 30px; height: 30px; cursor: pointer; opacity: .55; font-size: .9rem; }
+.cur-apagar:hover, .cur-apagar:focus-visible { opacity: 1; border-color: var(--erro); }
+.apagar-curso { display: grid; gap: 8px; }
+.apagar-curso ul { margin: 0; padding-left: 20px; }
+.btn-apagar-curso { background: var(--erro); color: #fff; border-color: var(--erro); }
+.btn-apagar-curso:disabled { opacity: .5; }
