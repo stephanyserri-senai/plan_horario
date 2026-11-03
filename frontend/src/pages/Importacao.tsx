@@ -105,21 +105,28 @@ function Importacao() {
         <Erro erro={erro} />
       </Card>
       {previa && <>
-        <Card titulo={`2. Mapeamento de colunas — ${NOME_TIPO[previa.tipo] || previa.tipo}`}>
-          {previa.arquivo_ja_processado && <p className="aviso-inline"><Badge tipo="alerta">Arquivo já importado</Badge> Este arquivo (mesmo conteúdo) foi confirmado na importação #{previa.arquivo_ja_processado.importacao_id}. Registros existentes serão reconhecidos pela chave e não duplicados.</p>}
-          {previa.planilhas.length > 1 && <Campo rotulo="Planilha"><select value={previa.planilha} onChange={(e) => remapear({ planilha: e.target.value })}>{previa.planilhas.map((p: string) => <option key={p}>{p}</option>)}</select></Campo>}
-          <div className="form-grid">{Object.entries(previa.campos).map(([campo, info]: any) => (
-            <Campo key={campo} rotulo={rotuloCampo(campo)} obrigatorio={info.obrigatorio}><select value={mapa[campo] ?? ""} onChange={(e) => setMapa({ ...mapa, [campo]: e.target.value || null })}>
-              <option value="">(não importar)</option>{previa.cabecalhos.map((c: string) => <option key={c}>{c}</option>)}</select></Campo>))}</div>
-          <button className="btn" onClick={() => remapear()}>Aplicar mapeamento e revalidar</button>
-        </Card>
-        <Card titulo="3. Prévia e validação">
+        {(() => {
+          // os cabeçalhos são lidos sozinhos; o ajuste manual só aparece se faltar coluna obrigatória
+          const faltam = Object.entries(previa.campos).filter(([c, info]: any) => info.obrigatorio && !mapa[c]).map(([c]) => rotuloCampo(c));
+          return <>
+            {previa.arquivo_ja_processado && <p className="aviso-inline"><Badge tipo="alerta">Arquivo já importado</Badge> Este arquivo (mesmo conteúdo) foi confirmado na importação #{previa.arquivo_ja_processado.importacao_id}. Registros existentes serão reconhecidos pela chave e não duplicados.</p>}
+            {faltam.length > 0 && <Card titulo={`2. Colunas que faltam — ${NOME_TIPO[previa.tipo] || previa.tipo}`}>
+              <p className="aviso-inline">Não encontrei na planilha: <b>{faltam.join(", ")}</b>. Use o modelo da planilha ou diga abaixo qual coluna corresponde a cada uma.</p>
+              {previa.planilhas.length > 1 && <Campo rotulo="Aba da planilha"><select value={previa.planilha} onChange={(e) => remapear({ planilha: e.target.value })}>{previa.planilhas.map((p: string) => <option key={p}>{p}</option>)}</select></Campo>}
+              <div className="form-grid">{Object.entries(previa.campos).filter(([c, info]: any) => info.obrigatorio && !mapa[c]).map(([campo, info]: any) => (
+                <Campo key={campo} rotulo={rotuloCampo(campo)} obrigatorio={info.obrigatorio}><select value={mapa[campo] ?? ""} onChange={(e) => setMapa({ ...mapa, [campo]: e.target.value || null })}>
+                  <option value="">(escolha a coluna)</option>{previa.cabecalhos.map((c: string) => <option key={c}>{c}</option>)}</select></Campo>))}</div>
+              <button className="btn" onClick={() => remapear()}>Usar estas colunas e revalidar</button>
+            </Card>}
+          </>;
+        })()}
+        <Card titulo={`2. Prévia e validação — ${NOME_TIPO[previa.tipo] || previa.tipo}`}>
           <p>{Object.entries(previa.resumo).map(([k, v]) => <Badge key={k} tipo={k === "erro" ? "bloqueio" : k === "criar" ? "ok" : "info"}>{ACOES[k] || rotuloCampo(k)}: {String(v)}</Badge>)}</p>
           <select aria-label="Filtrar ação" value={filtroAcao} onChange={(e) => setFiltroAcao(e.target.value)}><option value="">Todas as linhas</option>{["criar", "atualizar", "sem_alteracao", "erro"].map((a) => <option key={a} value={a}>{ACOES[a]}</option>)}</select>
           <Tabela colunas={[{ chave: "linha", rotulo: "Linha" }, { chave: "acao", rotulo: "Ação", render: (i: any) => <Badge tipo={i.acao === "erro" ? "bloqueio" : i.acao === "criar" ? "ok" : "info"}>{ACOES[i.acao] || i.acao}</Badge> },
             { chave: "valores", rotulo: "Valores", render: (i: any) => <small>{Object.entries(i.valores).filter(([, v]) => v != null).map(([k, v]) => `${rotuloCampo(k)}: ${v}`).join(" · ")}</small> },
             { chave: "erros", rotulo: "Erros / avisos", render: (i: any) => <small>{[...i.erros, ...i.avisos].join("; ")}</small> }]} linhas={itens.slice(0, 500)} chave={(i) => i.linha} />
-          <p className="sub">Corrija o arquivo e gere nova prévia, ajuste o mapeamento, ou confirme ignorando as linhas com erro (elas constarão no relatório).</p>
+          <p className="sub">Corrija o arquivo e envie de novo, ou confirme ignorando as linhas com erro (elas constarão no relatório).</p>
           <div className="acoes"><button className="btn btn-primario" disabled={previa.resumo.erro > 0} onClick={() => confirmar(false)}>Confirmar importação</button>
             {previa.resumo.erro > 0 && <button className="btn" onClick={() => confirmar(true)}>Confirmar ignorando {previa.resumo.erro} linha(s) com erro</button>}
             <button className="btn" onClick={async () => { await api.post(`/api/importacao/${previa.id}/descartar`); setPrevia(null); hist.recarregar(); }}>Descartar</button></div>
