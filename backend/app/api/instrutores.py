@@ -151,6 +151,8 @@ def montar_perfil(db: Session, inst: Instrutor, cenario_id: int | None, ver_emai
         meses = termos_svc.listar(db, inst, cen.id if cen is not None else None, d0, d1)
         atual = next((m for m in meses if m["mes"] == hoje_m.isoformat()[:7]), meses[0] if meses else None)
         termos = {"meses": meses, "atual": atual}
+    dados["uniforme"] = {k: getattr(inst, k) for k in CAMPOS_UNIF}
+    dados["gestor_imediato"] = inst.gestor_imediato
     return {"dados": dados, "semestre": semestre, "termos": termos, "aderencia": aderencia.indice(db, inst.id, base), "pdi": _pdi_salvo(db, inst.id)}
 
 
@@ -364,6 +366,31 @@ def ajustar_termo(iid: int, mes: str, d: dict = Body(...), cenario_id: int | Non
 
 
 # ============================================================================ competências (pelo perfil)
+
+
+CAMPOS_UNIF = ("jaleco_np", "jaleco_pmg", "jaleco_num", "tamanho_blusa", "numero_botina")
+
+
+@router.put("/instrutores/{iid}/uniforme")
+def salvar_uniforme(iid: int, d: dict = Body(...), ctx: Contexto = Depends(requer("cadastros.editar")), db: Session = Depends(get_db)):
+    """Gestor imediato e uniforme: jaleco (numeração profissional, P/M/G e número do modelo), blusa e botina."""
+    from app.core.errors import EntradaInvalida
+    from app.services import auditoria
+    from app.services.importacao import _uniforme
+    inst = _instrutor(db, ctx, iid)
+    campos = ("gestor_imediato", *CAMPOS_UNIF)
+    novo, erros = {}, []
+    _uniforme({k: d.get(k) for k in campos}, novo, erros)
+    if erros:
+        raise EntradaInvalida("; ".join(erros).capitalize() + ".")
+    antes = {k: getattr(inst, k) for k in campos}
+    for k in campos:
+        if k in d:
+            setattr(inst, k, novo.get(k))
+    db.flush()
+    auditoria.registrar(db, ctx, "instrutor.uniforme", "instrutores", inst.id, antes=antes, depois={k: getattr(inst, k) for k in campos})
+    db.commit()
+    return {"gestor_imediato": inst.gestor_imediato, "uniforme": {k: getattr(inst, k) for k in CAMPOS_UNIF}}
 
 
 @router.put("/instrutores/{iid}/competencias")

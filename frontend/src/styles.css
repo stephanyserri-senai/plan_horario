@@ -1306,3 +1306,10 @@ thead .ag-amb { z-index: 3; }
 .unif-grid input, .unif-grid select { width: 100%; }
 .pub-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .sab-instrutor label.marcada { font-weight: 600; }
+.unif-perfil { display: grid; gap: 12px; padding-top: 8px; }
+.unif-cartoes { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+.unif-cartao { background: var(--superficie); border: 1px solid var(--borda); border-radius: 12px; padding: 10px 12px; display: grid; gap: 6px; }
+.unif-cartao small { color: var(--texto-mudo, #667); }
+.unif-cartao b { font-size: 1.3rem; }
+.unif-cartao input, .unif-cartao select { width: 100%; }
+.unif-gestor { grid-column: 1 / -1; }

@@ -128,12 +128,13 @@ export function PerfilInstrutor({ id, fechar, editar, abaInicial }: { id: number
         </div>
         <Abas abas={[{ id: "geral", rotulo: "Visão geral" }, { id: "ocupacao", rotulo: "Ocupação" },
           { id: "termo", rotulo: d.dados.modalidade === "horista" ? `⏱ Termo de horas${d.termos && !d.termos.atual?.tem_termo ? " ⚠" : ""}` : "⏱ Jornada / termo" },
-          { id: "competencias", rotulo: "Competências e certificações" },
+          { id: "competencias", rotulo: "Competências e certificações" }, { id: "uniforme", rotulo: "🥼 Uniforme" },
           { id: "aderencia", rotulo: "Aderência aos cursos" }, { id: "pdi", rotulo: "PDI" }]} ativa={aba} mudar={setAba} />
         {aba === "geral" && <VisaoGeral d={d} />}
         {aba === "ocupacao" && <Ocupacao d={d} />}
         {aba === "termo" && (d.dados.modalidade === "horista" ? <PainelTermo instId={d.dados.id} nome={d.dados.nome} /> : <JornadaMensalista d={d} />)}
         {aba === "competencias" && <Competencias d={d} mudou={p.recarregar} />}
+        {aba === "uniforme" && <Uniforme d={d} mudou={p.recarregar} />}
         {aba === "aderencia" && <Aderencia ad={d.aderencia} />}
         {aba === "pdi" && <Pdi id={d.dados.id} mudou={p.recarregar} />}
       </>}
@@ -516,6 +517,45 @@ export function JornadaMensalista({ d, portal }: { d: any; portal?: boolean }) {
       <p className="sub">O termo de horas é do <b>horista</b>: é ele que recebe todo mês as horas pagas (aula, planejamento, projeto e urgência) na grade por dia e turno.
         {!portal && " Para lançar um termo para este instrutor, mude a modalidade dele para horista no cadastro."}</p>
       {d.semestre && <p className="sub">No semestre: {d.semestre.media_semanal_h} h de aula por semana em média ({d.semestre.pct_contrato}% do contrato).</p>}
+    </div>
+  );
+}
+
+const CAMPOS_UNIFORME: [string, string, string[] | null, string][] = [
+  ["jaleco_np", "Jaleco – numeração profissional", null, "ex.: 40, 42, 44"],
+  ["jaleco_pmg", "Jaleco – P/M/G", ["PP", "P", "M", "G", "GG", "XG"], ""],
+  ["jaleco_num", "Jaleco – número do modelo", null, "qualquer número: 1, 2, 3, 4…"],
+  ["tamanho_blusa", "Numeração de blusa", null, "ex.: P, M, G, GG"],
+  ["numero_botina", "Numeração de botina", null, "ex.: 38, 40, 42"],
+];
+
+/** Gestor imediato e uniforme do instrutor (jaleco nas 3 referências, blusa e botina). */
+function Uniforme({ d, mudou }: { d: any; mudou: () => void }) {
+  const { pode, aviso } = useApp();
+  const editavel = pode("cadastros.editar");
+  const inicial = () => ({ gestor_imediato: d.dados.gestor_imediato || "", ...Object.fromEntries(CAMPOS_UNIFORME.map(([k]) => [k, d.dados.uniforme?.[k] || ""])) });
+  const [v, setV] = useState<Record<string, string>>(inicial);
+  const [salvando, setSalvando] = useState(false);
+  const salvar = async () => {
+    setSalvando(true);
+    try { await api.put(`/api/instrutores/${d.dados.id}/uniforme`, v); aviso("Uniforme e gestor salvos."); mudou(); }
+    catch (e: any) { aviso(e.message, "erro"); } finally { setSalvando(false); }
+  };
+  const vazio = CAMPOS_UNIFORME.every(([k]) => !v[k]);
+  return (
+    <div className="unif-perfil">
+      <div className="unif-cartoes">
+        <div className="unif-cartao unif-gestor"><small>Gestor imediato</small>
+          {editavel ? <input value={v.gestor_imediato} maxLength={120} placeholder="Nome do gestor" onChange={(e) => setV({ ...v, gestor_imediato: e.target.value })} />
+            : <b>{v.gestor_imediato || "—"}</b>}</div>
+        {CAMPOS_UNIFORME.map(([k, rot, ops, dica]) => <div key={k} className="unif-cartao"><small>{rot}</small>
+          {!editavel ? <b>{v[k] || "—"}</b>
+            : ops ? <select value={v[k]} onChange={(e) => setV({ ...v, [k]: e.target.value })}><option value="">—</option>{ops.map((o) => <option key={o}>{o}</option>)}</select>
+            : <input value={v[k]} maxLength={10} placeholder={dica} onChange={(e) => setV({ ...v, [k]: e.target.value })} />}
+        </div>)}
+      </div>
+      {vazio && <p className="sub">Tamanhos ainda não informados: o próprio instrutor pode preencher pelo portal (Meus dados), ou preencha aqui.</p>}
+      {editavel && <div className="acoes-linha"><button className="btn btn-primario" disabled={salvando} onClick={salvar}>{salvando ? "Salvando…" : "Salvar"}</button></div>}
     </div>
   );
 }

@@ -36,3 +36,16 @@ def test_sabado_independente_da_jornada(db, mundo):
     assert c.put(f"/api/cadastros/instrutores/{iid}", json={**inst, "disp_sabado": ""}, headers=h).status_code == 200
     db.expire_all()
     assert sab() == []
+
+
+def test_aba_uniforme_no_perfil(db, mundo):
+    c = TestClient(app)
+    h = {"Authorization": "Bearer " + c.post("/api/auth/login", json={"email": "admin@teste", "senha": "senha-forte-1"}).json()["token"]}
+    iid = mundo.i1.id
+    r = c.put(f"/api/instrutores/{iid}/uniforme", json={"gestor_imediato": "Gestor da área", "jaleco_np": "44", "jaleco_pmg": "m",
+                                                       "jaleco_num": "7", "tamanho_blusa": "g", "numero_botina": "41"}, headers=h)
+    assert r.status_code == 200, r.text
+    u = c.get(f"/api/instrutores/{iid}/perfil", headers=h).json()["dados"]
+    assert u["gestor_imediato"] == "Gestor da área"
+    assert u["uniforme"] == {"jaleco_np": "44", "jaleco_pmg": "M", "jaleco_num": "7", "tamanho_blusa": "G", "numero_botina": "41"}
+    assert c.put(f"/api/instrutores/{iid}/uniforme", json={"jaleco_pmg": "Z"}, headers=h).status_code == 422
