@@ -9,6 +9,9 @@
 -- IRREVERSÍVEL: faça um backup antes se houver algo que queira guardar. Cole o arquivo inteiro no SQL Editor e clique em Run.
 DO $$
 BEGIN
+  IF to_regclass('public.configuracoes') IS NOT NULL AND EXISTS (SELECT 1 FROM configuracoes WHERE chave = 'producao_iniciada') THEN
+    RAISE EXCEPTION 'Projeto já iniciado com dados reais (limpar_demo_iniciar_projeto.sql foi executado): este script de teste/demonstração apagaria ou misturaria dados. Não execute em produção.';
+  END IF;
   IF NOT EXISTS (SELECT 1 FROM unidades WHERE codigo = 'BEIRA-MAR') OR NOT EXISTS (SELECT 1 FROM unidades WHERE codigo = 'PORTO') THEN
     RAISE EXCEPTION 'Unidades oficiais não encontradas: aplique antes as atualizações 0003 e 0004.';
   END IF;

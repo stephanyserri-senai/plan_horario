@@ -22,6 +22,9 @@ UC transversal/técnica, substituição, solicitações, quadro 5:4...) estão e
   entregue) via `services/epis.sincronizar_turma`, chamado ao criar/alterar/duplicar/importar turma. Curso com
   `dispensa_epi` não precisa de EPI (lista vazia, não aparece como pendente).
 - Interface e mensagens em português; nada de dados fictícios fora da demonstração (`backend/app/demo_semestre.py`).
+- Início do projeto com dados reais: `backend/sql/limpar_demo_iniciar_projeto.sql` (uma vez) apaga o demo/testes e grava
+  `configuracoes.producao_iniciada`; com essa marca, os scripts de demo/teste (e a própria limpeza) recusam rodar. Novo script de
+  demo/teste deve ter a mesma trava.
 - Migrações Alembic não destrutivas; para cada migração, gere o SQL do Supabase com `scripts/gerar_sql_migracoes.sh`
   (`backend/sql/atualizacao_NNNN.sql`) e cite-o no SUPABASE.md. O demo (`backend/sql/demo_semestre_completo.sql`)
   é gerado por `scripts/gerar_semestre_demo_sql.py`.

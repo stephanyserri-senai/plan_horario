@@ -7,6 +7,12 @@
 --   DELETE FROM usuarios WHERE email = 'instrutor.teste';
 --   DELETE FROM instrutores WHERE matricula = 'TESTE-PORTAL';
 
+DO $$
+BEGIN
+  IF to_regclass('public.configuracoes') IS NOT NULL AND EXISTS (SELECT 1 FROM configuracoes WHERE chave = 'producao_iniciada') THEN
+    RAISE EXCEPTION 'Projeto já iniciado com dados reais (limpar_demo_iniciar_projeto.sql foi executado): este script de teste/demonstração apagaria ou misturaria dados. Não execute em produção.';
+  END IF;
+END $$;
 INSERT INTO instrutores (matricula, nome, unidade_id, area_id, todas_areas, carga_horaria_contratual, limite_ch_letiva, max_horas_dia,
                          intervalo_minimo_h, situacao, ativo, areas_competencia)
 SELECT 'TESTE-PORTAL', 'Instrutor de TESTE do portal (remover)', u.id, a.id, false, 40, 30, 8, 11, 'ativo', true, 'Cadastro de teste do portal do instrutor'

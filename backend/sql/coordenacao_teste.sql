@@ -8,6 +8,12 @@
 --   DELETE FROM usuarios WHERE email = 'coordenacao.teste' AND nome LIKE 'Coordenação de TESTE%';
 --   (se der erro por histórico vinculado: UPDATE usuarios SET ativo = false, senha_hash = '!removido' WHERE email = 'coordenacao.teste';)
 
+DO $$
+BEGIN
+  IF to_regclass('public.configuracoes') IS NOT NULL AND EXISTS (SELECT 1 FROM configuracoes WHERE chave = 'producao_iniciada') THEN
+    RAISE EXCEPTION 'Projeto já iniciado com dados reais (limpar_demo_iniciar_projeto.sql foi executado): este script de teste/demonstração apagaria ou misturaria dados. Não execute em produção.';
+  END IF;
+END $$;
 INSERT INTO usuarios (nome, email, senha_hash, perfil, acesso_global, ativo)
 VALUES ('Coordenação de TESTE (remover antes da produção)', 'coordenacao.teste', '$2b$12$9E0rP1w//L25Q8M592N83uSmz7CjvTd71hjZfIxffIWy9TuEQUFH6', 'coordenador', true, true)
 ON CONFLICT (email) DO UPDATE SET perfil = 'coordenador', ativo = true, senha_hash = EXCLUDED.senha_hash

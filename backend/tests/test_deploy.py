@@ -519,6 +519,26 @@ def test_scripts_do_sql_editor_funcionam_comando_a_comando():
             assert cont("usuarios") >= 1 and cont("permissoes_perfil") > 0 and cont("parametros_otimizacao") > 0
             assert c.scalar(text("SELECT valor->>'contagem' FROM configuracoes WHERE chave = 'regras_aula'")) == "relogio"
         eng.dispose()
+        # iniciar o projeto: recarrega o demo, cria logins de teste e limpa tudo de uma vez (limpar_demo_iniciar_projeto.sql)
+        for arq in ("demo_recarregar.sql", "coordenacao_teste.sql", "instrutor_teste_portal.sql", "limpar_demo_iniciar_projeto.sql"):
+            for cmd in _comandos_sql((sql_dir / arq).read_text(encoding="utf-8")):
+                with psycopg.connect(dsn, autocommit=True) as conn:
+                    conn.execute(cmd.encode())
+        eng = create_engine(url)
+        with eng.connect() as c:
+            cont = lambda t: c.scalar(text(f"SELECT count(*) FROM {t}"))  # noqa: E731
+            assert all(cont(t) == 0 for t in ("cursos", "turmas", "instrutores", "ambientes", "cenarios_planejamento", "historico_auditoria"))
+            assert (cont("unidades"), cont("areas")) == (2, 11)
+            assert not c.scalar(text("SELECT count(*) FROM usuarios WHERE email IN ('coordenacao.teste', 'instrutor.teste') OR perfil = 'instrutor'"))
+            assert cont("usuarios") >= 1 and c.scalar(text("SELECT count(*) FROM configuracoes WHERE chave = 'producao_iniciada'")) == 1
+        eng.dispose()
+        # depois disso, os scripts de demonstração/teste (e a própria limpeza) se recusam a rodar
+        for arq in ("demo_recarregar.sql", "limpar_dados_teste.sql", "coordenacao_teste.sql", "limpar_demo_iniciar_projeto.sql"):
+            with pytest.raises(psycopg.Error) as e:
+                for cmd in _comandos_sql((sql_dir / arq).read_text(encoding="utf-8")):
+                    with psycopg.connect(dsn, autocommit=True) as conn:
+                        conn.execute(cmd.encode())
+            assert "execute" in str(e.value).lower()
     finally:
         with adm.connect() as c:
             c.execute(text(f"DROP DATABASE IF EXISTS {nome} WITH (FORCE)"))
