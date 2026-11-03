@@ -197,6 +197,11 @@ function VisaoGeral({ d }: { d: any }) {
           <div className="agenda-chips">
             {d.dados.certificacoes.map((c: any) => <Badge key={c.nome} tipo={c.vencida ? "erro" : "ok"}>{c.nome}{c.valido_ate ? ` até ${dataBR(c.valido_ate)}` : ""}</Badge>)}
           </div>
+          <h4>Uniforme</h4>
+          {d.dados.gestor_imediato && <p className="sub">Gestor imediato: <b>{d.dados.gestor_imediato}</b></p>}
+          {CAMPOS_UNIFORME.some(([k]) => d.dados.uniforme?.[k]) ? <ul className="lista-limpa disp">
+            {CAMPOS_UNIFORME.filter(([k]) => d.dados.uniforme?.[k]).map(([k, rot]) => <li key={k}><b>{rot}</b> <small>{d.dados.uniforme[k]}</small></li>)}
+          </ul> : <p className="mudo">Tamanhos não informados (aba Uniforme).</p>}
           {d.termos ? <>
             <h4>Termos de horas (horista)</h4>
             <ul className="lista-limpa disp">
