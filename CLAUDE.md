@@ -29,6 +29,8 @@ UC transversal/técnica, substituição, solicitações, quadro 5:4...) estão e
   NÃO ficam no repositório (dados pessoais): tela Usuários ou SQL entregue à parte; senha inicial nunca em texto no repositório. `usuarios.trocar_senha`: no primeiro
   acesso o usuário só usa `/api/auth/*` até definir a senha (`deps.get_contexto`; tela `PrimeiroAcesso` no App).
 - UNIDADES E ÁREAS NUNCA SÃO APAGADAS pelos scripts de limpeza (só as de demonstração, código DEMO-...).
+- Recomeçar só os cursos (dados reais): `sql/cursos_conferir_antes_de_limpar.sql` → `sql/limpar_cursos_recomecar.sql` (bloco único;
+  recusa com aula realizada; cópias `bkp_competencias_cursos`/`bkp_turmas_cursos` com RLS) → reimportar → `sql/restaurar_competencias_apos_cursos.sql`.
 - Início do projeto com dados reais: `backend/sql/limpar_demo_iniciar_projeto.sql` (uma vez) apaga o demo/testes e grava
   `configuracoes.producao_iniciada`; com essa marca, os scripts de demo/teste (e a própria limpeza) recusam rodar. Novo script de
   demo/teste deve ter a mesma trava.

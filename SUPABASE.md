@@ -185,3 +185,6 @@ O modo `local` (usuários e senhas próprios, bcrypt + JWT) continua disponível
 * A senha do banco e as chaves `service_role` devem ficar só em cofres de senha e nas variáveis do servidor.
 * Restrinja o acesso ao painel do Supabase: membros da organização com papel mínimo necessário e MFA ativado.
 * **Dados pessoais de instrutores:** apenas perfis com `dados_pessoais.ler` veem e-mails. As exportações são auditadas.
+
+**Recomeçar os cursos (apagar cursos, versões da matriz e UCs) com dados reais:** 1) rode `backend/sql/cursos_conferir_antes_de_limpar.sql` (só leitura: mostra o que será apagado e o que fica); 2) rode `backend/sql/limpar_cursos_recomecar.sql` — apaga cursos, versões, UCs e, por dependerem deles, as turmas (com as aulas programadas) e as competências dos instrutores; mantém unidades, áreas, instrutores, salas, usuários e semestres; guarda cópias em `bkp_competencias_cursos` e `bkp_turmas_cursos`; recusa rodar se houver aula realizada; é um bloco único (tudo ou nada); 3) reimporte os cursos pela planilha “Cursos, matrizes e UCs” (com Modalidade da UC, Carga horária EaD e presencial); 4) rode `backend/sql/restaurar_competencias_apos_cursos.sql` para religar os instrutores às UCs de mesmo código (lista as que não acharam par); 5) reimporte as turmas.
+
