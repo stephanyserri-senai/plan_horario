@@ -821,7 +821,7 @@ def painel(cenario_id: int, ctx: Contexto = Depends(requer("alocacoes.ler")), db
               "Conferir agora" if not val or val.total_bloqueios else None, "/planejamento?aba=validacao"),
         etapa("aprovar", "Aprovação",
               "ok" if est in ("aprovado", "publicado") else "andamento" if est == "aguardando_aprovacao" else "pendente",
-              {"aguardando_aprovacao": "Aguardando a decisão da coordenação.", "aprovado": "Aprovado.", "publicado": "Aprovado."}.get(est, "Envie para validação e aprovação quando a grade estiver pronta."),
+              {"aguardando_aprovacao": "Aguardando a decisão da supervisão.", "aprovado": "Aprovado.", "publicado": "Aprovado."}.get(est, "Envie para validação e aprovação quando a grade estiver pronta."),
               "Enviar para aprovação" if est in ("em_elaboracao", "em_validacao") else None, "/planejamento?aba=cenarios"),
         etapa("publicar", "Publicação", "ok" if est == "publicado" else "pendente" if est == "aprovado" else "futuro",
               "Publicado: esta é a grade oficial." if est == "publicado" else "Pronto para publicar." if est == "aprovado" else "Depois da aprovação.",

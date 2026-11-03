@@ -5,7 +5,7 @@ import { useApp } from "../contexto";
 import { useOpcoes } from "../hooks";
 
 /** Os quatro perfis da plataforma. */
-const PERFIS: Record<string, string> = { administrador: "Administrador", planejador: "Planejador", coordenador: "Coordenador", instrutor: "Instrutor", observador: "Observador" };
+const PERFIS: Record<string, string> = { administrador: "Administrador", planejador: "Planejador", coordenador: "Supervisão", instrutor: "Instrutor", observador: "Observador" };
 const AJUDA_PERFIL: Record<string, string> = {
   administrador: "Gestão do projeto: tudo, inclusive usuários, configurações, aprovação e publicação.",
   planejador: "Usa o planejamento: cadastros, grade, geração de horários, simulações, importação e relatórios.",
@@ -58,7 +58,7 @@ function ListaUsuarios() {
             <Campo rotulo="Nome" obrigatorio><input value={ed.nome} onChange={(e) => setEd({ ...ed, nome: e.target.value })} /></Campo>
             <Campo rotulo="E-mail" obrigatorio><input type="email" disabled={!!ed.id} value={ed.email} onChange={(e) => setEd({ ...ed, email: e.target.value })} /></Campo>
             {supabase ? <p className="sub">A senha é definida pelo próprio usuário no Supabase Auth (convite por e-mail).</p> :
-              <Campo rotulo={ed.id ? "Nova senha (opcional)" : "Senha"} obrigatorio={!ed.id} ajuda="Mínimo 8 caracteres; armazenada com bcrypt."><input type="password" autoComplete="new-password" value={ed.senha || ""} onChange={(e) => setEd({ ...ed, senha: e.target.value })} /></Campo>}
+              <Campo rotulo={ed.id ? "Nova senha (opcional)" : "Senha"} obrigatorio={!ed.id} ajuda="Senha inicial (mínimo 8 caracteres; guardada com bcrypt): no primeiro acesso a pessoa define a dela."><input type="password" autoComplete="new-password" value={ed.senha || ""} onChange={(e) => setEd({ ...ed, senha: e.target.value })} /></Campo>}
             <Campo rotulo="Perfil" ajuda={AJUDA_PERFIL[ed.perfil]}><select value={ed.perfil} onChange={(e) => setEd({ ...ed, perfil: e.target.value })}>
               {Object.entries(PERFIS).map(([p, r]) => <option key={p} value={p}>{r}</option>)}</select></Campo>
             {ed.perfil === "instrutor" && <Campo rotulo="Cadastro do instrutor" obrigatorio ajuda="O instrutor só vê e atualiza os próprios dados e turmas no portal.">

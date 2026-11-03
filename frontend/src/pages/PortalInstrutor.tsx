@@ -9,7 +9,7 @@ import { PainelTermo } from "../components/QuadroDisponibilidade";
 import { MinhasImpressoes } from "../components/Impressoes";
 
 const TIPOS: [string, string][] = [["sugestao", "Sugestão"], ["dificuldade", "Dificuldade"], ["recurso", "Recurso ou material"], ["horario", "Horário"], ["outro", "Outro"]];
-const STATUS: Record<string, [string, string]> = { nova: ["info", "Enviada"], lida: ["alerta", "Lida pela coordenação"], resolvida: ["ok", "Resolvida"] };
+const STATUS: Record<string, [string, string]> = { nova: ["info", "Enviada"], lida: ["alerta", "Lida pela supervisão"], resolvida: ["ok", "Resolvida"] };
 
 /** Página exclusiva do perfil "instrutor": os próprios dados, as próprias turmas e as observações. */
 export default function PortalInstrutor({ trocarSenha }: { trocarSenha: () => void }) {
@@ -37,7 +37,7 @@ export default function PortalInstrutor({ trocarSenha }: { trocarSenha: () => vo
           <section className="portal-hero">
             <div>
               <h1>Olá, {(eu.dados?.nome || usuario?.nome || "").split(" ")[0]}!</h1>
-              <p>Aqui você confere suas turmas e horários, mantém suas áreas, UCs e disponibilidade em dia e manda sugestões para a coordenação.</p>
+              <p>Aqui você confere suas turmas e horários, mantém suas áreas, UCs e disponibilidade em dia e manda sugestões para a supervisão.</p>
             </div>
             {eu.dados && <div className="portal-status">
               {eu.dados.atualizado_pelo_instrutor_em
@@ -74,7 +74,7 @@ function MinhasTurmas({ aoEnviar }: { aoEnviar: () => void }) {
   if (r.erro) return <div className="erro-box">{r.erro}</div>;
   const sems = r.dados || [];
   if (!sems.length) return <div className="card portal-aviso"><h2>Nenhuma turma atribuída ainda</h2>
-    <p>Quando a coordenação montar a grade com você, suas turmas, UCs e horários aparecem aqui. Enquanto isso, mantenha seus dados e expertise atualizados.</p></div>;
+    <p>Quando a supervisão montar a grade com você, suas turmas, UCs e horários aparecem aqui. Enquanto isso, mantenha seus dados e expertise atualizados.</p></div>;
   const s = sems[Math.min(semIdx, sems.length - 1)];
   return (
     <>
@@ -154,7 +154,7 @@ function CartaoTurma({ t, aoEnviar }: { t: any; aoEnviar: () => void }) {
     setErro(null);
     try {
       await api.post("/api/portal/observacoes", { turma_uc_id: t.turma_uc_id, tipo, texto });
-      aviso("Observação enviada para a coordenação."); setTexto(""); setAberto(false); aoEnviar();
+      aviso("Observação enviada para a supervisão."); setTexto(""); setAberto(false); aoEnviar();
     } catch (e) { setErro(e); }
   };
   const pct = t.ch_uc ? Math.min(100, Math.round(100 * t.horas_suas / t.ch_uc)) : 0;
@@ -175,7 +175,7 @@ function CartaoTurma({ t, aoEnviar }: { t: any; aoEnviar: () => void }) {
         <textarea rows={3} maxLength={3000} placeholder="Ex.: sugiro trocar a sala para o laboratório de comandos nas aulas práticas…" value={texto} onChange={(e) => setTexto(e.target.value)} />
         <Erro erro={erro} />
         <div className="acoes"><button className="btn" onClick={() => setAberto(false)}>Cancelar</button>
-          <button className="btn btn-primario" disabled={texto.trim().length < 3} onClick={enviar}>Enviar para a coordenação</button></div>
+          <button className="btn btn-primario" disabled={texto.trim().length < 3} onClick={enviar}>Enviar para a supervisão</button></div>
       </div>}
     </article>
   );
@@ -196,7 +196,7 @@ function MeusDados({ eu, salvo }: { eu: any; salvo: () => void }) {
       const corpo: any = { areas_ids: v.areas_ids, ucs_competencia: v.ucs_competencia, certificacoes: v.certificacoes, formacao: v.formacao };
       if (v.__disp) { corpo.jornada = v.jornada; corpo.disp_dias = v.disp_dias; }
       await api.put("/api/portal/eu", corpo);
-      aviso("Dados salvos no seu cadastro. A coordenação já vê as alterações."); salvo();
+      aviso("Dados salvos no seu cadastro. A supervisão já vê as alterações."); salvo();
     } catch (e) { setErro(e); } finally { setSalvando(false); }
   };
   const addCert = () => {
@@ -214,7 +214,7 @@ function MeusDados({ eu, salvo }: { eu: any; salvo: () => void }) {
           <dt>Modalidade</dt><dd>{eu.modalidade === "horista" ? "Horista (horas não garantidas)" : "Mensalista (horas garantidas: aula, planejamento ou projeto)"}</dd>
           <dt>Carga contratual</dt><dd>{eu.carga_horaria_contratual} h/semana · {eu.max_horas_dia} h de aula por dia</dd>
         </dl>
-        <p className="sub">Esses dados são mantidos pela coordenação. Se algo estiver errado, avise por uma observação.</p>
+        <p className="sub">Esses dados são mantidos pela supervisão. Se algo estiver errado, avise por uma observação.</p>
       </section>
 
       {!eu.todas_areas && outras.length > 0 && <section className="card">
@@ -256,7 +256,7 @@ function Notificacoes({ lista, mudou, ir }: { lista: any[] | null; mudou: () => 
   const novas = lista.filter((n) => !n.lida);
   const marcar = async (ids?: number[]) => { await api.post("/api/portal/notificacoes/lidas", ids ? { ids } : {}); mudou(); };
   if (!lista.length) return <div className="card portal-aviso"><p>Nenhuma notificação ainda. Aqui aparecem avisos de mudanças no seu cadastro, substituições,
-    horários publicados e respostas da coordenação.</p></div>;
+    horários publicados e respostas da supervisão.</p></div>;
   return (
     <section className="card">
       <div className="portal-semana-cab"><b>{novas.length ? `${novas.length} nova(s)` : "Tudo lido"}</b>
@@ -303,7 +303,7 @@ function MinhasSolicitacoes({ lista, turnos, mudou }: { lista: any[] | null; tur
     setErro(null); setEnviando(true);
     try {
       const r = await api.post("/api/portal/solicitacoes", f);
-      aviso(`Pedido enviado ao coordenador${r.aulas_afetadas ? ` (${r.aulas_afetadas} aula(s) no período)` : ""}.`);
+      aviso(`Pedido enviado à supervisão${r.aulas_afetadas ? ` (${r.aulas_afetadas} aula(s) no período)` : ""}.`);
       setF({ ...f, justificativa: "" }); mudou();
     } catch (e) { setErro(e); } finally { setEnviando(false); }
   };
@@ -314,7 +314,7 @@ function MinhasSolicitacoes({ lista, turnos, mudou }: { lista: any[] | null; tur
       <section className="card">
         <h2>Nova solicitação</h2>
         <p className="sub">Avise com antecedência quando precisar de <b>folga</b> (não vai estar disponível) ou de <b>substituição</b> (outra pessoa assume as suas aulas).
-          O pedido vai para o coordenador, que aprova ou recusa; a resposta aparece aqui e nas notificações.</p>
+          O pedido vai para a supervisão, que aprova ou recusa; a resposta aparece aqui e nas notificações.</p>
         <div className="form-grid">
           <Campo rotulo="Tipo"><select value={f.tipo} onChange={(e) => setF({ ...f, tipo: e.target.value })}>
             <option value="folga">Folga</option><option value="substituicao">Substituição nas minhas aulas</option></select></Campo>
@@ -324,11 +324,11 @@ function MinhasSolicitacoes({ lista, turnos, mudou }: { lista: any[] | null; tur
         <fieldset className="painel-campo"><legend>Turnos <small>(nenhum marcado = o dia todo)</small></legend>
           <div className="checks">{turnos.map((t: any) => <label key={t.id}><input type="checkbox" checked={f.turnos.includes(t.id)} onChange={(e) => marcarTurno(t.id, e.target.checked)} /> {t.nome} <small className="mudo">{t.inicio}–{t.fim}</small></label>)}</div>
         </fieldset>
-        <Campo rotulo="Justificativa" obrigatorio ajuda="Mínimo de 10 caracteres. O coordenador lê antes de decidir.">
+        <Campo rotulo="Justificativa" obrigatorio ajuda="Mínimo de 10 caracteres. A supervisão lê antes de decidir.">
           <textarea rows={3} maxLength={3000} placeholder="Ex.: consulta médica agendada; participação em banca; curso de capacitação…" value={f.justificativa}
             onChange={(e) => setF({ ...f, justificativa: e.target.value })} /></Campo>
         <Erro erro={erro} />
-        <div className="acoes"><button className="btn btn-primario" disabled={enviando || f.justificativa.trim().length < 10} onClick={enviar}>{enviando ? "Enviando…" : "Enviar ao coordenador"}</button></div>
+        <div className="acoes"><button className="btn btn-primario" disabled={enviando || f.justificativa.trim().length < 10} onClick={enviar}>{enviando ? "Enviando…" : "Enviar à supervisão"}</button></div>
       </section>
       <section className="card">
         <h2>Meus pedidos</h2>
@@ -352,8 +352,8 @@ function MinhasSolicitacoes({ lista, turnos, mudou }: { lista: any[] | null; tur
 const TIPOS_FORMACAO: [string, string][] = [["curso", "Curso"], ["aperfeicoamento", "Aperfeiçoamento"], ["certificacao", "Certificação"],
   ["pos", "Pós-graduação / especialização"], ["outro", "Outra formação"]];
 
-/** O instrutor acompanha o próprio índice de aderência (por área e geral), a ocupação, o PDI indicado pela coordenação
- * e registra as formações que concluir — as UCs são habilitadas na hora e a coordenação recebe uma observação. */
+/** O instrutor acompanha o próprio índice de aderência (por área e geral), a ocupação, o PDI indicado pela supervisão
+ * e registra as formações que concluir — as UCs são habilitadas na hora e a supervisão recebe uma observação. */
 function MeuDesenvolvimento({ registrado }: { registrado: () => void }) {
   const p = useCarregar<any>(() => api.get("/api/portal/perfil"), []);
   const [sub, setSub] = useState("pdi");
@@ -367,7 +367,7 @@ function MeuDesenvolvimento({ registrado }: { registrado: () => void }) {
       <div className="md-cab">
         <div>
           <h2>Meu índice de aderência</h2>
-          <p className="sub">Quanto da carga horária das UCs técnicas dos cursos da sua área você já pode ministrar. O PDI traz as ações que a coordenação
+          <p className="sub">Quanto da carga horária das UCs técnicas dos cursos da sua área você já pode ministrar. O PDI traz as ações que a supervisão
             indicou para você chegar a 100%; ao concluir uma formação, registre aqui.</p>
           <div className="md-chips">
             <span className="chip-status">{abertos.length} ação(ões) do PDI em aberto</span>
@@ -405,7 +405,7 @@ function RegistrarFormacao({ d, feito }: { d: any; feito: () => void }) {
     try {
       const r = await api.post("/api/portal/formacoes", { ...f, pdi_item_id: f.pdi_item_id || null,
         ucs: f.ucs.map((k: string) => { const [curso_id, uc_codigo] = k.split("|"); return { curso_id: Number(curso_id), uc_codigo }; }) });
-      aviso(`Formação registrada. ${r.habilitadas.length ? `Habilitado em ${r.habilitadas.length} UC(s). ` : ""}Seu índice agora é ${String(r.geral).replace(".", ",")}%. A coordenação foi avisada.`);
+      aviso(`Formação registrada. ${r.habilitadas.length ? `Habilitado em ${r.habilitadas.length} UC(s). ` : ""}Seu índice agora é ${String(r.geral).replace(".", ",")}%. A supervisão foi avisada.`);
       feito();
     } catch (e) { setErro(e); }
     setEnviando(false);
@@ -413,7 +413,7 @@ function RegistrarFormacao({ d, feito }: { d: any; feito: () => void }) {
   return (
     <div className="registrar-formacao">
       <p className="sub">Concluiu um curso, aperfeiçoamento ou certificação? Registre aqui: as UCs que você marcar passam a constar como <b>“Sim”</b> no seu
-        perfil na hora (e entram no seu índice), a certificação é registrada e a coordenação recebe uma observação para conferir.</p>
+        perfil na hora (e entram no seu índice), a certificação é registrada e a supervisão recebe uma observação para conferir.</p>
       <div className="form-grid">
         <Campo rotulo="Tipo" obrigatorio><select value={f.tipo} onChange={(e) => setF({ ...f, tipo: e.target.value })}>
           {TIPOS_FORMACAO.map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Campo>
@@ -443,7 +443,7 @@ function RegistrarFormacao({ d, feito }: { d: any; feito: () => void }) {
           ))}
         </div>
       </fieldset>
-      <Campo rotulo="Observação para a coordenação (opcional)"><textarea rows={2} value={f.observacao} onChange={(e) => setF({ ...f, observacao: e.target.value })} /></Campo>
+      <Campo rotulo="Observação para a supervisão (opcional)"><textarea rows={2} value={f.observacao} onChange={(e) => setF({ ...f, observacao: e.target.value })} /></Campo>
       <Erro erro={erro} />
       <div className="rodape-modal"><button className="btn btn-primario" disabled={enviando || f.titulo.trim().length < 3 || (!f.ucs.length && !f.certificacao.trim() && !f.pdi_item_id)}
         onClick={enviar}>{enviando ? "Registrando…" : "Registrar formação"}</button></div>

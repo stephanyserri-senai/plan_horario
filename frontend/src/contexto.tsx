@@ -4,7 +4,8 @@ import { api, getUnidadeFiltro, setUnidadeFiltro, token } from "./api";
 import { invalidarOpcoes } from "./hooks";
 import { carregarConfigAuth, supabase, tipoLinkInicial, type ConfigAuth } from "./auth";
 
-export type Usuario = { id: number; nome: string; email: string; perfil: string; acoes: string[]; escopo: any; instrutor_id?: number | null };
+export type Usuario = { id: number; nome: string; email: string; perfil: string; acoes: string[]; escopo: any; instrutor_id?: number | null;
+  trocar_senha?: boolean };
 export type Cenario = { id: number; nome: string; estado: string; tipo: string; versao: number; unidade_id: number | null;
   periodo_inicio: string | null; periodo_fim: string | null; aulas: number; lock_version: number; cenario_origem_id: number | null };
 
@@ -25,6 +26,7 @@ type Ctx = {
   unidade: string;
   setUnidade: (u: string) => void;
   recarregarCenarios: () => Promise<void>;
+  recarregarUsuario: () => Promise<void>;
   aviso: (texto: string, tipo?: "ok" | "erro" | "info") => void;
 };
 
@@ -57,7 +59,7 @@ export function Provedor({ children }: { children: ReactNode }) {
       const u: Usuario = await api.get("/api/auth/me");
       setUsuario(u);
       setErroAcesso(null);
-      if (u.perfil !== "instrutor") await recarregarCenarios();  // o instrutor só usa o portal
+      if (u.perfil !== "instrutor" && !u.trocar_senha) await recarregarCenarios();  // o instrutor só usa o portal; senha inicial: troca antes
     } catch (e: any) {
       setUsuario(null);
       // 403: autenticado no Supabase, mas sem cadastro/permissão na plataforma
@@ -134,7 +136,7 @@ export function Provedor({ children }: { children: ReactNode }) {
 
   if (!carregado) return <div className="carregando" role="status">Carregando…</div>;
   return (
-    <C.Provider value={{ usuario, auth, erroAcesso, definirSenha, concluirDefinicaoSenha, recuperarSenha, entrar, sair, pode, cenarios, cenario, setCenarioId, unidade, setUnidade, recarregarCenarios, aviso }}>
+    <C.Provider value={{ usuario, auth, erroAcesso, definirSenha, concluirDefinicaoSenha, recuperarSenha, entrar, sair, pode, cenarios, cenario, setCenarioId, unidade, setUnidade, recarregarCenarios, recarregarUsuario: carregarUsuario, aviso }}>
       {children}
       <div className="avisos" aria-live="polite">
         {avisos.map((a) => <div key={a.id} className={`aviso aviso-${a.tipo}`}>{a.texto}</div>)}

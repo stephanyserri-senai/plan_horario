@@ -52,7 +52,7 @@ def _habilitar(db: Session, ctx, instrutor_id: int, uc_id: int) -> str:
     db.flush()
     auditoria.registrar(db, ctx, "cadastro.alterar", "competencias_instrutores", c.id, antes=antes, depois=auditoria.snapshot(c), motivo="Sugestão aceita")
     from app.services.notificacoes import notificar
-    notificar(db, inst.id, "cadastro", "Você foi habilitado(a) em uma UC", f"{uc.codigo} – {uc.nome} (sugestão do planejamento aceita pela coordenação).", "dados", ctx)
+    notificar(db, inst.id, "cadastro", "Você foi habilitado(a) em uma UC", f"{uc.codigo} – {uc.nome} (sugestão do planejamento aceita pela supervisão).", "dados", ctx)
     return f"{inst.nome} habilitado(a) em {uc.codigo}."
 
 

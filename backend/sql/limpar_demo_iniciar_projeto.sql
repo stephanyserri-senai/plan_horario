@@ -3,9 +3,9 @@
 --        salas e laboratórios, recursos, calendários e feriados, bloqueios, semestres e aulas, gerações, simulações, importações,
 --        observações, notificações, solicitações e pedidos de impressão dos instrutores, EPIs; os logins do portal (perfil instrutor),
 --        os logins de demonstração/teste (coordenacao, coordenacao.teste, instrutor.teste, e-mails @demo.senai.br) e o histórico de
---        auditoria da fase de testes; e qualquer unidade que não seja BEIRA-MAR ou PORTO.
--- MANTÉM: unidades Beira Mar e Porto, áreas tecnológicas, turnos e horários oficiais, configurações (pesos, regras de aula),
---         perfis de acesso e os usuários da equipe (administrador, planejador, coordenador, observador) — troque as senhas de teste.
+--        auditoria da fase de testes.
+-- MANTÉM: TODAS as unidades e áreas (só sai unidade de demonstração, código DEMO-...), turnos e horários oficiais, configurações (pesos, regras de aula),
+--         perfis de acesso e os usuários da equipe (administrador, supervisão, planejador, observador).
 -- DEPOIS: o projeto fica marcado como iniciado; demo_semestre_completo.sql, demo_recarregar.sql, limpar_dados_teste.sql e os
 --         logins de teste passam a se recusar a rodar (para não apagar nem misturar os dados reais). Este script também não roda de novo.
 -- IRREVERSÍVEL: se quiser guardar algo, faça antes um backup (Supabase: Database → Backups).
@@ -77,12 +77,13 @@ BEGIN
   UPDATE historico_auditoria SET usuario_id = NULL WHERE usuario_id IN (SELECT id FROM usuarios WHERE perfil = 'instrutor');
   DELETE FROM usuarios WHERE perfil = 'instrutor';
   -- escopos de acesso que apontavam para cursos/turmas apagados ou unidades extras
+  -- UNIDADES E ÁREAS SÃO MANTIDAS (todas): só sai o que é de demonstração (código DEMO-...)
   DELETE FROM permissoes WHERE escopo_tipo IN ('curso', 'turma')
-     OR (escopo_tipo = 'unidade' AND escopo_id NOT IN (SELECT id FROM unidades WHERE codigo IN ('BEIRA-MAR', 'PORTO')));
-  DELETE FROM periodos_horarios WHERE unidade_id NOT IN (SELECT id FROM unidades WHERE codigo IN ('BEIRA-MAR', 'PORTO'));
-  DELETE FROM turnos WHERE unidade_id NOT IN (SELECT id FROM unidades WHERE codigo IN ('BEIRA-MAR', 'PORTO'));
-  DELETE FROM areas WHERE unidade_id NOT IN (SELECT id FROM unidades WHERE codigo IN ('BEIRA-MAR', 'PORTO'));
-  DELETE FROM unidades WHERE codigo NOT IN ('BEIRA-MAR', 'PORTO');
+     OR (escopo_tipo = 'unidade' AND escopo_id IN (SELECT id FROM unidades WHERE codigo LIKE 'DEMO-%'));
+  DELETE FROM periodos_horarios WHERE unidade_id IN (SELECT id FROM unidades WHERE codigo LIKE 'DEMO-%');
+  DELETE FROM turnos WHERE unidade_id IN (SELECT id FROM unidades WHERE codigo LIKE 'DEMO-%');
+  DELETE FROM areas WHERE unidade_id IN (SELECT id FROM unidades WHERE codigo LIKE 'DEMO-%');
+  DELETE FROM unidades WHERE codigo LIKE 'DEMO-%';
   DELETE FROM configuracoes WHERE chave = 'worker_status';
   -- logins de demonstração e de teste (coordenação do demo, coordenação de teste, instrutor de teste, e-mails @demo)
   UPDATE historico_auditoria SET usuario_id = NULL WHERE usuario_id IN (

@@ -56,7 +56,7 @@ def perfil(iid: int, cenario_id: int | None = None, ctx: Contexto = Depends(requ
 
 
 def montar_perfil(db: Session, inst: Instrutor, cenario_id: int | None, ver_email: bool) -> dict:
-    """O mesmo perfil para a coordenação (lista de instrutores) e para o próprio instrutor (portal)."""
+    """O mesmo perfil para a supervisão (lista de instrutores) e para o próprio instrutor (portal)."""
     from app.api.portal import acesso_do_instrutor
     from app.services.agenda_instrutor import TIPO_PARA_SIGLA
     base = aderencia.Base(db)

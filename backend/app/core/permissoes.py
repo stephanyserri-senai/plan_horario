@@ -31,7 +31,7 @@ ACOES = {
 # solicitações dos instrutores), instrutor (portal) e observador (só acompanha).
 PERFIS = ["administrador", "planejador", "coordenador", "instrutor", "observador"]
 ROTULOS_PERFIL = {"administrador": "Administrador (gestão do projeto)", "planejador": "Planejador",
-                  "coordenador": "Coordenador (planejamento + aprova solicitações dos instrutores)",
+                  "coordenador": "Supervisão (planejamento + aprova solicitações e pedidos dos instrutores)",
                   "instrutor": "Instrutor", "observador": "Observador (somente acompanhar)"}
 
 PADRAO = {

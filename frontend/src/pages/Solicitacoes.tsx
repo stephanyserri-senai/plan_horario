@@ -8,7 +8,7 @@ const ST: Record<string, string> = { pendente: "alerta", aprovada: "ok", recusad
 const GRUPO: Record<string, string> = { recomendado: "livre, da área e com a UC", excecao: "livre (outra área ou sem a UC: exceção justificada)",
   parcial: "livre só em parte das aulas", indisponivel: "indisponível" };
 
-/** Coordenação: pedidos de folga e de substituição enviados pelos instrutores no portal. */
+/** Supervisão: pedidos de folga e de substituição enviados pelos instrutores no portal. */
 export default function Solicitacoes() {
   const [status, setStatus] = useState("pendente");
   const [sel, setSel] = useState<number | null>(null);

@@ -273,7 +273,7 @@ def equipe(db: Session, unidades: set[int] | None = None, area_id: int | None = 
     return {"instrutores": linhas, "media": media, "cobertura": cobertura, "por_area": por_area}
 
 
-# ----------------------------------------------------------------------------- habilitar (coordenação ou o próprio instrutor)
+# ----------------------------------------------------------------------------- habilitar (supervisão ou o próprio instrutor)
 NIVEIS_COMP = {"pleno": "sim", "parcial": "em partes", "nenhum": "não ministra"}
 
 

@@ -83,7 +83,7 @@ def test_portal_do_instrutor_ponta_a_ponta(db, mundo):
     u.instrutor_id = None
     db.commit()
     r = c.get("/api/portal/eu", headers=h)
-    assert r.status_code == 403 and "coordenação" in r.text
+    assert r.status_code == 403 and "supervisão" in r.text
 
 
 def test_sql_do_instrutor_de_teste(db, mundo):

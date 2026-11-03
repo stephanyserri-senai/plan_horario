@@ -104,6 +104,38 @@ function SeletorUnidade() {
   );
 }
 
+/** Primeiro acesso com a senha inicial: o usuário define a própria senha antes de usar o sistema. */
+function PrimeiroAcesso() {
+  const { usuario, recarregarUsuario, sair, aviso } = useApp();
+  const [f, setF] = useState({ atual: "", nova: "", conf: "" });
+  const [erro, setErro] = useState<any>(null);
+  const salvar = async () => {
+    setErro(null);
+    if (f.nova.length < 8) return setErro(new Error("A nova senha deve ter ao menos 8 caracteres."));
+    if (f.nova !== f.conf) return setErro(new Error("A confirmação não confere com a nova senha."));
+    try {
+      await api.post("/api/auth/senha", { senha_atual: f.atual, nova_senha: f.nova });
+      aviso("Senha definida. Bem-vindo(a)!");
+      await recarregarUsuario();
+    } catch (e) { setErro(e); }
+  };
+  return (
+    <div className="login">
+      <form className="primeiro-acesso" onSubmit={(e) => { e.preventDefault(); salvar(); }}>
+        <img className="login-icone" src="/icone.png" alt="" width={72} height={72} />
+        <h1>Primeiro acesso</h1>
+        <p className="sub">Olá, {usuario?.nome.split(" ")[0]}! Você entrou com a senha inicial. Para continuar, defina a sua senha (mínimo de 8 caracteres).</p>
+        <Campo rotulo="Senha inicial (a que você usou para entrar)"><input type="password" autoComplete="current-password" value={f.atual} onChange={(e) => setF({ ...f, atual: e.target.value })} /></Campo>
+        <Campo rotulo="Nova senha"><input type="password" autoComplete="new-password" value={f.nova} onChange={(e) => setF({ ...f, nova: e.target.value })} /></Campo>
+        <Campo rotulo="Confirme a nova senha"><input type="password" autoComplete="new-password" value={f.conf} onChange={(e) => setF({ ...f, conf: e.target.value })} /></Campo>
+        <Erro erro={erro} />
+        <button type="submit" className="btn btn-primario">Definir minha senha e entrar</button>
+        <button type="button" className="btn-link" onClick={sair}>Sair</button>
+      </form>
+    </div>
+  );
+}
+
 function TrocarSenha({ fechar }: { fechar: () => void }) {
   const { aviso, auth } = useApp();
   const sb = auth?.modo === "supabase";
@@ -164,6 +196,7 @@ export default function App() {
   const [trocarSenha, setTrocarSenha] = useState(false);
   if (definirSenha) return <DefinirSenha />;
   if (!usuario) return <Login />;
+  if (usuario.trocar_senha) return <PrimeiroAcesso />;
   if (usuario.perfil === "instrutor") return <>
     <PortalInstrutor trocarSenha={() => setTrocarSenha(true)} />
     {trocarSenha && <TrocarSenha fechar={() => setTrocarSenha(false)} />}

@@ -3,7 +3,7 @@
 O usuário com perfil "instrutor" fica ligado a um cadastro de instrutor (usuarios.instrutor_id)
 e só enxerga a si mesmo: atualiza áreas adicionais, UCs que ministra, disponibilidade,
 certificações e formação (gravados direto no cadastro de instrutores), vê as turmas/UCs e
-os horários atribuídos a ele e envia observações sobre cada turma × UC para a coordenação.
+os horários atribuídos a ele e envia observações sobre cada turma × UC para a supervisão.
 """
 from __future__ import annotations
 
@@ -41,7 +41,7 @@ def _meu_instrutor(ctx: Contexto, db: Session) -> Instrutor:
     iid = getattr(ctx.usuario, "instrutor_id", None)
     inst = db.get(Instrutor, iid) if iid else None
     if inst is None or not inst.ativo:
-        raise AcessoNegado("Seu usuário ainda não está ligado a um cadastro de instrutor ativo. Peça à coordenação para liberar o seu acesso.",
+        raise AcessoNegado("Seu usuário ainda não está ligado a um cadastro de instrutor ativo. Peça à supervisão para liberar o seu acesso.",
                            codigo="SEM_VINCULO_INSTRUTOR")
     return inst
 
@@ -97,14 +97,14 @@ def atualizar_meus_dados(dados: dict = Body(...), ctx: Contexto = Depends(get_co
     if dados.get("areas_ids") is not None:
         gravar_outras_areas(db, "instrutores", inst, dados["areas_ids"])
     if dados.get("ucs_competencia") is not None:
-        # só UCs das áreas dele (ou que ele já tinha): a área principal é definida pela coordenação
+        # só UCs das áreas dele (ou que ele já tinha): a área principal é definida pela supervisão
         areas = [inst.area_id, *_areas_ids(db, inst)]
         permitidas = {u["id"] for g in listar_ucs_por_area(db, [a for a in areas if a], inst.unidade_id, inst.todas_areas) for u in g["ucs"]}
         permitidas |= set(db.scalars(select(CompetenciaInstrutor.uc_id).where(CompetenciaInstrutor.instrutor_id == inst.id,
                                                                               CompetenciaInstrutor.ativo.is_(True))))
         fora = [x for x in dados["ucs_competencia"] if int(x.get("uc_id") or 0) not in permitidas]
         if fora:
-            raise ConflitoValidacao("Há UCs fora das suas áreas. Marque a área correspondente ou fale com a coordenação.")
+            raise ConflitoValidacao("Há UCs fora das suas áreas. Marque a área correspondente ou fale com a supervisão.")
     _gravar_instrutor(db, inst, {k: dados.get(k) for k in ("ucs_competencia", "jornada", "disp_turnos", "disp_dias")})
     if dados.get("certificacoes") is not None:
         quer = {str(c).strip(): None for c in dados["certificacoes"] if str(c).strip()}
@@ -190,7 +190,7 @@ def minhas_turmas(ctx: Contexto = Depends(get_contexto), db: Session = Depends(g
                        "sala": salas[a.ambiente_id].nome if a.ambiente_id in salas else None, "turno": turnos.get(turmas[a.turma_id].turno_id),
                        "substituindo": titulares.get(a.instrutor_titular_id)}
                       for a in sorted(aulas, key=lambda a: a.inicio)],
-            # turnos de planejamento (PL) e projeto/outra atividade (PJ) marcados pela coordenação
+            # turnos de planejamento (PL) e projeto/outra atividade (PJ) marcados pela supervisão
             "reservas": [{"data": b.inicio.date().isoformat(), "inicio": b.inicio.strftime("%H:%M"), "fim": b.fim.strftime("%H:%M"),
                           "sigla": TIPO_PARA_SIGLA[b.tipo], "descricao": b.motivo}
                          for b in db.scalars(select(Bloqueio).where(
@@ -303,7 +303,7 @@ def meus_termos(ctx: Contexto = Depends(get_contexto), db: Session = Depends(get
 
 @router.get("/portal/perfil")
 def meu_perfil(ctx: Contexto = Depends(get_contexto), db: Session = Depends(get_db)):
-    """O mesmo perfil que a coordenação vê (ocupação, aderência por curso e área, PDI), do semestre mais recente do instrutor."""
+    """O mesmo perfil que a supervisão vê (ocupação, aderência por curso e área, PDI), do semestre mais recente do instrutor."""
     from app.api.instrutores import montar_perfil
     inst = _meu_instrutor(ctx, db)
     cens = _cenarios_do_instrutor(db, inst)
@@ -313,7 +313,7 @@ def meu_perfil(ctx: Contexto = Depends(get_contexto), db: Session = Depends(get_
 
 @router.get("/portal/pdi")
 def meu_pdi(ctx: Contexto = Depends(get_contexto), db: Session = Depends(get_db)):
-    """As ações indicadas ao instrutor (PDI planejado pela coordenação) e as propostas para chegar a 100% (só leitura)."""
+    """As ações indicadas ao instrutor (PDI planejado pela supervisão) e as propostas para chegar a 100% (só leitura)."""
     from app.api.instrutores import _pdi_salvo
     from app.services import aderencia
     inst = _meu_instrutor(ctx, db)
@@ -323,8 +323,8 @@ def meu_pdi(ctx: Contexto = Depends(get_contexto), db: Session = Depends(get_db)
 @router.post("/portal/formacoes")
 def registrar_formacao(d: dict = Body(...), ctx: Contexto = Depends(get_contexto), db: Session = Depends(get_db)):
     """O instrutor registra uma formação concluída (curso, aperfeiçoamento, certificação...). As UCs indicadas são habilitadas na
-    hora ("sim"), a certificação entra no perfil, o item do PDI vinculado é concluído, e tudo chega à coordenação como observação
-    (tipo nova formação) para conferir — a coordenação pode desfazer pelo perfil do instrutor."""
+    hora ("sim"), a certificação entra no perfil, o item do PDI vinculado é concluído, e tudo chega à supervisão como observação
+    (tipo nova formação) para conferir — a supervisão pode desfazer pelo perfil do instrutor."""
     from app.models import PdiItem
     from app.services import aderencia
     inst = _meu_instrutor(ctx, db)
@@ -492,7 +492,7 @@ def minhas_impressoes(ctx: Contexto = Depends(get_contexto), db: Session = Depen
 
 @router.post("/portal/impressoes")
 def pedir_impressao(d: dict = Body(...), ctx: Contexto = Depends(get_contexto), db: Session = Depends(get_db)):
-    """Pede uma impressão (até a quinta-feira da semana anterior ao uso); a coordenação recebe o pedido."""
+    """Pede uma impressão (até a quinta-feira da semana anterior ao uso); a supervisão recebe o pedido."""
     from app.services import impressoes
     s = impressoes.criar(db, ctx, _meu_instrutor(ctx, db), d)
     db.commit()
@@ -527,7 +527,7 @@ def baixar_meu_pdf(sid: int, ctx: Contexto = Depends(get_contexto), db: Session 
 
 @router.get("/impressoes/{sid}/pdf")
 def baixar_pdf_impressao(sid: int, ctx: Contexto = Depends(requer("solicitacoes.aprovar")), db: Session = Depends(get_db)):
-    """PDF do pedido, para a coordenação imprimir."""
+    """PDF do pedido, para a supervisão imprimir."""
     from app.services import impressoes
     s, conteudo = impressoes.pdf(db, sid)
     ctx.exigir_unidade(db.get(Instrutor, s.instrutor_id).unidade_id)
@@ -544,14 +544,14 @@ def cancelar_impressao(sid: int, ctx: Contexto = Depends(get_contexto), db: Sess
 
 @router.get("/impressoes")
 def listar_impressoes(status: str | None = None, ctx: Contexto = Depends(requer("solicitacoes.aprovar")), db: Session = Depends(get_db)):
-    """Pedidos de impressão dos instrutores (coordenação)."""
+    """Pedidos de impressão dos instrutores (supervisão)."""
     from app.services import impressoes
     return impressoes.listar(db, status=status, unidades=ctx.unidades)
 
 
 @router.put("/impressoes/{sid}")
 def atender_impressao(sid: int, d: dict = Body(...), ctx: Contexto = Depends(requer("solicitacoes.aprovar")), db: Session = Depends(get_db)):
-    """Retorno da coordenação: {"status": em_producao | pronta | entregue | recusada, "resposta"?}. O instrutor é avisado."""
+    """Retorno da supervisão: {"status": em_producao | pronta | entregue | recusada, "resposta"?}. O instrutor é avisado."""
     from app.services import impressoes
     from app.models import SolicitacaoImpressao
     s = db.get(SolicitacaoImpressao, sid)

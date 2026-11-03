@@ -150,7 +150,7 @@ function Sugestoes({ codigo, cenarioId, mudou }: { codigo: string; cenarioId: nu
           );
         })}
       </ul>
-      {!podeAceitar && <p className="sub">Seu perfil só consulta: peça a um planejador ou à coordenação para aceitar as sugestões.</p>}
+      {!podeAceitar && <p className="sub">Seu perfil só consulta: peça a um planejador ou à supervisão para aceitar as sugestões.</p>}
     </div>
   );
 }

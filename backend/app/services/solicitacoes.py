@@ -1,8 +1,8 @@
-"""Solicitações do instrutor (portal): folga ou substituição, com justificativa, decididas pelo coordenador.
+"""Solicitações do instrutor (portal): folga ou substituição, com justificativa, decididas pela supervisão.
 
 - FOLGA: o instrutor não estará disponível no período (o dia todo ou só alguns turnos). Aprovada, vira bloqueio
   na agenda dele (o gerador e a validação passam a respeitar) e as aulas que ele tinha no período são
-  substituídas pelo substituto escolhido pelo coordenador — ou pela sugestão do sistema, se o coordenador aceitar.
+  substituídas pelo substituto escolhido pela supervisão — ou pela sugestão do sistema, se a supervisão aceitar.
 - SUBSTITUIÇÃO: o instrutor continua disponível, mas pede que outro assuma as aulas do período.
   Aprovada, as aulas passam para o substituto (escolhido ou sugerido).
 Toda decisão avisa o instrutor no portal e fica na auditoria.
@@ -20,7 +20,7 @@ from app.services import auditoria, substituicao
 from app.services.notificacoes import notificar
 
 TIPOS = {"folga": "Folga", "substituicao": "Substituição"}
-STATUS = {"pendente": "Aguardando o coordenador", "aprovada": "Aprovada", "recusada": "Recusada", "cancelada": "Cancelada"}
+STATUS = {"pendente": "Aguardando a supervisão", "aprovada": "Aprovada", "recusada": "Recusada", "cancelada": "Cancelada"}
 ORDEM_ESTADOS = ["publicado", "aprovado", "aguardando_aprovacao", "em_validacao", "em_elaboracao"]
 
 
@@ -107,7 +107,7 @@ def criar(db: Session, ctx, inst: Instrutor, dados: dict) -> SolicitacaoInstruto
     if d0 < hoje():
         raise EntradaInvalida("Não é possível pedir folga ou substituição para datas passadas.")
     if (d1 - d0).days > 120:
-        raise EntradaInvalida("Período longo demais: para afastamentos, fale direto com a coordenação.")
+        raise EntradaInvalida("Período longo demais: para afastamentos, fale direto com a supervisão.")
     just = (dados.get("justificativa") or "").strip()
     if len(just) < 10:
         raise EntradaInvalida("Explique o motivo do pedido (mínimo de 10 caracteres).")
@@ -183,7 +183,7 @@ def decidir(db: Session, ctx, sid: int, aprovar: bool, resposta: str | None = No
     periodo = f"{s.data_inicio:%d/%m}" + (f" a {s.data_fim:%d/%m}" if s.data_fim != s.data_inicio else "")
     if aprovar:
         extra = (f" {efeitos['substituidas']} aula(s) com {efeitos['substituto']}." if efeitos.get("substituidas")
-                 else " A coordenação vai definir quem assume as suas aulas." if efeitos.get("aulas_sem_substituto") else "")
+                 else " A supervisão vai definir quem assume as suas aulas." if efeitos.get("aulas_sem_substituto") else "")
         notificar(db, s.instrutor_id, "solicitacao", f"{TIPOS[s.tipo]} aprovada ({periodo})", ((resposta + ".") if resposta else "") + extra, "solic", ctx)
     else:
         notificar(db, s.instrutor_id, "solicitacao", f"{TIPOS[s.tipo]} recusada ({periodo})", resposta, "solic", ctx)

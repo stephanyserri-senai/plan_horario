@@ -5,7 +5,7 @@ import { Badge, useCarregar } from "./ui";
 
 const STATUS: Record<string, [string, string]> = { nova: ["info", "Nova"], lida: ["alerta", "Lida"], resolvida: ["ok", "Resolvida"] };
 
-/** Observações e sugestões enviadas pelos instrutores no portal, para a coordenação ler e responder. */
+/** Observações e sugestões enviadas pelos instrutores no portal, para a supervisão ler e responder. */
 export default function ObservacoesInstrutores() {
   const { pode } = useApp();
   const [status, setStatus] = useState("nova");

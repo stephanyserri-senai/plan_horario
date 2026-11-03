@@ -222,11 +222,11 @@ def catalogo() -> list[dict]:
     regra("IMPRESSAO_PRAZO", "Substituições e solicitações", "obrigatoria", "Pedido de impressão até a quinta da semana anterior",
           "O instrutor pede a impressão do material pelo portal (o que imprimir, dia de uso, turma, cópias, páginas, frente e verso, "
           "colorido e o PDF do material — até 4 MB — ou o link do arquivo) até a quinta-feira da semana anterior ao uso — para usar de segunda a sábado da semana S, até a "
-          "quinta da semana S-1; depois disso o portal não aceita para aquela data. A coordenação dá o retorno (em produção, pronta para "
-          "retirar, entregue ou recusada com o motivo) e o instrutor é avisado no portal.", ["portal", "coordenação"], {"dia_limite": "quinta-feira"})
+          "quinta da semana S-1; depois disso o portal não aceita para aquela data. A supervisão dá o retorno (em produção, pronta para "
+          "retirar, entregue ou recusada com o motivo) e o instrutor é avisado no portal.", ["portal", "supervisão"], {"dia_limite": "quinta-feira"})
     regra("SOLICITACOES", "Substituições e solicitações", "obrigatoria", "Solicitações do instrutor",
-          "Pelo portal o instrutor pede folga ou substituição, com justificativa; o coordenador aprova ou recusa. Folga aprovada vira bloqueio na agenda e as aulas afetadas recebem sugestão de substituto.",
-          ["portal", "coordenação"])
+          "Pelo portal o instrutor pede folga ou substituição, com justificativa; a supervisão aprova ou recusa. Folga aprovada vira bloqueio na agenda e as aulas afetadas recebem sugestão de substituto.",
+          ["portal", "supervisão"])
     regra("EPI_TURMA", "Turmas", "aviso", "EPIs do curso em cada turma",
           "O curso lista os EPIs exigidos por aluno. Cada turma recebe a lista com quantidade = alunos × por aluno e prazo = início da turma − antecedência; "
           "o controle marca comprado/separado e entregue. Prazo vencido sem entrega, ou a menos de 7 dias, vira aviso no Início e em Riscos.",
@@ -251,7 +251,7 @@ def catalogo() -> list[dict]:
           "os cursos da área e a geral soma todas as áreas do instrutor. O que falta vira proposta de PDI (aprender, completar ou certificar), "
           "com prioridade pela demanda das turmas, por quantos outros instrutores já dão a UC e pelo ganho no curso; concluir um item "
           "pode marcar a UC como 'sim' no perfil. O instrutor acompanha o índice (por área e geral), a ocupação e o PDI no portal e registra "
-          "as formações que concluir: as UCs indicadas são habilitadas na hora e a coordenação recebe uma observação para conferir. "
+          "as formações que concluir: as UCs indicadas são habilitadas na hora e a supervisão recebe uma observação para conferir. "
           "A equipe tem também o índice por área (média dos instrutores que atuam nela).",
           ["perfil do instrutor", "portal do instrutor", "PDI"])
     # quadro e decisões

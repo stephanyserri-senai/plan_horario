@@ -124,3 +124,9 @@ echo "Gerado backend/sql/atualizacao_0020.sql"
   ALEMBIC_DATABASE_URL="postgresql+psycopg://usuario:senha@host/banco" python -m alembic upgrade 0020:0021 --sql
 } > sql/atualizacao_0021.sql
 echo "Gerado backend/sql/atualizacao_0021.sql"
+{
+  echo "-- Atualização 0021 -> 0022: troca de senha obrigatória no primeiro acesso (usuarios.trocar_senha). Só acrescenta a"
+  echo "-- coluna. Cole no SQL Editor do Supabase e clique em Run."
+  ALEMBIC_DATABASE_URL="postgresql+psycopg://usuario:senha@host/banco" python -m alembic upgrade 0021:0022 --sql
+} > sql/atualizacao_0022.sql
+echo "Gerado backend/sql/atualizacao_0022.sql"

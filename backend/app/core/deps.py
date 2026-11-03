@@ -118,6 +118,9 @@ def get_contexto(request: Request, authorization: str | None = Header(default=No
         usuario = db.get(Usuario, int(payload["sub"]))
     if not usuario or not usuario.ativo:
         raise HTTPException(status_code=401, detail="Usuário inativo.")
+    # senha inicial: até definir a própria senha, o usuário só acessa o login, os próprios dados e a troca de senha
+    if getattr(usuario, "trocar_senha", False) and get_settings().auth_modo == "local" and not request.url.path.startswith("/api/auth/"):
+        raise HTTPException(status_code=403, detail="Defina a sua senha para continuar (primeiro acesso).")
     ctx = carregar_contexto(db, usuario)
     if request.method == "GET":  # gravações nunca são afetadas pelo filtro da tela
         aplicar_filtro_unidade(ctx, x_unidade)

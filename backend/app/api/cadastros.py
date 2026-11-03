@@ -686,13 +686,13 @@ def _norm(v):
 
 
 def _avisar_instrutor(db: Session, ctx, ent: str, obj, campos: list[str] | None = None, acao: str = "alterou"):
-    """Notifica o instrutor quando a coordenação mexe no cadastro dele (ou em algo ligado a ele)."""
+    """Notifica o instrutor quando a supervisão mexe no cadastro dele (ou em algo ligado a ele)."""
     from app.services.notificacoes import CADASTROS_DO_INSTRUTOR, avisar_alteracao_cadastro, notificar
     if ent == "instrutores" and campos:
         avisar_alteracao_cadastro(db, ctx, obj.id, campos, acao)
     elif ent in CADASTROS_DO_INSTRUTOR and getattr(obj, "instrutor_id", None):
         rotulo, aba = CADASTROS_DO_INSTRUTOR[ent]
-        quem = getattr(getattr(ctx, "usuario", None), "nome", None) or "A coordenação"
+        quem = getattr(getattr(ctx, "usuario", None), "nome", None) or "A supervisão"
         notificar(db, obj.instrutor_id, "cadastro", "Seu cadastro foi atualizado", f"{quem} {acao}: {rotulo}.", aba, ctx)
 
 

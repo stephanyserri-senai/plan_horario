@@ -511,7 +511,7 @@ export function FormAula({ inicial, cenarioId, unidadeId, periodos, fechar }: { 
       {precisaExcecao && <div className="excecao-box">
         <b>Esta escolha foge da regra acadêmica</b> (outra área ou sem competência cadastrada). Se for realmente necessária, registre a justificativa:
         a aula fica marcada como exceção, aparece em "Conferir conflitos" e no histórico (auditoria).
-        <textarea rows={2} placeholder="Ex.: instrutor titular afastado; substituição combinada com a coordenação até 30/09." value={justificativa} onChange={(e) => setJustificativa(e.target.value)} />
+        <textarea rows={2} placeholder="Ex.: instrutor titular afastado; substituição combinada com a supervisão até 30/09." value={justificativa} onChange={(e) => setJustificativa(e.target.value)} />
         <button className="btn" onClick={salvarComExcecao}>Registrar exceção e salvar</button>
       </div>}
       {erro?.detalhes?.alternativas && <Alternativas alt={erro.detalhes.alternativas} aplicar={aplicarAlternativa}

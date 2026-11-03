@@ -383,6 +383,7 @@ class Usuario(Base):
     ativo: Mapped[bool] = mapped_column(Boolean, default=True)
     criado_em: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     ultimo_acesso: Mapped[datetime | None] = mapped_column(DateTime)
+    trocar_senha: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))  # senha inicial: trocar ao entrar
 
 
 class ObservacaoInstrutor(Base):
@@ -402,7 +403,7 @@ class ObservacaoInstrutor(Base):
 
 
 class SolicitacaoInstrutor(Base):
-    """Pedido do instrutor pelo portal (folga ou substituição), com justificativa, decidido pelo coordenador."""
+    """Pedido do instrutor pelo portal (folga ou substituição), com justificativa, decidido pela supervisão."""
     __tablename__ = "solicitacoes_instrutor"
     __table_args__ = (
         CheckConstraint("tipo in ('folga','substituicao')", name="solicitacoes_tipo_check"),
@@ -426,7 +427,7 @@ class SolicitacaoInstrutor(Base):
 
 class SolicitacaoImpressao(Base):
     """Pedido de impressão do instrutor (material de aula), feito pelo portal até a quinta-feira da semana anterior ao uso;
-    a coordenação atende e dá o retorno (em produção, pronta para retirar, entregue ou recusada)."""
+    a supervisão atende e dá o retorno (em produção, pronta para retirar, entregue ou recusada)."""
     __tablename__ = "solicitacoes_impressao"
     __table_args__ = (
         CheckConstraint("status in ('pendente','em_producao','pronta','entregue','recusada','cancelada')", name="impressao_status_check"),
@@ -448,7 +449,7 @@ class SolicitacaoImpressao(Base):
     data_uso: Mapped[date] = mapped_column(Date)  # dia em que o material será usado
     prazo: Mapped[date] = mapped_column(Date)  # quinta-feira da semana anterior ao uso
     status: Mapped[str] = mapped_column(String(20), default="pendente", server_default="pendente")
-    resposta: Mapped[str | None] = mapped_column(Text)  # retorno da coordenação (ex.: pronto na sala 12)
+    resposta: Mapped[str | None] = mapped_column(Text)  # retorno da supervisão (ex.: pronto na sala 12)
     atendido_por_id: Mapped[int | None] = mapped_column(ForeignKey("usuarios.id", ondelete="SET NULL"))
     atendido_em: Mapped[datetime | None] = mapped_column(DateTime)
     criado_em: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

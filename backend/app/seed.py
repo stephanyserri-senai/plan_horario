@@ -66,11 +66,11 @@ USUARIO_TESTE_NOME = "Administrador de TESTE (remover antes da produção)"
 
 COORD_TESTE_LOGIN = "coordenacao.teste"
 COORD_TESTE_SENHA = "coord@123"
-COORD_TESTE_NOME = "Coordenação de TESTE (remover antes da produção)"
+COORD_TESTE_NOME = "Supervisão de TESTE (remover antes da produção)"
 
 
 def criar_coordenacao_teste(db) -> Usuario:
-    """Login de coordenação para homologação (mesmas travas do usuário de teste: recusado em produção)."""
+    """Login de supervisão para homologação (mesmas travas do usuário de teste: recusado em produção)."""
     s = get_settings()
     if s.producao:
         raise SystemExit("Recusado: o usuário de teste (senha conhecida) não pode ser criado com PLAN_AMBIENTE=producao.")
@@ -124,12 +124,12 @@ def remover_usuario_teste(db) -> str:
     alvo = [x for x in {USUARIO_TESTE_LOGIN, email_usuario_teste()}]
     u = db.scalar(select(Usuario).where(Usuario.email.in_(alvo), Usuario.nome == USUARIO_TESTE_NOME))
     coord = db.scalar(select(Usuario).where(Usuario.email == COORD_TESTE_LOGIN, Usuario.nome == COORD_TESTE_NOME))
-    if coord is not None:  # a coordenação de teste sai junto (inativada: pode ter decisões no histórico)
+    if coord is not None:  # a supervisão de teste sai junto (inativada: pode ter decisões no histórico)
         coord.ativo, coord.senha_hash = False, "!removido"
         auditoria.registrar(db, "seed", "usuario.teste_inativar", "usuarios", coord.id, origem="seed")
         db.commit()
     if u is None:
-        return "Usuário de teste não encontrado." if coord is None else "Coordenação de teste inativada."
+        return "Usuário de teste não encontrado." if coord is None else "Supervisão de teste inativada."
     uid = u.id
     try:
         db.delete(u)
@@ -161,7 +161,7 @@ if __name__ == "__main__":
             else:
                 u = criar_usuario_teste(db)
                 criar_coordenacao_teste(db)
-                print(f"Coordenação de teste pronta: login '{COORD_TESTE_LOGIN}', senha '{COORD_TESTE_SENHA}' (perfil coordenador).")
+                print(f"Supervisão de teste pronta: login '{COORD_TESTE_LOGIN}', senha '{COORD_TESTE_SENHA}' (perfil coordenador).")
                 if get_settings().auth_modo == "supabase":
                     print(f"Usuário de teste cadastrado na plataforma: {u.email}. Crie o MESMO e-mail no Supabase "
                           f"(Authentication → Users → Add user) com a senha {USUARIO_TESTE_SENHA} e 'Auto Confirm User'.")

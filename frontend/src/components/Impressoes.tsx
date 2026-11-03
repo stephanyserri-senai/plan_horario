@@ -37,13 +37,13 @@ function CartaoPedido({ p, children, mostrarInstrutor, urlPdf }: { p: any; child
         {p.arquivo_url && <a href={p.arquivo_url} target="_blank" rel="noreferrer">🔗 arquivo</a>}
       </div>
       {p.descricao && <p className="imp-desc">{p.descricao}</p>}
-      {p.resposta && <p className="imp-resp">💬 <b>Coordenação:</b> {p.resposta}</p>}
+      {p.resposta && <p className="imp-resp">💬 <b>Supervisão:</b> {p.resposta}</p>}
       {children}
     </div>
   );
 }
 
-/** Portal do instrutor: pedir impressão (até a quinta da semana anterior ao uso) e acompanhar o retorno da coordenação. */
+/** Portal do instrutor: pedir impressão (até a quinta da semana anterior ao uso) e acompanhar o retorno da supervisão. */
 export function MinhasImpressoes() {
   const { aviso } = useApp();
   const r = useCarregar<any>(() => api.get("/api/portal/impressoes"), []);
@@ -69,7 +69,7 @@ export function MinhasImpressoes() {
         try { await api.upload(`/api/portal/impressoes/${novo.id}/pdf`, fd); }
         catch (e: any) { aviso(`Pedido enviado, mas o PDF não subiu: ${e.message}`, "erro"); setF(vazio(form.data_uso)); r.recarregar(); return; }
       }
-      aviso("Pedido de impressão enviado à coordenação. Você recebe o retorno aqui e nas notificações.");
+      aviso("Pedido de impressão enviado à supervisão. Você recebe o retorno aqui e nas notificações.");
       setF(vazio(form.data_uso)); setPdf(null); setChaveArq((k) => k + 1); r.recarregar();
     } catch (e) { setErro(e); } finally { setEnviando(false); }
   };
@@ -82,7 +82,7 @@ export function MinhasImpressoes() {
     <div className="card imp-portal">
       <h2>🖨 Pedidos de impressão</h2>
       <p className="sub">Peça a impressão do material até a <b>quinta-feira da semana anterior</b> ao dia em que vai usar (ex.: para usar na
-        quarta 18/11, peça até a quinta 12/11). A coordenação dá o retorno aqui — em produção, pronta para retirar ou entregue.</p>
+        quarta 18/11, peça até a quinta 12/11). A supervisão dá o retorno aqui — em produção, pronta para retirar ou entregue.</p>
       <div className="imp-form">
         <Campo rotulo="O que imprimir" obrigatorio><input value={form.titulo} placeholder="ex.: apostila de comandos elétricos" onChange={(e) => setF({ ...form, titulo: e.target.value })} /></Campo>
         <Campo rotulo="Dia de uso" obrigatorio ajuda={noPrazo ? `Pedir até ${dataBR(prazo)} (quinta-feira)` : `Fora do prazo: o pedido deveria ter sido feito até ${dataBR(prazo)}`}>
@@ -102,7 +102,7 @@ export function MinhasImpressoes() {
             if (a && !a.name.toLowerCase().endsWith(".pdf")) { aviso("Envie o material em PDF.", "erro"); e.target.value = ""; setPdf(null); return; }
             setPdf(a);
           }} /></Campo>
-        <Campo rotulo="Ou link do arquivo" ajuda="Drive, OneDrive… com acesso para a coordenação."><input value={form.arquivo_url} placeholder="https://"
+        <Campo rotulo="Ou link do arquivo" ajuda="Drive, OneDrive… com acesso para a supervisão."><input value={form.arquivo_url} placeholder="https://"
           onChange={(e) => setF({ ...form, arquivo_url: e.target.value })} /></Campo>
         <Campo rotulo="Observação"><input value={form.descricao} placeholder="ex.: grampear; separar por grupo" onChange={(e) => setF({ ...form, descricao: e.target.value })} /></Campo>
       </div>
@@ -123,7 +123,7 @@ export function MinhasImpressoes() {
   );
 }
 
-/** Coordenação: pedidos de impressão dos instrutores, com o retorno (em produção, pronta, entregue ou recusada). */
+/** Supervisão: pedidos de impressão dos instrutores, com o retorno (em produção, pronta, entregue ou recusada). */
 export default function Impressoes() {
   const { aviso } = useApp();
   const [filtro, setFiltro] = useState("abertos");
@@ -153,7 +153,7 @@ export default function Impressoes() {
       <div className="imp-lista">
         {lista.map((p) => <CartaoPedido key={p.id} p={p} mostrarInstrutor urlPdf={`/api/impressoes/${p.id}/pdf`}>
           {p.proximos.length > 0 && <div className="imp-atender">
-            <input placeholder="Retorno ao instrutor (ex.: pronto na sala da coordenação)" value={resp[p.id] || ""} onChange={(e) => setResp({ ...resp, [p.id]: e.target.value })} />
+            <input placeholder="Retorno ao instrutor (ex.: pronto na sala da supervisão)" value={resp[p.id] || ""} onChange={(e) => setResp({ ...resp, [p.id]: e.target.value })} />
             {p.proximos.map((st: string) => <button key={st} className={`btn btn-pequeno ${st === "pronta" ? "btn-primario" : ""}`} onClick={() => atender(p, st)}>{ACAO[st]}</button>)}
           </div>}
         </CartaoPedido>)}

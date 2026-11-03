@@ -403,7 +403,7 @@ def montar(db, ctx, limite_s: float = 120) -> dict:
     obs("PT-2004", "HTC-POR-03", "POR-GCT", "horario", "A UC de Gestão de Contêineres tem prazo em 13/11. Se possível, incluir mais um encontro semanal.")
     db.commit()
 
-    # solicitações dos instrutores pelo portal: duas aguardando o coordenador, uma aprovada e uma recusada
+    # solicitações dos instrutores pelo portal: duas aguardando a supervisão, uma aprovada e uma recusada
     from app.models import SolicitacaoInstrutor
     def solic(mat, tipo, d0, d1, turnos, just, status="pendente", resposta=None):
         db.add(SolicitacaoInstrutor(instrutor_id=instrutores[mat].id, tipo=tipo, data_inicio=d0, data_fim=d1, turnos=turnos, justificativa=just,

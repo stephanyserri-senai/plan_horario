@@ -143,7 +143,7 @@ def analisar(db: Session, cenario_id: int, unidades=None, hoje: date | None = No
             continue
         pend.append({"instrutor": i.nome, "pedido": s.tipo, "de": s.data_inicio.isoformat(), "ate": s.data_fim.isoformat(), "justificativa": s.justificativa[:120]})
     riscos.append(_risco("solicitacoes", "Pedidos de folga ou substituição sem decisão", "media" if pend else "baixa", pend,
-                         "Instrutores pediram folga ou substituição e o coordenador ainda não decidiu.", "Decida em Solicitações dos instrutores.", "/solicitacoes"))
+                         "Instrutores pediram folga ou substituição e a supervisão ainda não decidiu.", "Decida em Solicitações dos instrutores.", "/solicitacoes"))
 
     # 10) EPIs a comprar/separar e entregar com prazo vencido ou próximo
     from app.services import epis

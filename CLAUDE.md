@@ -22,6 +22,10 @@ UC transversal/técnica, substituição, solicitações, quadro 5:4...) estão e
   entregue) via `services/epis.sincronizar_turma`, chamado ao criar/alterar/duplicar/importar turma. Curso com
   `dispensa_epi` não precisa de EPI (lista vazia, não aparece como pendente).
 - Interface e mensagens em português; nada de dados fictícios fora da demonstração (`backend/app/demo_semestre.py`).
+- Perfis: o código interno `coordenador` aparece como **Supervisão** (rótulo e textos; não renomear o código). Logins da equipe
+  NÃO ficam no repositório (dados pessoais): tela Usuários ou SQL entregue à parte; senha inicial nunca em texto no repositório. `usuarios.trocar_senha`: no primeiro
+  acesso o usuário só usa `/api/auth/*` até definir a senha (`deps.get_contexto`; tela `PrimeiroAcesso` no App).
+- UNIDADES E ÁREAS NUNCA SÃO APAGADAS pelos scripts de limpeza (só as de demonstração, código DEMO-...).
 - Início do projeto com dados reais: `backend/sql/limpar_demo_iniciar_projeto.sql` (uma vez) apaga o demo/testes e grava
   `configuracoes.producao_iniciada`; com essa marca, os scripts de demo/teste (e a própria limpeza) recusam rodar. Novo script de
   demo/teste deve ter a mesma trava.

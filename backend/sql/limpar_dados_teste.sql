@@ -4,8 +4,8 @@
 --         observador) e o histórico de auditoria.
 -- APAGA:  logins do portal do instrutor (perfil instrutor), observações, notificações e solicitações dos instrutores,
 --         cursos (e os EPIs exigidos), matrizes, UCs, turmas (e o controle de EPIs), instrutores, salas/laboratórios, tipos de sala, recursos, calendários,
---         feriados, bloqueios, semestres (cenários), aulas, gerações, simulações, importações e exceções;
---         e qualquer unidade que não seja BEIRA-MAR ou PORTO (com seus turnos).
+--         feriados, bloqueios, semestres (cenários), aulas, gerações, simulações, importações e exceções.
+--         UNIDADES E ÁREAS: todas mantidas (só sai unidade de demonstração, código DEMO-...).
 -- IRREVERSÍVEL: faça um backup antes se houver algo que queira guardar. Cole o arquivo inteiro no SQL Editor e clique em Run.
 DO $$
 BEGIN
@@ -74,12 +74,13 @@ BEGIN
   UPDATE historico_auditoria SET usuario_id = NULL WHERE usuario_id IN (SELECT id FROM usuarios WHERE perfil = 'instrutor');
   DELETE FROM usuarios WHERE perfil = 'instrutor';
   -- escopos de acesso que apontavam para cursos/turmas apagados ou unidades extras
+  -- UNIDADES E ÁREAS SÃO MANTIDAS (todas): só sai o que é de demonstração (código DEMO-...)
   DELETE FROM permissoes WHERE escopo_tipo IN ('curso', 'turma')
-     OR (escopo_tipo = 'unidade' AND escopo_id NOT IN (SELECT id FROM unidades WHERE codigo IN ('BEIRA-MAR', 'PORTO')));
-  DELETE FROM periodos_horarios WHERE unidade_id NOT IN (SELECT id FROM unidades WHERE codigo IN ('BEIRA-MAR', 'PORTO'));
-  DELETE FROM turnos WHERE unidade_id NOT IN (SELECT id FROM unidades WHERE codigo IN ('BEIRA-MAR', 'PORTO'));
-  DELETE FROM areas WHERE unidade_id NOT IN (SELECT id FROM unidades WHERE codigo IN ('BEIRA-MAR', 'PORTO'));
-  DELETE FROM unidades WHERE codigo NOT IN ('BEIRA-MAR', 'PORTO');
+     OR (escopo_tipo = 'unidade' AND escopo_id IN (SELECT id FROM unidades WHERE codigo LIKE 'DEMO-%'));
+  DELETE FROM periodos_horarios WHERE unidade_id IN (SELECT id FROM unidades WHERE codigo LIKE 'DEMO-%');
+  DELETE FROM turnos WHERE unidade_id IN (SELECT id FROM unidades WHERE codigo LIKE 'DEMO-%');
+  DELETE FROM areas WHERE unidade_id IN (SELECT id FROM unidades WHERE codigo LIKE 'DEMO-%');
+  DELETE FROM unidades WHERE codigo LIKE 'DEMO-%';
   DELETE FROM configuracoes WHERE chave = 'worker_status';
 END $$;
 

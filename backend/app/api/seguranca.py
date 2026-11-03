@@ -21,7 +21,7 @@ router = APIRouter(prefix="/api", tags=["segurança"])
 def _usuario(u: Usuario, db: Session) -> dict:
     escopos = db.scalars(select(PermissaoEscopo).where(PermissaoEscopo.usuario_id == u.id)).all()
     return {"id": u.id, "nome": u.nome, "email": u.email, "perfil": u.perfil, "acesso_global": u.acesso_global, "ativo": u.ativo,
-            "instrutor_id": u.instrutor_id,
+            "instrutor_id": u.instrutor_id, "trocar_senha": bool(getattr(u, "trocar_senha", False)),
             "vinculado_supabase": bool(u.auth_user_id),
             "ultimo_acesso": u.ultimo_acesso.isoformat() if u.ultimo_acesso else None,
             "escopos": [{"tipo": e.escopo_tipo, "id": e.escopo_id} for e in escopos]}
@@ -69,7 +69,10 @@ def trocar_senha(dados: dict = Body(...), ctx: Contexto = Depends(get_contexto),
         raise AcessoNegado("Senha atual incorreta.")
     if len(dados.get("nova_senha", "")) < 8:
         raise EntradaInvalida("A nova senha deve ter ao menos 8 caracteres.")
+    if dados.get("nova_senha") == dados.get("senha_atual"):
+        raise EntradaInvalida("A nova senha deve ser diferente da senha atual.")
     u.senha_hash = hash_senha(dados["nova_senha"])
+    u.trocar_senha = False
     auditoria.registrar(db, ctx, "auth.trocar_senha", "usuarios", u.id)
     db.commit()
     return {"ok": True}
@@ -92,7 +95,8 @@ def criar(dados: dict = Body(...), ctx: Contexto = Depends(requer("usuarios.gere
         raise EntradaInvalida("E-mail inválido.")
     # No modo Supabase a senha fica no Supabase Auth; o hash local é inutilizável.
     u = Usuario(nome=dados["nome"], email=email, senha_hash="!supabase" if supabase else hash_senha(dados["senha"]), perfil=dados["perfil"],
-                acesso_global=bool(dados.get("acesso_global")), ativo=True, instrutor_id=_instrutor_do_usuario(db, dados, email))
+                acesso_global=bool(dados.get("acesso_global")), ativo=True, instrutor_id=_instrutor_do_usuario(db, dados, email),
+                trocar_senha=not supabase and bool(dados.get("trocar_senha", True)))  # senha inicial: o usuário define a dele ao entrar
     try:
         db.add(u)
         db.flush()
@@ -151,6 +155,7 @@ def atualizar(uid: int, dados: dict = Body(...), ctx: Contexto = Depends(requer(
         if len(dados["senha"]) < 8:
             raise EntradaInvalida("A senha deve ter ao menos 8 caracteres.")
         u.senha_hash = hash_senha(dados["senha"])
+        u.trocar_senha = bool(dados.get("trocar_senha", True))  # senha redefinida pela administração: trocar ao entrar
     if "escopos" in dados:
         _salvar_escopos(db, uid, dados["escopos"])
     auditoria.registrar(db, ctx, "usuario.alterar", "usuarios", uid, antes=antes, depois=auditoria.snapshot(u))

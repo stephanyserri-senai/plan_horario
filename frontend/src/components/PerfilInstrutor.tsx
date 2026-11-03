@@ -226,7 +226,7 @@ export function Aderencia({ ad }: { ad: any }) {
               <small className="mudo">{a.cursos.length} curso(s) · {a.cursos_100} com 100%</small></div>
           </div>
           {a.fora_do_nivel?.length > 0 && <p className="sub">Fora do índice: {a.fora_do_nivel.join(", ")} — curso(s) técnico(s), e o instrutor é de nível básico
-            (só AIB e qualificações). Passar a técnico é decisão da coordenação, não item de PDI.</p>}
+            (só AIB e qualificações). Passar a técnico é decisão da supervisão, não item de PDI.</p>}
           <ul className="lista-limpa ad-cursos">
             {a.cursos.map((c: any) => (
               <li key={c.curso_id}>

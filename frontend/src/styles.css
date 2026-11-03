@@ -1249,3 +1249,4 @@ li.sem-marcador { list-style: none; margin-left: -18px; }
 .imp-opcoes label { display: inline-flex; flex-direction: row; align-items: center; gap: 6px; }
 .imp-card-cab .badge { flex: none; white-space: nowrap; }
 .imp-form input[type=checkbox] { width: auto; }
+.primeiro-acesso .btn-link { align-self: center; }

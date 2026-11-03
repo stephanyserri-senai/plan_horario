@@ -1,6 +1,6 @@
 """Pedidos de impressão dos instrutores (material de aula).
 
-O instrutor pede pelo portal; a coordenação atende e dá o retorno. Regra: o pedido é feito até a QUINTA-FEIRA da
+O instrutor pede pelo portal; a supervisão atende e dá o retorno. Regra: o pedido é feito até a QUINTA-FEIRA da
 semana anterior ao uso (material de segunda a sábado da semana S → pedido até a quinta da semana S-1).
 Situações: pendente → em produção → pronta (para retirar) → entregue; ou recusada; o instrutor pode cancelar enquanto pendente.
 """
@@ -16,9 +16,9 @@ from app.models import Instrutor, SolicitacaoImpressao, Turma
 from app.services import auditoria
 from app.services.notificacoes import notificar
 
-STATUS = {"pendente": "Aguardando a coordenação", "em_producao": "Em produção", "pronta": "Pronta para retirar",
+STATUS = {"pendente": "Aguardando a supervisão", "em_producao": "Em produção", "pronta": "Pronta para retirar",
           "entregue": "Entregue", "recusada": "Recusada", "cancelada": "Cancelada"}
-# a coordenação muda a situação nesta ordem (e pode recusar enquanto não estiver pronta)
+# a supervisão muda a situação nesta ordem (e pode recusar enquanto não estiver pronta)
 PROXIMOS = {"pendente": ["em_producao", "pronta", "recusada"], "em_producao": ["pronta", "recusada"], "pronta": ["entregue"],
             "entregue": [], "recusada": [], "cancelada": []}
 DIA_LIMITE = 3  # quinta-feira
@@ -68,7 +68,7 @@ def criar(db: Session, ctx, inst: Instrutor, d: dict) -> SolicitacaoImpressao:
     prazo = prazo_para(data_uso)
     if hoje() > prazo:
         raise ConflitoValidacao(f"Fora do prazo: para usar em {data_uso:%d/%m}, a impressão deveria ter sido pedida até a quinta-feira "
-                                f"{prazo:%d/%m} (semana anterior). Escolha outra data de uso ou fale com a coordenação.",
+                                f"{prazo:%d/%m} (semana anterior). Escolha outra data de uso ou fale com a supervisão.",
                                 codigo="IMPRESSAO_FORA_DO_PRAZO")
     turma_id = int(d["turma_id"]) if d.get("turma_id") else None
     url = (d.get("arquivo_url") or "").strip() or None
@@ -89,7 +89,7 @@ def anexar_pdf(db: Session, ctx, inst: Instrutor, sid: int, nome: str, conteudo:
     if s is None or s.instrutor_id != inst.id:
         raise NaoEncontrado("Pedido de impressão não encontrado.")
     if s.status != "pendente":
-        raise ConflitoValidacao("O pedido já está com a coordenação: para trocar o arquivo, fale com ela.")
+        raise ConflitoValidacao("O pedido já está com a supervisão: para trocar o arquivo, fale com ela.")
     if not conteudo:
         raise EntradaInvalida("O arquivo está vazio.")
     if len(conteudo) > MAX_PDF:
@@ -123,7 +123,7 @@ def cancelar(db: Session, ctx, inst: Instrutor, sid: int) -> SolicitacaoImpressa
 
 
 def atender(db: Session, ctx, sid: int, status: str, resposta: str | None = None) -> SolicitacaoImpressao:
-    """Retorno da coordenação: em produção, pronta (para retirar), entregue ou recusada — o instrutor é avisado no portal."""
+    """Retorno da supervisão: em produção, pronta (para retirar), entregue ou recusada — o instrutor é avisado no portal."""
     s = db.get(SolicitacaoImpressao, sid)
     if s is None:
         raise NaoEncontrado("Pedido de impressão não encontrado.")

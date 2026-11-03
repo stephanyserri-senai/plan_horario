@@ -23,7 +23,7 @@ ROTULO_CAMPO = {
     "areas_ids": "outras áreas", "ucs_competencia": "UCs que ministra", "disp_turnos": "turnos disponíveis", "disp_dias": "dias disponíveis",
 }
 
-# cadastros ligados a um instrutor e o texto do aviso quando alguém da coordenação os altera
+# cadastros ligados a um instrutor e o texto do aviso quando alguém da supervisão os altera
 CADASTROS_DO_INSTRUTOR = {
     "competencias": ("UCs que você ministra", "dados"),
     "habilitacoes": ("suas certificações", "dados"),
@@ -36,5 +36,5 @@ def avisar_alteracao_cadastro(db: Session, ctx, instrutor_id: int, campos: list[
     nomes = sorted({ROTULO_CAMPO.get(c, c.replace("_", " ")) for c in campos if not c.startswith("_") and c not in ("atualizado_em", "criado_em")})
     if not nomes:
         return
-    quem = getattr(getattr(ctx, "usuario", None), "nome", None) or "A coordenação"
+    quem = getattr(getattr(ctx, "usuario", None), "nome", None) or "A supervisão"
     notificar(db, instrutor_id, "cadastro", "Seu cadastro foi atualizado", f"{quem} {acao}: {', '.join(nomes)}.", "dados", ctx)
