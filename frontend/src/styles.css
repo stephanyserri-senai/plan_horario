@@ -1315,3 +1315,19 @@ thead .ag-amb { z-index: 3; }
 .unif-gestor { grid-column: 1 / -1; }
 .gestor-linha { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
 .gestor-linha input { flex: 0 1 280px; }
+.seg-ead { background: #c27c0e; }
+.agenda-tabela .ag-EAD, .cel-sit.ag-EAD { background: color-mix(in srgb, #c27c0e 16%, var(--superficie)); }
+.chip-estado.ag-EAD::before { background: #c27c0e; }
+.uc-div { display: block; font-size: .78rem; }
+.ch-ead { color: #b26a00; font-weight: 600; } .ch-pres { color: var(--texto); }
+.barra-div { display: flex; } .barra-div .bp-ead { background: #e8a33a; }
+.imp-cargas { display: grid; gap: 8px; }
+.imp-cargas-kpis { display: flex; flex-wrap: wrap; gap: 10px; }
+.imp-cargas-kpis > div { background: var(--superficie); border: 1px solid var(--borda); border-radius: 10px; padding: 6px 12px; display: grid; }
+.imp-cargas-kpis b { font-size: 1.2rem; }
+.imp-dist { background: #fff4e5; border: 1px solid #f0c27a; border-radius: 10px; padding: 10px 12px; display: grid; gap: 8px; }
+.imp-dist .linha { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.imp-dist input[type=number] { width: 80px; }
+.cargas-sep { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; margin: 8px 0 12px; }
+.cargas-sep > div { background: var(--superficie); border: 1px solid var(--borda); border-radius: 12px; padding: 8px 12px; display: grid; gap: 2px; }
+.cargas-sep b { font-size: 1.3rem; } .cargas-sep span { font-size: .8rem; color: var(--texto-mudo, #667); }

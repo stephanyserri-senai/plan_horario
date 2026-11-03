@@ -38,6 +38,7 @@ from app.models import (
 )
 from app.services import auditoria
 from app.services.calendario import Calendarios, bloco_de_periodos, combinar, minutos_do_bloco, periodos_por_turno
+from app.services.carga_uc import ch_presencial
 from app.services.regras_aula import credito_bloco, regras_aula
 from app.services.planejamento import ambientes_compativeis, area_da_turma, instrutores_elegiveis, nivel_da_turma
 from app.services.validacao import (
@@ -297,7 +298,7 @@ def criar_recorrente(db: Session, ctx, cenario_id: int, base: DadosAula, dia_sem
         if limitar_carga_horaria:
             from app.services.validacao import carga_horaria_minutos
             grupos_ch = [p.grupo] if p.grupo is not None else ([None] if not (uc.divide_grupos and turma.num_grupos > 1) else list(range(1, turma.num_grupos + 1)))
-            restante = min(uc.carga_horaria_total * 60 - sum(carga_horaria_minutos(b, tuc, g, set())) for g in grupos_ch)
+            restante = min(ch_presencial(uc) * 60 - sum(carga_horaria_minutos(b, tuc, g, set())) for g in grupos_ch)
             if restante <= 0:
                 break
         oc = validar_aula(b, p)

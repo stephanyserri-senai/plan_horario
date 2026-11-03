@@ -100,6 +100,22 @@ def transicao(cid: int, d: dict = Body(...), ctx: Contexto = Depends(get_context
         raise
 
 
+@router.get("/cenarios/{cid}/impacto-carga")
+def impacto_carga(cid: int, ctx: Contexto = Depends(requer("alocacoes.ler")), db: Session = Depends(get_db)):
+    """O que muda nas aulas já programadas com a carga PRESENCIAL atual das UCs (antes de corrigir)."""
+    from app.services import correcao_carga
+    return correcao_carga.impacto(db, cid, ctx.unidades)
+
+
+@router.post("/cenarios/{cid}/aplicar-carga")
+def aplicar_carga(cid: int, d: dict = Body(default={}), ctx: Contexto = Depends(requer("alocacoes.editar")), db: Session = Depends(get_db)):
+    """Remove as aulas programadas acima da carga presencial (realizadas e fixas ficam); o que faltar, gere de novo."""
+    from app.services import correcao_carga
+    r = correcao_carga.aplicar(db, ctx, cid, d.get("turma_uc_ids"), ctx.unidades)
+    db.commit()
+    return r
+
+
 @router.post("/cenarios/{cid}/validar")
 def validar_cenario(cid: int, ctx: Contexto = Depends(requer("alocacoes.ler")), db: Session = Depends(get_db)):
     r = cenarios.validar(db, ctx, cid)

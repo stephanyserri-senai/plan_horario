@@ -55,6 +55,9 @@ def test_planilha_cria_versao_por_publico(db, mundo):
             "ELT;Técnico em Eletrotécnica;ENERGIAS;2026;SEDU;FEL;Fundamentos;40\n"
             "ELT;Técnico em Eletrotécnica;ENERGIAS;2026;SEDU;PRJ;Projeto integrador;60\n").encode()
     imp = importacao.gerar_previa(db, m.ctx, "estrutura.csv", csv_, tipo="estrutura_curricular")
+    assert imp.previa["cargas"]["divisao_pendente"] == 3  # planilha antiga: pede a distribuição antes de importar
+    imp = importacao.gerar_previa(db, m.ctx, "estrutura.csv", csv_, tipo="estrutura_curricular", importacao_id=imp.id,
+                                  opcoes={"distribuicao": {"tipo": "presencial"}})
     db.commit()
     assert [i["acao"] for i in imp.previa["itens"]] == ["criar", "criar", "criar"], imp.previa["itens"]
     importacao.confirmar(db, m.ctx, imp.id)

@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 from app.models import (Alocacao, Bloqueio, CompetenciaInstrutor, DisponibilidadeInstrutor, HabilitacaoInstrutor, Instrutor, Turma, TurmaUC,
                         Turno, UnidadeCurricular)
 from app.services.planejamento import area_da_turma, instrutores_elegiveis, nivel_atende, nivel_da_turma
+from app.services.carga_uc import ch_presencial
 from app.services.regras_aula import HORAS_POR_TURNO, teto_letivo
 
 DIAS = ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"]
@@ -218,12 +219,12 @@ def analisar(db: Session, cenario_id: int, turma_uc_id: int, hoje: date | None =
         while s <= fim:
             if teto - len(ag.na_semana(h.id, s)) >= n_enc and len(_livres(db, ag, h, s, turno, dias)) >= n_enc:
                 n_sem = max(1, (fim - s).days // 7 + 1)
-                cabe_ch = n_sem * n_enc * HORAS_POR_TURNO >= float(uc.carga_horaria_total)
+                cabe_ch = n_sem * n_enc * HORAS_POR_TURNO >= ch_presencial(uc)
                 sugestoes.append({"tipo": "adiar", "prioridade": 3 if cabe_ch else 5,
                                   "acao": {"tipo": "adiar_uc", "turma_uc_id": tuc.id, "data_inicio": s.isoformat(), "turma_id": turma.id} if cabe_ch else None,
                                   "descricao": f"Iniciar a {turma.codigo} em {s:%d/%m}, quando {h.nome} passa a ter {rot_turno}s livres "
                                                f"(fim de outra UC dele/dela)."
-                                               + ("" if cabe_ch else f" Para cumprir {float(uc.carga_horaria_total):g} h, o término teria de ser estendido "
+                                               + ("" if cabe_ch else f" Para cumprir {ch_presencial(uc):g} h presenciais, o término teria de ser estendido "
                                                   f"para depois de {fim:%d/%m}.")})
                 break
             s += timedelta(days=7)

@@ -149,6 +149,37 @@ FIXA_MSG = ("As unidades (Beira Mar e Porto) e as áreas tecnológicas são fixa
 CAMPOS_LISTA_UC = {"codigo", "nome", "carga_horaria_total", "modalidade", "categoria", "matriz_id"}
 
 
+def _cargas_uc(obj, dados: dict, novo: bool):
+    """Total = EaD + presencial; modalidade da UC conforme as cargas (conflito = erro). Sem a divisão no formulário,
+    a modalidade decide (presencial = tudo presencial; EAD = tudo EaD); semipresencial exige as horas."""
+    from app.services.carga_uc import ErroCarga, resolver
+    chaves = ("carga_horaria_total", "carga_horaria_ead", "carga_horaria_presencial", "modalidade")
+    if not novo and not any(k in dados and dados[k] != getattr(obj, k, None) for k in chaves):
+        return
+    val = lambda k: dados[k] if k in dados else getattr(obj, k, None)  # noqa: E731
+    mexeu_parcelas = any(k in dados and (novo or dados[k] != getattr(obj, k, None)) for k in ("carga_horaria_ead", "carga_horaria_presencial"))
+    total = val("carga_horaria_total")
+    try:
+        if mexeu_parcelas:
+            e = dados.get("carga_horaria_ead") if "carga_horaria_ead" in dados else None
+            p = dados.get("carga_horaria_presencial") if "carga_horaria_presencial" in dados else None
+            e = None if e in ("", None) else e
+            p = None if p in ("", None) else p
+            r = resolver(total, e, p, dados.get("modalidade") or None)
+        elif (val("modalidade") or "presencial") == "semipresencial" and not novo:
+            r = resolver(total, getattr(obj, "carga_horaria_ead", None), None, None)  # mudou a total: mantém a parte EaD
+        else:
+            r = resolver(total, None, None, val("modalidade") or "presencial")
+    except ErroCarga as ex:
+        raise EntradaInvalida(str(ex)[0].upper() + str(ex)[1:] + ".")
+    for k in ("carga_horaria_total", "carga_horaria_ead", "carga_horaria_presencial", "modalidade"):
+        dados[k] = r[k]
+        setattr(obj, k, r[k])
+    if mexeu_parcelas or novo:
+        dados["divisao_confirmada"] = True
+        obj.divisao_confirmada = True
+
+
 def _regras_uc(db: Session, obj, dados: dict, novo: bool):
     """Cada versão da matriz tem a sua lista de UCs (nome, carga horária, presencial ou EAD). Em rascunho a lista é montada;
     cadastrada (vigente ou encerrada), fica fixa — para mudar, cria-se uma nova versão. EAD só em curso que prevê EAD."""
@@ -156,12 +187,16 @@ def _regras_uc(db: Session, obj, dados: dict, novo: bool):
     if m is None:
         return
     if m.situacao != "rascunho":
-        mexe = novo or any(k in dados and getattr(obj, k, None) != dados[k] for k in CAMPOS_LISTA_UC)
+        # corrigir só a divisão EaD/presencial (mesma carga total) é permitido: é correção do registro, não mudança de currículo
+        mesma_total = not novo and int(dados.get("carga_horaria_total", obj.carga_horaria_total) or 0) == int(obj.carga_horaria_total or 0)
+        campos = CAMPOS_LISTA_UC - ({"modalidade"} if mesma_total else set())
+        mexe = novo or any(k in dados and getattr(obj, k, None) != dados[k] for k in campos)
         if mexe:
             raise ConflitoValidacao(f"A versão {m.versao}{f' ({m.tipo_oferta})' if m.tipo_oferta else ''} já está cadastrada: a lista de UCs dela é fixa "
                                     "(nome, carga horária, presencial/EAD). Para mudar, crie uma nova versão — ela copia as UCs e pode ser ajustada "
                                     "antes de ser cadastrada.", codigo="VERSAO_CADASTRADA")
-    if (dados.get("modalidade") or getattr(obj, "modalidade", "presencial")) == "ead":
+    _cargas_uc(obj, dados, novo)
+    if (dados.get("modalidade") or getattr(obj, "modalidade", "presencial")) in ("ead", "semipresencial"):
         curso = db.get(Curso, m.curso_id)
         if curso is not None and not curso.preve_ead:
             raise ConflitoValidacao(f"O curso {curso.codigo} não prevê EAD: marque “O curso prevê UCs EAD” no cadastro do curso para ter UC a distância.")
@@ -930,9 +965,11 @@ def estrutura_curricular(area_id: int | None = None, db: Session = Depends(get_d
     areas = db.scalars(q).all()
     cursos = db.scalars(select(Curso).where(Curso.ativo.is_(True)).order_by(Curso.nome)).all()
     matrizes = db.scalars(select(MatrizCurricular).where(MatrizCurricular.ativo.is_(True)).order_by(MatrizCurricular.id)).all()
-    ucs = db.execute(select(UnidadeCurricular.matriz_id, func.count(), func.sum(UnidadeCurricular.carga_horaria_total))
+    ucs = db.execute(select(UnidadeCurricular.matriz_id, func.count(), func.sum(UnidadeCurricular.carga_horaria_total),
+                            func.sum(UnidadeCurricular.carga_horaria_ead), func.sum(UnidadeCurricular.carga_horaria_presencial),
+                            func.count().filter(UnidadeCurricular.divisao_confirmada.is_(False)))
                      .where(UnidadeCurricular.ativo.is_(True)).group_by(UnidadeCurricular.matriz_id)).all()
-    por_matriz = {m: (n, int(ch or 0)) for m, n, ch in ucs}
+    por_matriz = {m: (n, int(ch or 0), int(e or 0), int(p or 0), int(pend or 0)) for m, n, ch, e, p, pend in ucs}
     turmas = dict(db.execute(select(Turma.matriz_id, func.count()).where(Turma.ativo.is_(True), Turma.simulacao_id.is_(None))
                              .group_by(Turma.matriz_id)).all())
     # para os cartões: turmas em andamento por curso, EPIs do curso e instrutores por área
@@ -958,7 +995,9 @@ def estrutura_curricular(area_id: int | None = None, db: Session = Depends(get_d
         for c in [c for c in cursos if c.area_id == a.id]:
             vs = [{"id": m.id, "versao": m.versao, "tipo_oferta": m.tipo_oferta, "situacao": m.situacao,
                    "vigencia_inicio": m.vigencia_inicio.isoformat() if m.vigencia_inicio else None,
-                   "ucs": por_matriz.get(m.id, (0, 0))[0], "ch_total": por_matriz.get(m.id, (0, 0))[1], "turmas": turmas.get(m.id, 0)}
+                   "ucs": por_matriz.get(m.id, (0,) * 5)[0], "ch_total": por_matriz.get(m.id, (0,) * 5)[1],
+                   "ch_ead": por_matriz.get(m.id, (0,) * 5)[2], "ch_presencial": por_matriz.get(m.id, (0,) * 5)[3],
+                   "divisao_a_confirmar": por_matriz.get(m.id, (0,) * 5)[4], "turmas": turmas.get(m.id, 0)}
                   for m in matrizes if m.curso_id == c.id]
             cs.append({"id": c.id, "codigo": c.codigo, "nome": c.nome, "tipo": c.tipo, "modalidade": c.modalidade,
                        "carga_horaria_total": c.carga_horaria_total, "versoes": vs, "turmas_ativas": turmas_curso.get(c.id, []),
@@ -999,7 +1038,8 @@ def todas_as_ucs(ativas: bool = True, db: Session = Depends(get_db), ctx: Contex
             info = base.ucs.get(c.id, {}).get(u.codigo)
             hab = base.habilitados(info, 0, c.id) if info else 0
         res.append({"id": u.id, "codigo": u.codigo, "nome": u.nome, "categoria": u.categoria, "modalidade": u.modalidade,
-                    "carga_horaria_total": u.carga_horaria_total,
+                    "carga_horaria_total": u.carga_horaria_total, "carga_horaria_ead": u.carga_horaria_ead,
+                    "carga_horaria_presencial": u.carga_horaria_presencial, "divisao_confirmada": bool(u.divisao_confirmada),
                     "encontros_semanais": u.encontros_semanais, "sequencia": u.sequencia, "certificacao_exigida": u.certificacao_exigida,
                     "tipos_ambiente": [t.nome for t in u.tipos_ambiente], "matriz_id": u.matriz_id, "versao": m.versao, "tipo_oferta": m.tipo_oferta,
                     "situacao_versao": m.situacao, "preve_ead": bool(c.preve_ead), "curso_id": c.id, "curso": c.codigo, "curso_nome": c.nome,
@@ -1020,7 +1060,8 @@ def ucs_da_versao(mid: int, db: Session = Depends(get_db), ctx: Contexto = Depen
     em_uso = db.scalar(select(func.count()).select_from(Turma).where(Turma.matriz_id == mid, Turma.simulacao_id.is_(None)))
     return {"versao": serializar(m, "matrizes", ctx), "em_uso_por_turmas": em_uso,
             "ucs": [{"id": u.id, "codigo": u.codigo, "nome": u.nome, "categoria": u.categoria, "modalidade": u.modalidade,
-                     "carga_horaria_total": u.carga_horaria_total,
+                     "carga_horaria_total": u.carga_horaria_total, "carga_horaria_ead": u.carga_horaria_ead,
+                     "carga_horaria_presencial": u.carga_horaria_presencial, "divisao_confirmada": bool(u.divisao_confirmada),
                      "encontros_semanais": u.encontros_semanais, "sequencia": u.sequencia, "certificacao_exigida": u.certificacao_exigida,
                      "tipos_ambiente_ids": [t.id for t in u.tipos_ambiente], "tipos_ambiente": [t.nome for t in u.tipos_ambiente]} for u in ucs]}
 

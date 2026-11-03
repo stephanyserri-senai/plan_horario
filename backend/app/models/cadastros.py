@@ -222,7 +222,9 @@ class UnidadeCurricular(TimestampMixin, Base):
         CheckConstraint("duracao_bloco_periodos >= 1"),
         CheckConstraint("encontros_semanais >= 1"),
         CheckConstraint("categoria in ('tecnica','transversal')", name="ucs_categoria_check"),
-        CheckConstraint("modalidade in ('presencial','ead')", name="ucs_modalidade_check"),
+        CheckConstraint("modalidade in ('presencial','ead','semipresencial')", name="ucs_modalidade_check"),
+        CheckConstraint("carga_horaria_ead >= 0 AND carga_horaria_presencial >= 0", name="ucs_cargas_nao_negativas"),
+        CheckConstraint("carga_horaria_ead + carga_horaria_presencial = carga_horaria_total", name="ucs_cargas_somam_total"),
     )
     id: Mapped[int] = mapped_column(primary_key=True)
     matriz_id: Mapped[int] = mapped_column(ForeignKey("matrizes_curriculares.id"), index=True)
@@ -247,7 +249,12 @@ class UnidadeCurricular(TimestampMixin, Base):
     # transversal: qualquer instrutor pode dar; técnica: só quem marcou a UC no próprio perfil
     categoria: Mapped[str] = mapped_column(String(12), default="tecnica", server_default="tecnica")
     # presencial (na grade) ou EAD (a distância: não entra na grade nem ocupa sala); EAD só em curso que prevê EAD
-    modalidade: Mapped[str] = mapped_column(String(12), default="presencial", server_default="presencial")
+    modalidade: Mapped[str] = mapped_column(String(14), default="presencial", server_default="presencial")
+    # carga TOTAL do aluno = EaD + presencial; só a PRESENCIAL vira aula, sala e agenda do instrutor (services/carga_uc.py)
+    carga_horaria_ead: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    carga_horaria_presencial: Mapped[int | None] = mapped_column(Integer)  # NOT NULL no banco; preenchida pelo gancho abaixo
+    # divisão EaD/presencial confirmada (planilha com as colunas ou cadastro); falso = registro antigo a conferir
+    divisao_confirmada: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     ativo: Mapped[bool] = mapped_column(Boolean, default=True)
 
     tipos_ambiente: Mapped[list["TipoAmbiente"]] = relationship(secondary="uc_tipos_ambiente", lazy="selectin")
@@ -580,3 +587,13 @@ class EpiTurma(TimestampMixin, Base):
     entregue_em: Mapped[datetime | None] = mapped_column(DateTime)
     atualizado_por_id: Mapped[int | None] = mapped_column(Integer)
     observacao: Mapped[str | None] = mapped_column(Text)
+
+
+from sqlalchemy import event as _event  # noqa: E402
+
+
+@_event.listens_for(UnidadeCurricular, "before_insert")
+@_event.listens_for(UnidadeCurricular, "before_update")
+def _uc_cargas_consistentes(_mapper, _conn, uc):
+    from app.services.carga_uc import completar_registro
+    completar_registro(uc)

@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 
 from app.services.regras_aula import limite_letivo_efetivo
+from app.services.carga_uc import ch_presencial
 from app.services import fluxo as max_flow
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -106,7 +107,7 @@ def demandas_do_cenario(db: Session, cenario_id: int | None, d0: date, d1: date,
                                           TurmaUC.situacao.notin_(["concluida", "cancelada"]),
                                           Turma.situacao.notin_(["concluida", "cancelada"]))
     # UC EAD é cursada a distância: não entra na grade presencial nem ocupa sala ou instrutor em sala
-    q = q.where(TurmaUC.uc_id.notin_(select(UnidadeCurricular.id).where(UnidadeCurricular.modalidade == "ead")))
+    q = q.where(TurmaUC.uc_id.notin_(select(UnidadeCurricular.id).where(UnidadeCurricular.carga_horaria_presencial <= 0)))
     q = q.where((Turma.simulacao_id.is_(None)) | (Turma.simulacao_id == simulacao_id)) if simulacao_id else q.where(Turma.simulacao_id.is_(None))
     if unidade_id:
         q = q.where(Turma.unidade_id == unidade_id)

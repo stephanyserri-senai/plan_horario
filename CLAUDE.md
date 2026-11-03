@@ -67,7 +67,14 @@ UC transversal/técnica, substituição, solicitações, quadro 5:4...) estão e
   em `termos_horas.agenda` — célula {tipo, ini, fim}; horas contadas pelo horário, `HORARIOS_TURNO`; `termos.cobre`/`turno_da_aula` na validação; `dias_semana` derivado para o gerador; editável) e no portal (`GET /api/portal/termos`, só leitura).
 - Versão da matriz: cada uma tem sua lista de UCs; em `rascunho` a lista é editável, depois de cadastrada (vigente/encerrada) fica fixa
   (código, nome, carga, modalidade, categoria; incluir/retirar) — `VERSAO_CADASTRADA` em `api/cadastros._regras_uc`; mudar = nova versão.
-  UC `modalidade` presencial/ead; EAD só se `cursos.preve_ead`; UC EAD fica fora do gerador e da demanda (risco "ead" no acompanhamento).
+  UC: carga TOTAL = `carga_horaria_ead` + `carga_horaria_presencial`, `modalidade` presencial/ead/semipresencial (≠ modalidade do curso;
+  nada propaga) e `divisao_confirmada` (falso = registro antigo a conferir). Regra única em `services/carga_uc.py` (`resolver`,
+  `ch_presencial`, gancho no modelo). SÓ a presencial vira aula/sala/agenda (gerador, validação UC_SO_EAD, simulador, riscos); horas
+  em minutos uma vez só, na geração. Tutoria/encontro remoto = bloqueio `tutoria_ead` (sigla EAD na agenda; conta no 44 h e na carga
+  docente). Importação: colunas "Carga horária da UC (h)" (total), "Modalidade da UC", "Carga horária EaD (h)", "Carga horária
+  presencial (h)" (a coluna "Modalidade" é do curso); planilha antiga pede a distribuição na prévia (`opcoes.distribuicao`); prévia com
+  `cargas` por matriz; versão cadastrada aceita corrigir só a divisão. Impacto/correção: `services/correcao_carga.py`,
+  `GET /api/cenarios/{id}/impacto-carga`, `POST .../aplicar-carga` (preserva realizadas e fixas). Indicadores: `indicadores.cargas_separadas`.
 - Um instrutor por UC (turma × UC × grupo): `validacao.titular_da_uc` + regra UM_INSTRUTOR_POR_UC (bloqueio; alerta com exceção
   regra_academica; não vale na substituição). O gerador restringe a atividade ao titular. `passar_uc` usa `substituir(..., transferir=True)`.
 - Substituições: página `/substituicoes` (busca do instrutor → agenda semanal em cartões via `GET /api/substituicoes/aulas-do-instrutor` →

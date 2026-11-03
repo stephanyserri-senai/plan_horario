@@ -16,6 +16,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.services.regras_aula import limite_letivo_efetivo
+from app.services.carga_uc import ch_presencial
 from app.models import (
     Alocacao,
     Ambiente,
@@ -335,7 +336,7 @@ def turmas_ucs(db: Session, cenario_id: int, data_referencia: date | None = None
         dias_letivos = sum(1 for d in _datas(inicio_restante, limite) if d.weekday() in (turma.dias_possiveis or []) and cal.dia_letivo(turma, d)[0]) if inicio_restante <= limite else 0
         semanas_rest = dias_letivos / max(len(turma.dias_possiveis or [1]), 1)
         capacidade_h = semanas_rest * uc.encontros_semanais * info["horas_por_encontro"]
-        if getattr(uc, "modalidade", "presencial") == "ead":
+        if ch_presencial(uc) <= 0:
             risco = "ead"  # a distância: fora da grade presencial, não conta como atraso
         elif info["restante_h"] <= 0.01:
             risco = "sem_risco"
@@ -372,6 +373,37 @@ def turmas_ucs(db: Session, cenario_id: int, data_referencia: date | None = None
                        "ch_pendente_h": round(sum(l["restante_h"] for l in linhas), 1)}}
 
 
+def cargas_separadas(db: Session, cenario_id: int, d0: date, d1: date, unidades_permitidas=None) -> dict:
+    """Indicadores separados: carga curricular do aluno (total = EaD + presencial, das turmas ativas), aulas presenciais
+    (programadas/realizadas no período), atividades remotas do instrutor (tutoria/encontro EaD) e carga docente
+    (aulas presenciais + atividades remotas). As horas EaD do aluno não viram carga docente automaticamente."""
+    from app.models import Bloqueio, Instrutor, TurmaUC
+    q = (select(func.coalesce(func.sum(UnidadeCurricular.carga_horaria_total), 0), func.coalesce(func.sum(UnidadeCurricular.carga_horaria_ead), 0),
+                func.coalesce(func.sum(UnidadeCurricular.carga_horaria_presencial), 0), func.count())
+         .select_from(TurmaUC).join(Turma, Turma.id == TurmaUC.turma_id).join(UnidadeCurricular, UnidadeCurricular.id == TurmaUC.uc_id)
+         .where(Turma.ativo.is_(True), Turma.simulacao_id.is_(None), Turma.situacao.notin_(["concluida", "cancelada"]), TurmaUC.ativo.is_(True)))
+    if unidades_permitidas is not None:
+        q = q.where(Turma.unidade_id.in_(unidades_permitidas or [-1]))
+    tot, ead, pres, n = db.execute(q).one()
+    qa = select(Alocacao.status, func.coalesce(func.sum(Alocacao.minutos_aula), 0)).where(
+        Alocacao.cenario_id == cenario_id, Alocacao.status != "cancelada", Alocacao.data >= d0, Alocacao.data <= d1)
+    if unidades_permitidas is not None:
+        qa = qa.where(Alocacao.turma_id.in_(select(Turma.id).where(Turma.unidade_id.in_(unidades_permitidas or [-1]))))
+    por_status = dict(db.execute(qa.group_by(Alocacao.status)).all())
+    realizada = float(por_status.get("realizada", 0)) / 60
+    programada = sum(float(v) for k, v in por_status.items() if k != "realizada") / 60
+    qb = select(Bloqueio.inicio, Bloqueio.fim).where(Bloqueio.alvo_tipo == "instrutor", Bloqueio.tipo == "tutoria_ead", Bloqueio.ativo.is_(True),
+                                                    Bloqueio.inicio < combinar(d1 + timedelta(days=1), datetime.min.time()),
+                                                    Bloqueio.fim > combinar(d0, datetime.min.time()))
+    if unidades_permitidas is not None:
+        qb = qb.where(Bloqueio.alvo_id.in_(select(Instrutor.id).where(Instrutor.unidade_id.in_(unidades_permitidas or [-1]))))
+    remotas = sum((f - i).total_seconds() for i, f in db.execute(qb).all()) / 3600
+    return {"curricular": {"total_h": int(tot), "ead_h": int(ead), "presencial_h": int(pres), "turma_ucs": int(n)},
+            "aulas_presenciais": {"programadas_h": round(programada, 1), "realizadas_h": round(realizada, 1), "total_h": round(programada + realizada, 1)},
+            "atividades_remotas_h": round(remotas, 1),
+            "carga_docente_h": round(programada + realizada + remotas, 1)}
+
+
 def institucionais(db: Session, cenario_id: int, d0: date, d1: date, unidades_permitidas=None, data_referencia=None) -> dict:
     amb = ocupacao_ambientes(db, cenario_id, d0, d1, unidades_permitidas=unidades_permitidas)
     ins = ocupacao_instrutores(db, cenario_id, d0, d1, unidades_permitidas=unidades_permitidas)
@@ -399,6 +431,7 @@ def institucionais(db: Session, cenario_id: int, d0: date, d1: date, unidades_pe
         "ucs_em_risco": [l for l in tu["itens"] if l["risco_atraso"] in ("alto", "medio")],
         "ambientes": amb["resumo"], "instrutores": ins["resumo"], "turmas_ucs": r,
         "ocupacao_por_turno": amb["por_turno"], "ocupacao_por_dia": amb["por_dia_semana"],
+        "cargas": cargas_separadas(db, cenario_id, d0, d1, unidades_permitidas),
         "evolucao_versoes": [{"versao": v.numero, "estado": v.estado, "criado_em": v.criado_em.isoformat(),
                               "indicadores": v.indicadores} for v in versoes],
     }

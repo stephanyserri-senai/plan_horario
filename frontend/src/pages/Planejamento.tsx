@@ -22,6 +22,7 @@ function novoSemestre(sem: string) {
     periodo_inicio: n === "1" ? `${a}-02-02` : `${a}-08-03`, periodo_fim: n === "1" ? `${a}-06-30` : `${a}-12-18` };
 }
 import { BarraCH, FluxoCenario, LegendaCH } from "../components/Visual";
+import { ImpactoCarga } from "../components/ImpactoCarga";
 
 const PROXIMOS: Record<string, { estado: string; rotulo: string; acao: string }[]> = {
   em_elaboracao: [{ estado: "em_validacao", rotulo: "Enviar para validação", acao: "cenarios.editar" }],
@@ -39,12 +40,14 @@ export default function Planejamento() {
     <Pagina titulo="Semestres e aprovação" descricao="Crie o semestre, acompanhe a aprovação e a publicação, confira conflitos e compare versões.">
       {cenario && <FluxoCenario estado={cenario.estado} />}
       <Abas abas={[{ id: "cenarios", rotulo: "Semestres e aprovação" }, { id: "oferta", rotulo: "Turma × UC (detalhe)" },
-        { id: "validacao", rotulo: "Conferir conflitos" }, { id: "versoes", rotulo: "Histórico de versões" }, { id: "comparar", rotulo: "Comparar cenários" }]} ativa={aba} mudar={setAba} />
+        { id: "validacao", rotulo: "Conferir conflitos" }, { id: "versoes", rotulo: "Histórico de versões" }, { id: "comparar", rotulo: "Comparar cenários" },
+        { id: "carga", rotulo: "Carga EaD × presencial" }]} ativa={aba} mudar={setAba} />
       {aba === "cenarios" && <Cenarios />}
       {aba === "oferta" && <Oferta />}
       {aba === "validacao" && <Validacao />}
       {aba === "versoes" && <Versoes />}
       {aba === "comparar" && <Comparar />}
+      {aba === "carga" && <Card titulo="Impacto da divisão EaD/presencial nas aulas programadas"><ImpactoCarga /></Card>}
     </Pagina>
   );
 }

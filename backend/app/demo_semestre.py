@@ -282,7 +282,7 @@ def montar(db, ctx, limite_s: float = 120) -> dict:
             ch = ajuste(ch, enc)
             uc = UnidadeCurricular(matriz_id=m.id, codigo=cod, nome=nome_uc, carga_horaria_total=ch, encontros_semanais=enc,
                                    duracao_bloco_periodos=4, sequencia=seq, certificacao_exigida=cert, modulo="Módulo específico",
-                                   categoria="transversal" if cod in TRANSVERSAIS else "tecnica")
+                                   categoria="transversal" if cod in TRANSVERSAIS else "tecnica", divisao_confirmada=True)
             db.add(uc)
             db.flush()
             for t in tps:

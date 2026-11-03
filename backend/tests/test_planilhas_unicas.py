@@ -40,8 +40,8 @@ def test_modelos_e_importacao_em_planilha_unica(db, mundo):
     db.commit()
     # 1) estrutura curricular: 1 linha por UC; cria curso, matriz, UCs, tipos de sala e pré-requisito
     est = preencher(db, "estrutura_curricular", [
-        ["MEC-TEC", "Técnico em Mecânica", "MECÂNICA", "presencial", "técnico", 1200, "2026.1", "", "DTM", "Desenho Técnico Mecânico", 40, 1, "Sala de aula", 1, "", ""],
-        ["MEC-TEC", "Técnico em Mecânica", "MECÂNICA", "presencial", "técnico", 1200, "2026.1", "", "USI", "Usinagem", 60, 2, "Oficina mecânica", 2, "DTM", "NR-12"],
+        ["MEC-TEC", "Técnico em Mecânica", "MECÂNICA", "presencial", "técnico", 1200, "2026.1", "", "DTM", "Desenho Técnico Mecânico", 40, 1, "Sala de aula", 1, "", "", "", "semipresencial", 8, ""],
+        ["MEC-TEC", "Técnico em Mecânica", "MECÂNICA", "presencial", "técnico", 1200, "2026.1", "", "USI", "Usinagem", 60, 2, "Oficina mecânica", 2, "DTM", "NR-12", "", "presencial", "", ""],
     ])
     imp, rel = importar(db, m.ctx, "estrutura_curricular", est)
     assert len(imp.previa["itens"]) == 2  # as linhas EXEMPLO foram ignoradas
@@ -52,6 +52,9 @@ def test_modelos_e_importacao_em_planilha_unica(db, mundo):
     assert usi.encontros_semanais == 2 and usi.certificacao_exigida == "NR-12" and usi.duracao_bloco_periodos == 4
     assert [t.nome for t in usi.tipos_ambiente] == ["Oficina mecânica"]
     assert db.get(UCPrerequisito, (usi.id, dtm.id))
+    assert (dtm.modalidade, dtm.carga_horaria_ead, dtm.carga_horaria_presencial, dtm.divisao_confirmada) == ("semipresencial", 8, 32, True)
+    assert (usi.modalidade, usi.carga_horaria_ead, usi.carga_horaria_presencial) == ("presencial", 0, 60)
+    assert imp.previa["cargas"]["total"] == 100 and imp.previa["cargas"]["ead"] == 8 and imp.previa["cargas"]["presencial"] == 92
     # reimportar o mesmo arquivo não duplica
     imp2 = importacao.gerar_previa(db, m.ctx, "estrutura_curricular.xlsx", est)
     assert {i["acao"] for i in imp2.previa["itens"]} == {"sem_alteracao"}

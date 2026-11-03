@@ -144,7 +144,14 @@ def _lista_dias(v):
     return [_dia(x) for x in re.split(r"[;,/ ]+", str(v)) if x.strip()]
 
 
-CONV = {"str": _str, "int": _int, "float": _float, "date": _date, "time": _time, "bool": _bool, "dia": _dia, "dias": _lista_dias}
+def _bruto(v):
+    """Valor como veio da planilha (as horas são conferidas em services/carga_uc.horas): vazio ≠ zero."""
+    if v is None or (isinstance(v, str) and not v.strip()):
+        return None
+    return v
+
+
+CONV = {"bruto": _bruto, "str": _str, "int": _int, "float": _float, "date": _date, "time": _time, "bool": _bool, "dia": _dia, "dias": _lista_dias}
 
 # --------------------------------------------------------------------------- especificações
 # campo: (tipo, obrigatório, sinônimos)
@@ -231,7 +238,12 @@ SPECS: dict[str, dict] = {
         "oferta": ("str", False, ["publico_versao_do_curso", "publico_versao", "publico", "versao_do_curso", "tipo_de_oferta", "oferta"]),
         "uc_codigo": ("str", True, ["codigo_da_uc", "codigo_da_unidade_curricular", "cod_uc"]),
         "uc_nome": ("str", True, ["nome_da_uc", "unidade_curricular", "nome_da_unidade_curricular"]),
-        "carga_horaria_total": ("int", True, ["carga_horaria_da_uc_h", "carga_horaria_da_uc", "ch_da_uc"]),
+        "carga_horaria_total": ("bruto", True, ["carga_horaria_da_uc_h", "carga_horaria_da_uc", "ch_da_uc", "carga_horaria_total_da_uc_h",
+                                                "carga_horaria_total_da_uc"]),
+        "uc_modalidade": ("str", False, ["modalidade_da_uc", "modalidade_uc"]),
+        "carga_ead": ("bruto", False, ["carga_horaria_ead_h", "carga_horaria_ead", "ch_ead", "carga_ead_h", "horas_ead"]),
+        "carga_presencial": ("bruto", False, ["carga_horaria_presencial_h", "carga_horaria_presencial", "ch_presencial", "carga_presencial_h",
+                                               "horas_presenciais"]),
         "encontros_semanais": ("int", False, ["dias_de_aula_por_semana", "encontros_por_semana"]),
         "tipos_ambiente": ("str", False, ["tipo_de_sala_exigido", "tipos_de_ambiente"]), "sequencia": ("int", False, ["ordem_na_matriz"]),
         "prerequisitos": ("str", False, ["pre_requisitos_codigos_das_ucs", "pre_requisitos"]),
@@ -536,8 +548,25 @@ def _preparar_estrutura(db, r, v, E, A):
     oferta = (v.get("oferta") or "").strip().upper()[:30] or None
     mid = r.matriz(v["curso_codigo"], versao, oferta)
     ex = db.scalars(select(UnidadeCurricular).where(UnidadeCurricular.matriz_id == mid, func.lower(UnidadeCurricular.codigo) == v["uc_codigo"].lower())).first() if mid else None
-    d = {"codigo": v["uc_codigo"], "nome": v["uc_nome"], "carga_horaria_total": v["carga_horaria_total"],
-         "encontros_semanais": v["encontros_semanais"] or 1, "duracao_bloco_periodos": 4}
+    d = {"codigo": v["uc_codigo"], "nome": v["uc_nome"], "encontros_semanais": v["encontros_semanais"] or 1, "duracao_bloco_periodos": 4}
+    # carga TOTAL = EaD + presencial (modalidade da UC ≠ modalidade do curso, coluna "Modalidade")
+    from app.services import carga_uc
+    try:
+        cg = carga_uc.resolver(v["carga_horaria_total"], v.get("carga_ead"), v.get("carga_presencial"), v.get("uc_modalidade"))
+        if cg.get("pendente"):
+            regra = (getattr(r, "opcoes", None) or {}).get("distribuicao")
+            if regra:
+                cg = carga_uc.distribuir(cg["carga_horaria_total"], regra)
+                A.append(f"divisão definida na prévia: EaD {cg['carga_horaria_ead']} h, presencial {cg['carga_horaria_presencial']} h")
+            else:
+                d["_divisao_pendente"] = True
+                E.append("planilha sem a divisão EaD/presencial desta UC: defina a distribuição na prévia antes de importar")
+        if not cg.get("pendente"):
+            d.update(cg)
+        else:
+            d["carga_horaria_total"] = cg["carga_horaria_total"]
+    except carga_uc.ErroCarga as e:
+        E.append(str(e))
     for k in ("sequencia", "certificacao_exigida"):
         if v.get(k) is not None:
             d[k] = v[k]
@@ -550,7 +579,7 @@ def _preparar_estrutura(db, r, v, E, A):
         else:
             E.append(f"categoria da UC '{v['categoria']}' inválida: use Técnica ou Transversal")
     if ex is not None and mid and db.scalar(select(func.count()).select_from(Turma).where(Turma.matriz_id == mid)):
-        if any(getattr(ex, k) != d[k] for k in ("carga_horaria_total",) if k in d):
+        if "carga_horaria_total" in d and int(ex.carga_horaria_total) != int(d["carga_horaria_total"]):
             E.append("a matriz já é usada por turmas: para mudar a carga horária, use uma nova versão da matriz (coluna 'Versão da matriz')")
     if ex is not None:
         d["matriz_id"] = ex.matriz_id
@@ -886,8 +915,37 @@ def _json(d):
     return auditoria._json({k: v for k, v in (d or {}).items() if not k.startswith("_")})
 
 
+def _resumo_cargas(itens: list[dict]) -> dict:
+    """Totais da prévia da estrutura curricular: horas totais, EaD e presenciais por matriz (curso + versão + público),
+    UCs sem divisão definida e inconsistências."""
+    por: dict = {}
+    pend = incons = 0
+    for it in itens:
+        d, v = it.get("dados") or {}, it.get("valores") or {}
+        ext = it.get("extras") or {}
+        k = (v.get("curso_codigo"), ext.get("_versao") or v.get("versao") or "1", ext.get("_oferta") or (v.get("oferta") or "").upper() or None)
+        x = por.setdefault(k, {"curso": k[0], "versao": k[1], "publico": k[2], "ucs": 0, "total": 0, "ead": 0, "presencial": 0,
+                               "pendentes": 0, "com_erro": 0, "criar": 0, "atualizar": 0, "sem_alteracao": 0})
+        x["ucs"] += 1
+        if it["acao"] in ("criar", "atualizar", "sem_alteracao"):
+            x[it["acao"]] += 1
+        if any("divisão EaD/presencial" in e for e in it["erros"]):
+            x["pendentes"] += 1
+            pend += 1
+        elif it["acao"] == "erro":
+            x["com_erro"] += 1
+            incons += 1
+        x["total"] += int(d.get("carga_horaria_total") or 0)
+        x["ead"] += int(d.get("carga_horaria_ead") or 0)
+        x["presencial"] += int(d.get("carga_horaria_presencial") or 0)
+    mats = sorted(por.values(), key=lambda x: (x["curso"] or "", x["versao"], x["publico"] or ""))
+    return {"matrizes": mats, "total": sum(m["total"] for m in mats), "ead": sum(m["ead"] for m in mats),
+            "presencial": sum(m["presencial"] for m in mats), "divisao_pendente": pend, "inconsistencias": incons}
+
+
 def gerar_previa(db: Session, ctx, nome: str, conteudo: bytes, tipo: str | None = None, planilha: str | None = None,
-                 mapeamento: dict | None = None, cenario_id: int | None = None, importacao_id: int | None = None) -> Importacao:
+                 mapeamento: dict | None = None, cenario_id: int | None = None, importacao_id: int | None = None,
+                 opcoes: dict | None = None) -> Importacao:
     h = hashlib.sha256(conteudo).hexdigest()
     folhas = ler_arquivo(nome, conteudo)
     if not folhas:
@@ -900,6 +958,7 @@ def gerar_previa(db: Session, ctx, nome: str, conteudo: bytes, tipo: str | None 
         raise EntradaInvalida(f"Tipo '{tipo}' inválido. Opções: {', '.join(SPECS)}")
     mapa = {**sugerir_mapeamento(tipo, cab), **(mapeamento or {})}
     r = Resolvedor(db)
+    r.opcoes = opcoes or {}
     itens, vistos = [], {}
     for n, linha in enumerate(linhas, start=2):
         if any(str(x or "").strip().upper().startswith("EXEMPLO") for x in list(linha.values())[:2]):
@@ -925,7 +984,7 @@ def gerar_previa(db: Session, ctx, nome: str, conteudo: bytes, tipo: str | None 
             acao = "criar"
         else:
             atual = auditoria.snapshot(existente)
-            mud = {k: v for k, v in _json(dados).items() if atual.get(k) != v}
+            mud = {k: v for k, v in _json(dados).items() if not k.startswith("_") and atual.get(k) != v}
             acao = "atualizar" if mud else "sem_alteracao"
         itens.append({"linha": n, "acao": acao, "erros": erros, "avisos": avisos, "valores": _json(vals), "dados": _json(dados),
                       "tipos": (dados or {}).get("_tipos"), "areas_extra": (dados or {}).get("_areas"),
@@ -933,7 +992,8 @@ def gerar_previa(db: Session, ctx, nome: str, conteudo: bytes, tipo: str | None 
     anterior = db.scalars(select(Importacao).where(Importacao.arquivo_hash == h, Importacao.status == "confirmada")).first()
     resumo = {a: sum(1 for i in itens if i["acao"] == a) for a in ("criar", "atualizar", "sem_alteracao", "erro")}
     previa = {"planilhas": list(folhas), "planilha": planilha, "cabecalhos": cab, "campos": {k: {"tipo": t, "obrigatorio": o} for k, (t, o, _s) in SPECS[tipo]["campos"].items()},
-              "itens": itens, "resumo": resumo,
+              "itens": itens, "resumo": resumo, "opcoes": opcoes or {},
+              **({"cargas": _resumo_cargas(itens)} if tipo == "estrutura_curricular" else {}),
               "arquivo_ja_processado": {"importacao_id": anterior.id, "em": anterior.confirmado_em.isoformat() if anterior.confirmado_em else None} if anterior else None}
     imp = db.get(Importacao, importacao_id) if importacao_id else None
     if imp is None:
@@ -1078,8 +1138,11 @@ def _confirmar_estrutura(db: Session, ctx, imp: Importacao, itens: list[dict]) -
         uc = db.scalars(select(UnidadeCurricular).where(UnidadeCurricular.matriz_id == mat.id, func.lower(UnidadeCurricular.codigo) == dados["codigo"].lower())).first()
         # versão já cadastrada (de antes desta importação): a lista de UCs é fixa — não inclui UC nem muda nome, carga ou modalidade
         if mat.id not in criadas and mat.situacao != "rascunho":
-            fixos = [k for k in ("codigo", "nome", "carga_horaria_total", "modalidade", "categoria")
+            # corrigir só a divisão EaD/presencial (mesma carga total) é permitido; mudar a total, o nome… exige nova versão
+            fixos = [k for k in ("codigo", "nome", "carga_horaria_total", "categoria")
                      if k in dados and uc is not None and getattr(uc, k) != dados[k]]
+            if "carga_horaria_total" in fixos:
+                fixos += [k for k in ("carga_horaria_ead", "carga_horaria_presencial", "modalidade", "divisao_confirmada") if k in dados]
             if uc is None or fixos:
                 rel.setdefault("avisos", []).append(
                     f"linha {it['linha']}: a versão {mat.versao} de {curso.codigo} já está cadastrada (lista de UCs fixa); "
@@ -1087,7 +1150,7 @@ def _confirmar_estrutura(db: Session, ctx, imp: Importacao, itens: list[dict]) -
                 if uc is None:
                     continue
                 for k in fixos:
-                    dados.pop(k)
+                    dados.pop(k, None)
         if uc is None:
             uc = UnidadeCurricular(**dados)
             db.add(uc)
@@ -1106,6 +1169,9 @@ def _confirmar_estrutura(db: Session, ctx, imp: Importacao, itens: list[dict]) -
             tid = _tipo_ambiente(db, nome)
             if not db.get(UCTipoAmbiente, (uc.id, tid)):
                 db.add(UCTipoAmbiente(uc_id=uc.id, tipo_ambiente_id=tid))
+        if (uc.carga_horaria_ead or 0) > 0 and not curso.preve_ead:  # o curso passa a prever UCs com EaD (a modalidade do curso não muda)
+            curso.preve_ead = True
+            rel.setdefault("avisos", []).append(f"{curso.codigo}: marcado como “prevê UCs EAD” (há UC com carga EaD)")
         por_matriz.setdefault(mat.id, {})[uc.codigo.lower()] = uc.id
         prereqs += [(mat.id, uc.id, cod) for cod in ext.get("_prereq") or []]
     db.flush()

@@ -15,6 +15,7 @@ from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from app.services.regras_aula import limite_letivo_efetivo
+from app.services.carga_uc import ch_presencial
 from app.core.config import get_settings
 from app.core.db import SessionLocal
 from app.models import (
@@ -165,7 +166,7 @@ def turma_ucs_do_escopo(db: Session, cenario: CenarioPlanejamento, escopo: dict)
                                           TurmaUC.situacao.notin_(["concluida", "cancelada"]),
                                           Turma.situacao.notin_(["concluida", "cancelada"]))
     # UC EAD é cursada a distância: não entra na grade presencial nem ocupa sala ou instrutor em sala
-    q = q.where(TurmaUC.uc_id.notin_(select(UnidadeCurricular.id).where(UnidadeCurricular.modalidade == "ead")))
+    q = q.where(TurmaUC.uc_id.notin_(select(UnidadeCurricular.id).where(UnidadeCurricular.carga_horaria_presencial <= 0)))  # UC só EaD: sem encontro presencial
     q = q.where((Turma.simulacao_id.is_(None)) | (Turma.simulacao_id == sim_id)) if sim_id else q.where(Turma.simulacao_id.is_(None))
     if cenario.unidade_id:
         q = q.where(Turma.unidade_id == cenario.unidade_id)
@@ -258,7 +259,7 @@ def montar_entrada(db: Session, cenario: CenarioPlanejamento, escopo: dict, peso
         semanas = max(((df - di).days + 1) / 7, 1 / 7)
         for g in grupos:
             realizados, programados = carga_horaria_minutos(b, tuc, g, ids_subst)
-            restante_h = (uc.carga_horaria_total * 60 - realizados - programados) / 60
+            restante_h = (ch_presencial(uc) * 60 - realizados - programados) / 60
             if restante_h <= 0.01:
                 continue
             enc = min(uc.encontros_semanais, math.ceil(restante_h / horas_encontro - 1e-9))

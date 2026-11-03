@@ -55,6 +55,15 @@ function PainelAcompanhamento() {
             {d.bloqueios_ultima_validacao == null ? "semestre ainda não validado" : <><b>{d.bloqueios_ultima_validacao}</b> bloqueio(s) na última validação · {d.alertas_pendentes} alerta(s)</>}</div>}
         </div>
       </div>}
+      {d?.cargas && <div className="cargas-sep" aria-label="Cargas separadas">
+        <div title="Carga curricular do aluno nas turmas ativas: total = EaD + presencial"><small>Carga curricular do aluno</small>
+          <b>{n1(d.cargas.curricular.total_h)} h</b><span>EaD {n1(d.cargas.curricular.ead_h)} h · presencial {n1(d.cargas.curricular.presencial_h)} h</span></div>
+        <div title="Aulas presenciais no período (só a carga presencial vira aula, sala e agenda)"><small>Aulas presenciais</small>
+          <b>{n1(d.cargas.aulas_presenciais.total_h)} h</b><span>{n1(d.cargas.aulas_presenciais.realizadas_h)} h realizadas · {n1(d.cargas.aulas_presenciais.programadas_h)} h programadas</span></div>
+        <div title="Tutoria ou encontro remoto síncrono marcado na agenda dos instrutores (EAD); as horas EaD assíncronas do aluno não entram"><small>Atividades remotas (docente)</small>
+          <b>{n1(d.cargas.atividades_remotas_h)} h</b><span>tutoria / encontros EaD</span></div>
+        <div title="Aulas presenciais + atividades remotas"><small>Carga docente</small><b>{n1(d.cargas.carga_docente_h)} h</b><span>presencial + remota</span></div>
+      </div>}
       <Abas abas={[{ id: "geral", rotulo: "📈 Taxas de ocupação" }, { id: "quadro", rotulo: "👥 Quadro de instrutores" }, { id: "turmas", rotulo: "Por turma" },
         { id: "instrutores", rotulo: "Por instrutor" }, { id: "ucs", rotulo: "Por unidade curricular" }, { id: "salas", rotulo: "Salas e laboratórios" }]} ativa={aba} mudar={setAba} />
       {aba === "geral" && <TaxasDeOcupacao inicio={inicio} fim={fim} amb={amb.dados} inst={d} ins={ins.dados} />}

@@ -238,8 +238,9 @@ def remapear(iid: int, d: dict = Body(...), ctx: Contexto = Depends(requer("impo
     imp = db.get(Importacao, iid)
     if imp is None or imp.status != "previa" or imp.conteudo is None:
         raise NaoEncontrado("Prévia não disponível: envie o arquivo novamente.")
+    opcoes = d.get("opcoes") if d.get("opcoes") is not None else (imp.previa or {}).get("opcoes")
     imp = importacao.gerar_previa(db, ctx, imp.arquivo_nome, imp.conteudo, d.get("tipo") or imp.tipo, d.get("planilha"), d.get("mapeamento"),
-                                  d.get("cenario_id", imp.cenario_id), importacao_id=iid)
+                                  d.get("cenario_id", imp.cenario_id), importacao_id=iid, opcoes=opcoes)
     db.commit()
     return {"id": imp.id, "tipo": imp.tipo, "mapeamento": imp.mapeamento, **imp.previa}
 

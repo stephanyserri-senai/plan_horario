@@ -21,6 +21,7 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 
 from app.services.regras_aula import limite_letivo_efetivo
+from app.services.carga_uc import ch_presencial
 from app.models import (
     Alocacao,
     Area,
@@ -461,7 +462,7 @@ def validar_aula(b: BaseDados, a: AulaProposta, ignorar: set[int] | None = None)
             restantes = []
             for g in gs:
                 r_, p_ = carga_horaria_minutos(b, tuc, g, ignorar)
-                restantes.append(uc.carga_horaria_total * 60 - r_ - p_)
+                restantes.append(ch_presencial(uc) * 60 - r_ - p_)
             restante = max(restantes) if restantes else 0
             if restante >= credito_turno:
                 add(BLOQUEIO, "TURNO_INCOMPLETO",
@@ -603,7 +604,7 @@ def validar_aula(b: BaseDados, a: AulaProposta, ignorar: set[int] | None = None)
         from app.services.regras_aula import MAX_HORAS_SEMANA
         ini_sem = datetime.combine(seg, datetime.min.time())
         reservas = [x for x in b.bloqueios("instrutor", instrutor.id, ini_sem, ini_sem + timedelta(days=7))
-                    if x.tipo in ("planejamento", "projeto", "treinamento", "atividade_administrativa", "atividade_pedagogica")]
+                    if x.tipo in ("planejamento", "projeto", "treinamento", "tutoria_ead", "atividade_administrativa", "atividade_pedagogica")]
         min_reserva = sum((min(x.fim, ini_sem + timedelta(days=7)) - max(x.inicio, ini_sem)).total_seconds() / 60 for x in reservas)
         if min_sem + min_reserva > MAX_HORAS_SEMANA * 60 + 1e-6:
             add(BLOQUEIO, "LIMITE_44H", f"{instrutor.nome} somaria {(min_sem + min_reserva) / 60:.1f} h de trabalho na semana "
@@ -713,8 +714,11 @@ def validar_aula(b: BaseDados, a: AulaProposta, ignorar: set[int] | None = None)
                 f"{r.nome}: {pico} unidade(s) já reservada(s) no horário; solicitadas {q}; total {r.quantidade_total}.",
                 "recurso", rid, [s.id for s, _ in em_uso])
 
-    # --- (13) carga horária restante
-    total_min = uc.carga_horaria_total * 60
+    if ch_presencial(uc) <= 0:
+        add(BLOQUEIO, "UC_SO_EAD", f"A UC {uc.codigo} é totalmente EaD ({uc.carga_horaria_total} h a distância): não tem aula presencial nem reserva de sala. "
+                                   "Tutoria ou encontro remoto vai na agenda do instrutor como atividade própria (tutoria EaD).")
+    # --- (13) carga horária restante: só a PRESENCIAL vira aula (as horas EaD não ocupam sala nem agenda)
+    total_min = ch_presencial(uc) * 60
     grupos_ch = [a.grupo] if a.grupo is not None else ([None] if not (uc.divide_grupos and turma.num_grupos > 1) else list(range(1, turma.num_grupos + 1)))
     for g in grupos_ch:
         realizados, programados = carga_horaria_minutos(b, tuc, g, ignorar)
@@ -725,7 +729,7 @@ def validar_aula(b: BaseDados, a: AulaProposta, ignorar: set[int] | None = None)
                 add(ALERTA, "CH_EXCEDIDA_AUTORIZADA", f"Carga horária de {uc.codigo}{rotulo} excedida em {excedente:.1f} h, autorizada pela exceção #{excecao.id}.")
             else:
                 add(BLOQUEIO, "CARGA_HORARIA_EXCEDIDA",
-                    f"A UC {uc.codigo}{rotulo} tem {uc.carga_horaria_total} h; realizadas {realizados / 60:.1f} h, programadas {programados / 60:.1f} h. Esta aula excederia em {excedente:.1f} h.")
+                    f"A UC {uc.codigo}{rotulo} tem {ch_presencial(uc):g} h presenciais; realizadas {realizados / 60:.1f} h, programadas {programados / 60:.1f} h. Esta aula excederia em {excedente:.1f} h.")
 
     # --- reposição aos sábados (exceção 'reposicao'): turma que não termina no prazo ganha aulas no sábado, dentro do
     # turno de sábado da unidade, combinadas com o instrutor. Só deixam de bloquear o dia/turno da turma e a
@@ -813,13 +817,13 @@ def validar_cenario(db: Session, cenario_id: int) -> list[Ocorrencia]:
         grupos_ch = [None] if not (uc.divide_grupos and turma.num_grupos > 1) else list(range(1, turma.num_grupos + 1))
         for g in grupos_ch:
             realizados, programados = carga_horaria_minutos(b, tuc, g, set())
-            if realizados + programados > uc.carga_horaria_total * 60:
+            if realizados + programados > ch_presencial(uc) * 60:
                 autorizadas = db.scalar(select(func.count()).select_from(Alocacao).where(
                     Alocacao.cenario_id == cenario_id, Alocacao.turma_uc_id == tuc_id, Alocacao.excecao_id.isnot(None),
                     Alocacao.excecao_id.in_(select(ExcecaoAutorizada.id).where(ExcecaoAutorizada.tipo == "carga_horaria"))))
                 sev = ALERTA if autorizadas else BLOQUEIO
                 resultado.append(Ocorrencia(sev, "CARGA_HORARIA_EXCEDIDA",
-                                            f"Turma {turma.codigo} – UC {uc.codigo}{f' (grupo {g})' if g else ''}: {(realizados + programados) / 60:.1f} h programadas/realizadas para {uc.carga_horaria_total} h.",
+                                            f"Turma {turma.codigo} – UC {uc.codigo}{f' (grupo {g})' if g else ''}: {(realizados + programados) / 60:.1f} h programadas/realizadas para {ch_presencial(uc):g} h presenciais.",
                                             turma_id=turma.id, uc_id=uc.id, origem="validacao_cenario"))
     return resultado
 

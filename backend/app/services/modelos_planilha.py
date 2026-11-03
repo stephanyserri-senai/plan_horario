@@ -34,24 +34,31 @@ MODELOS: dict[str, dict] = {
         "resumo": "Uma linha por unidade curricular (UC). Repita os dados do curso em todas as linhas das UCs dele: o curso e a matriz são criados "
                   "ou atualizados automaticamente e as UCs ficam ligadas a eles.",
         "colunas": [
-            ("Código do curso", True, "Código único do curso (ex.: ELT-TEC).", None, 16, "EXEMPLO-ELT", "EXEMPLO-ELT"),
-            ("Nome do curso", True, "Nome completo do curso.", None, 34, "Técnico em Eletrotécnica", "Técnico em Eletrotécnica"),
-            ("Área", True, "Área tecnológica do curso (uma das áreas fixas).", "areas", 20, "ENERGIAS", "ENERGIAS"),
-            ("Modalidade", False, "presencial, semipresencial ou EAD.", "modalidades", 14, "presencial", "presencial"),
+            ("Código do curso", True, "Código único do curso (ex.: ELT-TEC).", None, 16, "EXEMPLO-AIT", "EXEMPLO-INST"),
+            ("Nome do curso", True, "Nome completo do curso.", None, 34, "Técnico em Automação Industrial", "Técnico em Instrumentação"),
+            ("Área", True, "Área tecnológica do curso (uma das áreas fixas).", "areas", 20, "AUTOMAÇÃO", "INSTRUMENTAÇÃO"),
+            ("Modalidade", False, "Modalidade do CURSO: presencial, semipresencial ou EAD (não muda as UCs; a de cada UC fica na coluna Modalidade da UC).",
+             "modalidades", 14, "presencial", "presencial"),
             ("Tipo do curso", False, "Ex.: técnico, qualificação, aperfeiçoamento, aprendizagem.", "tipos_curso", 18, "técnico", "técnico"),
-            ("Carga horária do curso (h)", False, "Carga horária total do curso.", None, 14, 1200, 1200),
+            ("Carga horária do curso (h)", False, "Carga horária total do curso.", None, 14, 1200, 1280),
             ("Versão da matriz", False, "Versão do currículo (padrão: 1). Para mudar a carga de UCs já usadas por turmas, crie uma versão nova.", None, 14, "2026.1", "2026.1"),
             ("Público / versão do curso", False, "Mesma sigla, currículos diferentes por público: PAGANTE, SEDU, AIT… (vazio = vale para todos).", None, 16, "PAGANTE", "PAGANTE"),
-            ("Código da UC", True, "Código da unidade curricular (único dentro da matriz).", None, 14, "FEL", "CMD"),
-            ("Nome da UC", True, "Nome da unidade curricular.", None, 34, "Fundamentos de Eletricidade", "Comandos Elétricos"),
-            ("Carga horária da UC (h)", True, "Em horas. Cada aula vale 55 min (50 à noite) e cada dia de aula tem 4 aulas; o que falta vira outra aula (20 h no matutino = 22 aulas).", None, 12, 40, 60),
-            ("Dias de aula por semana", False, "Quantos dias de aula por semana a UC ocupa (cada dia é um turno inteiro; padrão: 1).", None, 12, 2, 1),
-            ("Tipo de sala exigido", False, "Um ou mais, separados por ';'. Se não existir, o tipo é criado.", "tipos_sala", 30, "Sala de aula", "Laboratório de comandos elétricos"),
-            ("Ordem na matriz", False, "Ordem sugerida da UC no curso (1, 2, 3...).", None, 10, 1, 2),
-            ("Pré-requisitos (códigos das UCs)", False, "Códigos de UCs da mesma matriz que precisam terminar antes, separados por ';'.", None, 18, "", "FEL"),
-            ("Certificação exigida do instrutor", False, "Ex.: NR-10. O instrutor precisa ter essa certificação para dar a UC.", None, 16, "", "NR-10"),
+            ("Código da UC", True, "Código da unidade curricular (único dentro da matriz).", None, 14, "PNI", "MSI"),
+            ("Nome da UC", True, "Nome da unidade curricular.", None, 34, "Prototipagem de negócios inovadores", "Manutenção de Sistemas de Instrumentação"),
+            ("Carga horária da UC (h)", True, "Carga TOTAL da UC (do aluno) = EaD + presencial, em horas. Só a presencial vira aula: cada aula vale 55 min "
+             "(50 à noite), cada dia de aula tem 4 aulas e o que falta vira outra aula.", None, 12, 24, 80),
+            ("Dias de aula por semana", False, "Quantos dias de aula por semana a UC ocupa (cada dia é um turno inteiro; padrão: 1).", None, 12, 1, 1),
+            ("Tipo de sala exigido", False, "Um ou mais, separados por ';'. Se não existir, o tipo é criado.", "tipos_sala", 30, "Sala de aula", ""),
+            ("Ordem na matriz", False, "Ordem sugerida da UC no curso (1, 2, 3...).", None, 10, 1, 1),
+            ("Pré-requisitos (códigos das UCs)", False, "Códigos de UCs da mesma matriz que precisam terminar antes, separados por ';'.", None, 18, "", ""),
+            ("Certificação exigida do instrutor", False, "Ex.: NR-10. O instrutor precisa ter essa certificação para dar a UC.", None, 16, "", ""),
             ("Categoria da UC", False, "TÉCNICA (padrão): só quem marcou a UC no perfil pode dar. TRANSVERSAL: qualquer instrutor pode dar "
              "(ex.: comunicação, segurança do trabalho básica, empreendedorismo).", "categorias_uc", 14, "Transversal", "Técnica"),
+            ("Modalidade da UC", False, "presencial, EAD ou semipresencial. Pode ficar vazia: sai das cargas (EaD 0 = presencial; presencial 0 = EAD).",
+             "modalidades_uc", 14, "semipresencial", "EAD"),
+            ("Carga horária EaD (h)", False, "Horas a distância (0 se não houver). Com a total e uma das parcelas, a outra é calculada.", None, 12, 8, 80),
+            ("Carga horária presencial (h)", False, "Horas presenciais (0 em UC totalmente EaD). Só estas viram aulas, salas e agenda do instrutor.",
+             None, 12, 16, 0),
         ],
     },
     "ambientes": {
@@ -135,7 +142,7 @@ def gerar_modelo(db: Session, tipo: str, dados: list[list] | None = None) -> byt
     tipos = sorted({*TIPOS_SALA_PADRAO, *(t.nome for t in db.scalars(select(TipoAmbiente).where(TipoAmbiente.ativo.is_(True))) if not t.codigo.startswith("DEMO-"))})
     listas = {
         "unidades": unidades, "areas": [a for a, _ in areas], "areas_ou_todas": ["TODAS"] + [a for a, _ in areas],
-        "tipos_sala": tipos, "turnos": ["M", "V", "N", "S", "SV"], "jornadas": ["M", "V", "N", "MV", "VN"], "modalidades_instrutor": ["Mensalista", "Horista"], "niveis_instrutor": ["Técnico", "Básico"], "categorias_uc": ["Técnica", "Transversal"], "tamanhos_pmg": ["PP", "P", "M", "G", "GG", "XG"], "sabado_turnos": ["M", "V", "MV"], "sim_nao": ["Sim", "Não"],
+        "tipos_sala": tipos, "turnos": ["M", "V", "N", "S", "SV"], "jornadas": ["M", "V", "N", "MV", "VN"], "modalidades_instrutor": ["Mensalista", "Horista"], "niveis_instrutor": ["Técnico", "Básico"], "categorias_uc": ["Técnica", "Transversal"], "modalidades_uc": ["presencial", "EAD", "semipresencial"], "tamanhos_pmg": ["PP", "P", "M", "G", "GG", "XG"], "sabado_turnos": ["M", "V", "MV"], "sim_nao": ["Sim", "Não"],
         "modalidades": ["presencial", "semipresencial", "EAD"],
         "tipos_curso": ["técnico", "qualificação", "aperfeiçoamento", "aprendizagem industrial", "habilitação", "graduação tecnológica"],
     }

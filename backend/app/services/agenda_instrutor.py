@@ -20,7 +20,10 @@ from app.services import auditoria
 from app.services.regras_aula import HORAS_POR_TURNO
 
 # PL e PJ: o instrutor está na escola (pode assumir substituição). TR: liberado das aulas para treinamento (não está disponível).
-TIPOS = {"PL": ("planejamento", "Planejamento"), "PJ": ("projeto", "Projeto / outra atividade"), "TR": ("treinamento", "Treinamento")}
+# EAD: tutoria ou encontro remoto síncrono de UC com parte EaD — atividade docente própria (horário e duração do turno,
+# responsável = o instrutor), separada das aulas presenciais. As horas EaD assíncronas do aluno NÃO viram agenda do instrutor.
+TIPOS = {"PL": ("planejamento", "Planejamento"), "PJ": ("projeto", "Projeto / outra atividade"), "TR": ("treinamento", "Treinamento"),
+         "EAD": ("tutoria_ead", "Tutoria / encontro remoto EaD")}
 TIPO_PARA_SIGLA = {v[0]: k for k, v in TIPOS.items()}
 DIAS = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"]
 
@@ -90,14 +93,14 @@ def semana(db: Session, cenario_id: int, instrutor_id: int, inicio: date) -> dic
                 resumo["vazio_turnos"] += 1
             celulas.append(cel)
     carga = float(inst.carga_horaria_contratual)
-    ocupadas = resumo["aula_h"] + resumo["pl_h"] + resumo["pj_h"] + resumo["tr_h"]
+    ocupadas = resumo["aula_h"] + resumo["pl_h"] + resumo["pj_h"] + resumo["tr_h"] + resumo["ead_h"]
     mensalista = inst.modalidade == "mensalista"
     return {
         "instrutor": {"id": inst.id, "nome": inst.nome, "modalidade": inst.modalidade, "carga_semanal_h": carga},
         "semana": seg.isoformat(), "dias": [{"dia": di, "data": (seg + timedelta(days=di)).isoformat(), "rotulo": DIAS[di]} for di in dias],
         "turnos": [{"id": t.id, "nome": t.nome, "horario": f"{t.hora_inicio:%H:%M}–{t.hora_fim:%H:%M}"} for t in turnos],
         "celulas": celulas,
-        "resumo": {"aula_h": round(resumo["aula_h"], 1), "pl_h": resumo["pl_h"], "pj_h": resumo["pj_h"], "tr_h": resumo["tr_h"], "ocupadas_h": round(ocupadas, 1),
+        "resumo": {"aula_h": round(resumo["aula_h"], 1), "pl_h": resumo["pl_h"], "pj_h": resumo["pj_h"], "tr_h": resumo["tr_h"], "ead_h": resumo["ead_h"], "ocupadas_h": round(ocupadas, 1),
                    "vazios": int(resumo["vazio_turnos"]),
                    # mensalista: turno vazio é hora paga sem destino; horista: é dispensa
                    "sem_atribuicao_h": int(resumo["vazio_turnos"]) * HORAS_POR_TURNO if mensalista else 0,
@@ -118,7 +121,7 @@ def marcar(db: Session, ctx, cenario_id: int, instrutor_id: int, data: date, tur
     if t.unidade_id != inst.unidade_id:
         raise EntradaInvalida("O turno é de outra unidade.")
     if sigla not in (None, "", *TIPOS):
-        raise EntradaInvalida("Use PL (planejamento), PJ (projeto/outra atividade), TR (treinamento) ou vazio.")
+        raise EntradaInvalida("Use PL (planejamento), PJ (projeto/outra atividade), TR (treinamento), EAD (tutoria/encontro remoto) ou vazio.")
     if repetir_ate and repetir_ate < data:
         raise EntradaInvalida("A data final da repetição é anterior ao dia escolhido.")
     cal = Calendarios(db)

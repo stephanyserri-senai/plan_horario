@@ -221,7 +221,7 @@ export default function EstruturaCurricular({ visao = "estrutura" }: { visao?: s
           {curso.versoes.map((v: any) => (
             <button key={v.id} role="tab" aria-selected={v.id === versaoId} className={`versao ${v.id === versaoId ? "ativa" : ""}`} onClick={() => setVersaoId(v.id)}>
               <b>{v.tipo_oferta || "Todos os públicos"}</b> <span>versão {v.versao}</span>
-              <small><Badge tipo={SITUACAO[v.situacao] || "info"}>{v.situacao}</Badge> {v.ucs} UC(s) · {v.ch_total} h{v.turmas ? ` · ${v.turmas} turma(s)` : ""}</small>
+              <small><Badge tipo={SITUACAO[v.situacao] || "info"}>{v.situacao}</Badge> {v.ucs} UC(s) · {v.ch_total} h{v.ch_ead ? ` (EaD ${v.ch_ead} h · presencial ${v.ch_presencial} h)` : ""}{v.divisao_a_confirmar ? ` · ⚠ ${v.divisao_a_confirmar} a confirmar` : ""}{v.turmas ? ` · ${v.turmas} turma(s)` : ""}</small>
             </button>))}
           {editavel && <button className="versao versao-nova" onClick={() => { setErro(null); setEdicao(versao
             ? { ent: "matrizes", fixos: ["curso_id", "matriz_origem_id", "situacao"], titulo: `Nova versão de ${curso.codigo} (copia as UCs da ${rotVersao(versao)})`, copiarDe: versao.id,
@@ -263,9 +263,7 @@ export default function EstruturaCurricular({ visao = "estrutura" }: { visao?: s
                     : <span title="Só quem marcou a UC no perfil"><Badge tipo="neutro">Técnica</Badge></span>}
                     {u.certificacao_exigida && <span className="chip-area ca-vence">🎓 exige {u.certificacao_exigida}</span>}
                     <Modalidade u={u} /></span></span>
-                <span className="uc-ch"><b>{u.carga_horaria_total} h</b>
-                  <span className="barra-pct fina"><span className="barra-pct-v bp-neutro" style={{ width: `${totalUcs ? (100 * u.carga_horaria_total) / totalUcs : 0}%` }} /></span>
-                  <small className="mudo" title="Cada aula vale 55 min de dia e 50 min à noite; o que falta vira outra aula">{aulas(u.carga_horaria_total, 55)} aulas (dia) · {aulas(u.carga_horaria_total, 50)} (noite) · {u.encontros_semanais} dia(s)/sem</small></span>
+                <CargaUC u={u} max={totalUcs} />
                 {editavel && <span className="uc-acoes"><button className="btn-link" onClick={() => abrirUC(u)}>Editar</button>
                   {versao.situacao === "rascunho" && <button className="btn-link" onClick={() => inativarUC(u)}>Retirar</button>}</span>}
               </li>
@@ -281,13 +279,30 @@ export default function EstruturaCurricular({ visao = "estrutura" }: { visao?: s
 }
 
 /** Campos que formam a lista de UCs de uma versão: ficam fixos depois que a versão é cadastrada. */
-const CAMPOS_LISTA_UC = ["codigo", "nome", "carga_horaria_total", "modalidade", "categoria"];
+const CAMPOS_LISTA_UC = ["codigo", "nome", "carga_horaria_total", "categoria"];  // divisão EaD/presencial pode ser corrigida
 
 /** Presencial (com as salas aceitas) ou EAD (cursada a distância, fora da grade). */
 function Modalidade({ u }: { u: any }) {
-  return u.modalidade === "ead"
-    ? <span className="chip-area ca-ead" title="Cursada a distância: não entra na grade nem ocupa sala ou instrutor">💻 EAD</span>
-    : <span className="chip-area" title="Presencial: salas aceitas">🏫 Presencial · {u.tipos_ambiente.join(", ") || "qualquer sala"}</span>;
+  const pend = u.divisao_confirmada === false
+    ? <span className="chip-area ca-vence" title="Registro antigo: confira a divisão EaD/presencial (reimporte a matriz com as colunas ou edite a UC)">⚠ divisão a confirmar</span> : null;
+  if (u.modalidade === "ead") return <>{<span className="chip-area ca-ead" title="Totalmente a distância: não gera aula presencial nem reserva sala">💻 EAD</span>}{pend}</>;
+  if (u.modalidade === "semipresencial") return <><span className="chip-area ca-ead" title="Parte a distância: só as horas presenciais viram aula">💻🏫 Semipresencial · {u.tipos_ambiente.join(", ") || "qualquer sala"}</span>{pend}</>;
+  return <><span className="chip-area" title="Presencial: salas aceitas">🏫 Presencial · {u.tipos_ambiente.join(", ") || "qualquer sala"}</span>{pend}</>;
+}
+
+/** Carga da UC: total (do aluno) = EaD + presencial; as aulas contam só a presencial. */
+function CargaUC({ u, max }: { u: any; max: number }) {
+  const p = u.carga_horaria_presencial ?? (u.modalidade === "ead" ? 0 : u.carga_horaria_total);
+  const e = u.carga_horaria_ead ?? (u.carga_horaria_total - p);
+  return (
+    <span className="uc-ch"><b>{u.carga_horaria_total} h</b>
+      <small className="uc-div">{e > 0 ? <><span className="ch-ead">EaD {e} h</span> · </> : null}<span className="ch-pres">presencial {p} h</span></small>
+      <span className="barra-pct fina barra-div" title={`Total ${u.carga_horaria_total} h = EaD ${e} h + presencial ${p} h`}>
+        <span className="barra-pct-v bp-neutro" style={{ width: `${max ? (100 * p) / max : 0}%` }} />
+        <span className="barra-pct-v bp-ead" style={{ width: `${max ? (100 * e) / max : 0}%` }} /></span>
+      <small className="mudo" title="Só a carga presencial vira aula: 55 min de dia e 50 min à noite; o que falta vira outra aula">
+        {p > 0 ? `${aulas(p, 55)} aulas (dia) · ${aulas(p, 50)} (noite) · ${u.encontros_semanais} dia(s)/sem` : "sem aula presencial"}</small></span>
+  );
 }
 
 /** Situação da lista de UCs: em cadastro (editável, com “Concluir”) ou cadastrada (fixa). */
@@ -460,7 +475,7 @@ function ListaVersoes({ areas, cursos, abrir, editarVersao, editarUC, novaUC, co
                   <small className="mudo">{v.curso.nome}</small></span>
                 <span><Badge tipo={SITUACAO[v.situacao] || "info"}>{v.situacao}</Badge>{v.situacao !== "rascunho" && <span title="Versão cadastrada: lista de UCs fixa"> 🔒</span>}</span>
                 <span className="mudo lst-peq">{v.vigencia_inicio ? `desde ${dataBR(v.vigencia_inicio)}` : "sem data de vigência"}</span>
-                <span className="lst-nums"><span title="UCs">📘 {grupo.ativas.length} UC(s)</span><span title="Carga horária">⏱ {v.ch_total} h</span><span title="Turmas que usam a versão">👥 {v.turmas}</span>
+                <span className="lst-nums"><span title="UCs">📘 {grupo.ativas.length} UC(s)</span><span title="Carga horária total (EaD + presencial)">⏱ {v.ch_total} h{v.ch_ead ? ` · EaD ${v.ch_ead} · pres. ${v.ch_presencial}` : ""}</span><span title="Turmas que usam a versão">👥 {v.turmas}</span>
                   {grupo.ativas.some(fragil) && <span className="alerta-txt" title="UCs com 0 ou 1 instrutor habilitado">⚠ {grupo.ativas.filter(fragil).length}</span>}</span>
                 <span className="lst-acoes" onClick={(e) => e.stopPropagation()}>
                   {editavel && <button className="btn-link" onClick={() => editarVersao(v)}>Editar versão</button>}
@@ -484,9 +499,7 @@ function ListaVersoes({ areas, cursos, abrir, editarVersao, editarUC, novaUC, co
                         <span className="uc-tags">{u.categoria === "transversal" ? <Badge tipo="info">Transversal</Badge> : <Badge tipo="neutro">Técnica</Badge>}
                           {u.certificacao_exigida && <span className="chip-area ca-vence">🎓 exige {u.certificacao_exigida}</span>}
                           <Modalidade u={u} /></span></span>
-                      <span className="uc-ch"><b>{u.carga_horaria_total} h</b>
-                        <span className="barra-pct fina"><span className="barra-pct-v bp-neutro" style={{ width: `${(100 * u.carga_horaria_total) / maxCh}%` }} /></span>
-                        <small className="mudo">{aulas(u.carga_horaria_total, 55)} aulas (dia) · {aulas(u.carga_horaria_total, 50)} (noite) · {u.encontros_semanais} dia(s)/sem</small></span>
+                      <CargaUC u={u} max={maxCh} />
                       <span className="lst-hab">{u.habilitados == null ? <small className="mudo" title="Qualquer instrutor pode dar">👤 qualquer instrutor</small>
                         : <small className={u.habilitados === 0 ? "falta-txt" : u.habilitados === 1 ? "alerta-txt" : "ok-txt"} title="Instrutores que podem dar a UC">👤 {u.habilitados} instrutor(es)</small>}
                         <small className="mudo">👥 {u.turmas} turma(s)</small></span>

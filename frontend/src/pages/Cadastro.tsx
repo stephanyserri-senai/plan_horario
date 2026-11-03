@@ -112,6 +112,21 @@ export function Formulario({ meta, valores, setValores }: { meta: EntMeta; valor
       const dois = Number(n.max_horas_dia) >= 8;
       if (dois !== (n.jornada.length === 2)) { n.jornada = ""; n.__disp = true; }  // a jornada antiga não vale mais: escolher de novo
     }
+    // UC: total = EaD + presencial; a parcela que falta é calculada e a modalidade sai das cargas
+    if (meta.chave === "ucs" && ["carga_horaria_total", "carga_horaria_ead", "carga_horaria_presencial", "modalidade"].includes(k)) {
+      const num = (x: any) => (x === "" || x == null ? null : Number(x));
+      const t = num(n.carga_horaria_total);
+      if (k === "modalidade" && t != null) {
+        if (v === "presencial") { n.carga_horaria_ead = 0; n.carga_horaria_presencial = t; }
+        if (v === "ead") { n.carga_horaria_ead = t; n.carga_horaria_presencial = 0; }
+      } else if (t != null) {
+        if (k === "carga_horaria_ead" && num(v) != null) n.carga_horaria_presencial = Math.max(0, t - Number(v));
+        else if (k === "carga_horaria_presencial" && num(v) != null) n.carga_horaria_ead = Math.max(0, t - Number(v));
+        else if (k === "carga_horaria_total") n.carga_horaria_presencial = Math.max(0, t - (num(n.carga_horaria_ead) ?? 0));
+        const e = num(n.carga_horaria_ead) ?? 0, p = num(n.carga_horaria_presencial) ?? 0;
+        n.modalidade = p <= 0 ? "ead" : e <= 0 ? "presencial" : "semipresencial";
+      }
+    }
     if (k === "max_horas_dia") n.__horas_manual = true;
     // instrutor e sala: a unidade é a da área principal
     if (k === "area_id" && (meta.chave === "instrutores" || meta.chave === "ambientes")) {

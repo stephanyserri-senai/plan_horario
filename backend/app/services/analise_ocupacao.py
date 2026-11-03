@@ -111,9 +111,9 @@ def situacao_no_dia(db: Session, cenario_id: int, dia: date, turno_codigo: str |
                 cel[t.codigo] = {"estado": "sem_turno"}
             elif da:
                 cel[t.codigo] = {"estado": "aula", **desc_aula(da[0])}
-            elif any(b.tipo in ("planejamento", "projeto", "treinamento") for b in bs):
-                b = next(b for b in bs if b.tipo in ("planejamento", "projeto", "treinamento"))
-                cel[t.codigo] = {"estado": {"planejamento": "PL", "projeto": "PJ", "treinamento": "TR"}[b.tipo], "detalhe": b.motivo}
+            elif any(b.tipo in ("planejamento", "projeto", "treinamento", "tutoria_ead") for b in bs):
+                b = next(b for b in bs if b.tipo in ("planejamento", "projeto", "treinamento", "tutoria_ead"))
+                cel[t.codigo] = {"estado": {"planejamento": "PL", "projeto": "PJ", "treinamento": "TR", "tutoria_ead": "EAD"}[b.tipo], "detalhe": b.motivo}
             elif bs:
                 cel[t.codigo] = {"estado": "bloqueado", "detalhe": f"{bs[0].tipo}: {bs[0].motivo or ''}".strip(": ")}
             elif not letivo[i.unidade_id][0]:

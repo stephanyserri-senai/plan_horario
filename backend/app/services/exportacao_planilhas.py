@@ -328,7 +328,9 @@ def linhas_cadastro(db: Session, tipo: str, unidades=None) -> list[list]:
                     pre = [cod[p] for p in db.scalars(select(UCPrerequisito.prerequisito_id).where(UCPrerequisito.uc_id == u.id)) if p in cod]
                     res.append([c.codigo, c.nome, areas.get(c.area_id, ""), c.modalidade, c.tipo, c.carga_horaria_total, m.versao, m.tipo_oferta or "", u.codigo, u.nome,
                                 u.carga_horaria_total, u.encontros_semanais, "; ".join(t.nome for t in u.tipos_ambiente), u.sequencia, "; ".join(pre),
-                                u.certificacao_exigida])
+                                u.certificacao_exigida, "Transversal" if u.categoria == "transversal" else "Técnica",
+                                {"ead": "EAD", "semipresencial": "semipresencial"}.get(u.modalidade, "presencial"),
+                                u.carga_horaria_ead, u.carga_horaria_presencial])
     elif tipo == "ambientes":
         tipos = {t.id: t for t in db.scalars(select(TipoAmbiente))}
         q = select(Ambiente).where(Ambiente.ativo.is_(True)).order_by(Ambiente.codigo)

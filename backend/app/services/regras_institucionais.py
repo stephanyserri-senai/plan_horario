@@ -131,10 +131,25 @@ def catalogo() -> list[dict]:
           "em rascunho, as UCs podem ser incluídas, alteradas ou retiradas; depois de cadastrada (vigente ou encerrada), a lista fica fixa "
           "e não volta a rascunho. Para mudar, cria-se uma nova versão, que copia as UCs. Salas, certificação, dias por semana e ordem "
           "continuam ajustáveis.", ["cadastro de UCs", "versões da matriz"])
-    regra("UC_EAD", "Matriz curricular", "obrigatoria", "UC presencial ou EAD",
-          "Toda UC é presencial ou EAD. A opção EAD só existe nos cursos marcados como “prevê UCs EAD” (no cadastro do curso). "
-          "A UC EAD é cursada a distância: não entra na geração da grade nem na demanda de instrutores e salas, e aparece no "
-          "acompanhamento como “EAD (fora da grade)”.", ["cadastro de UCs", "gerador", "riscos", "acompanhamento"])
+    regra("UC_EAD", "Matriz curricular", "obrigatoria", "Carga total, EaD e presencial da UC",
+          "Cada UC tem carga TOTAL (do aluno) = EaD + PRESENCIAL e modalidade presencial, EAD (presencial = 0) ou semipresencial; "
+          "cargas negativas são recusadas e a modalidade tem de combinar com as cargas. A modalidade da UC é diferente da do curso "
+          "(um curso presencial pode ter UCs EaD ou com parte EaD) e nada é propagado do curso para as UCs; UC com EaD só em curso "
+          "que “prevê UCs EAD” (a importação marca o curso). Só a carga PRESENCIAL vira aulas, encontros, salas e laboratórios, "
+          "conflitos, ocupação e agenda do instrutor (conversão em aulas uma vez, na geração: 55 min de dia, 50 à noite). UC "
+          "totalmente EaD não gera aula nem reserva e aparece no acompanhamento como “EAD (fora da grade)”. Horas EaD assíncronas "
+          "não ocupam o instrutor; tutoria ou encontro remoto síncrono é marcado na agenda dele como atividade própria (EAD), que "
+          "conta na carga docente e no limite de 44 h. A carga total do curso inclui EaD e presencial.",
+          ["cadastro de UCs", "importação", "gerador", "validação", "ocupação", "riscos", "acompanhamento"],
+          {"modalidades": ["presencial", "ead", "semipresencial"]})
+    regra("UC_DIVISAO_CONFIRMADA", "Matriz curricular", "aviso", "Divisão EaD/presencial a confirmar",
+          "UCs anteriores à divisão ficaram como estavam (EAD = tudo EaD; as demais = tudo presencial) e marcadas “divisão a "
+          "confirmar”. Corrige-se reimportando a matriz com as colunas Modalidade da UC, Carga horária EaD (h) e Carga horária "
+          "presencial (h) — na versão já cadastrada só a divisão muda (mesma carga total) — ou editando a UC. Planilha antiga sem "
+          "essas colunas não é importada sem antes definir a distribuição na prévia (tudo presencial, tudo EaD ou % EaD). Antes de "
+          "mexer nos horários, “Semestres e aprovação › Carga EaD × presencial” mostra o impacto e aplica a correção no semestre "
+          "selecionado: remove as aulas programadas acima da carga presencial (nunca as realizadas nem as fixas); o que faltar é "
+          "gerado de novo.", ["importação", "cadastro de UCs", "semestres"])
     # aulas
     regra("TURNOS", "Aulas e turnos", "obrigatoria", "Turnos oficiais", f"Turnos: {turnos}.", ["estrutura fixa"])
     regra("TURNO_INTEIRO", "Aulas e turnos", "obrigatoria", "Turno inteiro",

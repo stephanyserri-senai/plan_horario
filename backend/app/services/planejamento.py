@@ -28,6 +28,7 @@ from app.models import (
     UnidadeCurricular,
 )
 from app.services.areas import recurso_atende
+from app.services.carga_uc import ch_presencial
 from app.services.calendario import minutos
 
 
@@ -221,7 +222,7 @@ def situacao_carga_horaria(db: Session, cenario_id: int | None, tuc: TurmaUC) ->
                     realizada_min += m
                 else:
                     programada_min += m
-    total_h = uc.carga_horaria_total
+    total_h = ch_presencial(uc)  # o que vira aula: só a carga presencial
     restante_h = max(total_h - (realizada_min + programada_min) / 60, 0)
     mpp = minutos_por_periodo(db, turma.unidade_id, turma.turno_id)
     horas_encontro = periodos_por_encontro(db, turma, uc) * mpp / 60

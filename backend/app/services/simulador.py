@@ -32,10 +32,12 @@ from app.models import (
 )
 from app.services import auditoria, cenarios, gargalos, indicadores, otimizacao
 from app.services.planejamento import ambientes_compativeis, area_da_turma, instrutores_elegiveis, nivel_da_turma, minutos_por_periodo, periodos_por_encontro
+from app.services.carga_uc import ch_presencial
 
 
 def _ucs_da_oferta(db: Session, p: dict) -> list[UnidadeCurricular]:
-    q = select(UnidadeCurricular).where(UnidadeCurricular.matriz_id == p["matriz_id"], UnidadeCurricular.ativo.is_(True))
+    q = select(UnidadeCurricular).where(UnidadeCurricular.matriz_id == p["matriz_id"], UnidadeCurricular.ativo.is_(True),
+                                       UnidadeCurricular.carga_horaria_presencial > 0)  # só o que vira aula presencial
     if p.get("uc_ids"):
         q = q.where(UnidadeCurricular.id.in_(p["uc_ids"]))
     return db.scalars(q.order_by(UnidadeCurricular.sequencia, UnidadeCurricular.id)).all()
@@ -56,11 +58,11 @@ def _distribuir_ucs(ucs, d0: date, d1: date, sequencial: bool):
     sequencial (proporcional à carga horária, na ordem da matriz)."""
     if not sequencial:
         return {u.id: (d0, d1) for u in ucs}
-    total = sum(u.carga_horaria_total for u in ucs) or 1
+    total = sum(ch_presencial(u) for u in ucs) or 1
     dias = (d1 - d0).days + 1
     res, cur = {}, d0
     for u in ucs:
-        n = max(7, round(dias * u.carga_horaria_total / total))
+        n = max(7, round(dias * ch_presencial(u) / total))
         fim = min(d1, cur + timedelta(days=n - 1))
         res[u.id] = (cur, fim)
         cur = fim + timedelta(days=1)
@@ -90,7 +92,7 @@ def simular_agregada(db: Session, p: dict, cenario_base_id: int) -> dict:
                     unidade_id=p["unidade_id"], uc_id=uc.id, uc_codigo=uc.codigo, horas_semana=encontros * periodos_por_encontro(db, fake, uc) * mpp / 60,
                     tamanho=math.ceil(fake.qtd_alunos / grupos), tipos=frozenset(t.id for t in uc.tipos_ambiente),
                     ambientes=[a["id"] for a in ambs], instrutores=[i["id"] for i in insts],
-                    recursos_moveis={a["id"]: a["requer_recursos_moveis"] for a in ambs}, restante_h=uc.carga_horaria_total,
+                    recursos_moveis={a["id"]: a["requer_recursos_moveis"] for a in ambs}, restante_h=ch_presencial(uc),
                     data_inicio=ini, data_limite=fim, virtual=True))
     antes = gargalos.analisar(db, cenario_base_id, d0, d1, unidade_id=p["unidade_id"])
     depois = gargalos.analisar(db, cenario_base_id, d0, d1, unidade_id=p["unidade_id"], demandas_extras=extras)

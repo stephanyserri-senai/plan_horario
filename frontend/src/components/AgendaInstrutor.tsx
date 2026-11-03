@@ -10,10 +10,10 @@ type Agenda = {
   dias: { dia: number; data: string; rotulo: string }[];
   turnos: { id: number; nome: string; horario: string }[];
   celulas: Celula[];
-  resumo: { aula_h: number; pl_h: number; pj_h: number; tr_h?: number; ocupadas_h: number; vazios: number; sem_atribuicao_h: number; dispensa_h: number; excede_carga: boolean };
+  resumo: { aula_h: number; pl_h: number; pj_h: number; tr_h?: number; ead_h?: number; ocupadas_h: number; vazios: number; sem_atribuicao_h: number; dispensa_h: number; excede_carga: boolean };
 };
 
-const ROTULO: Record<string, string> = { PL: "PL · Planejamento", PJ: "PJ · Projeto / outra atividade", TR: "TR · Treinamento", vazio: "Vazio", indisponivel: "Indisponível", nao_letivo: "Não letivo" };
+const ROTULO: Record<string, string> = { PL: "PL · Planejamento", PJ: "PJ · Projeto / outra atividade", TR: "TR · Treinamento", EAD: "EAD · Tutoria / encontro remoto", vazio: "Vazio", indisponivel: "Indisponível", nao_letivo: "Não letivo" };
 
 /** Semana do instrutor turno a turno: aula, PL, PJ ou vazio — e o saldo da carga conforme a modalidade (mensalista ou horista). */
 export default function AgendaInstrutor({ cenarioId, instrutorId, semana, fimSemestre, editavel, versao }: {
@@ -63,12 +63,14 @@ export default function AgendaInstrutor({ cenarioId, instrutorId, semana, fimSem
         <span className="seg-pl" style={{ width: pct(r.pl_h) }} />
         <span className="seg-pj" style={{ width: pct(r.pj_h) }} />
         <span className="seg-tr" style={{ width: pct(r.tr_h ?? 0) }} />
+        <span className="seg-ead" style={{ width: pct(r.ead_h ?? 0) }} />
       </div>
       <ul className="resumo-carga">
         <li><i className="seg-aula" /> Aula: <b>{r.aula_h} h</b></li>
         <li><i className="seg-pl" /> PL: <b>{r.pl_h} h</b></li>
         <li><i className="seg-pj" /> PJ: <b>{r.pj_h} h</b></li>
         <li><i className="seg-tr" /> TR: <b>{r.tr_h ?? 0} h</b></li>
+        <li title="Tutoria ou encontro remoto síncrono de UC com parte EaD (as horas EaD do aluno não entram aqui)"><i className="seg-ead" /> Tutoria EaD: <b>{r.ead_h ?? 0} h</b></li>
         {mensalista
           ? <li className={r.sem_atribuicao_h ? "alerta" : ""}><i className="seg-vazio" /> Sem atribuição: <b>{r.sem_atribuicao_h} h</b></li>
           : <li><i className="seg-vazio" /> Dispensa: <b>{r.dispensa_h} h</b></li>}
@@ -89,7 +91,7 @@ export default function AgendaInstrutor({ cenarioId, instrutorId, semana, fimSem
                 {a.dias.map((d) => {
                   const c = cel(d.dia, t.id);
                   if (!c) return <td key={d.dia} />;
-                  const livre = ["PL", "PJ", "TR", "vazio"].includes(c.estado);
+                  const livre = ["PL", "PJ", "TR", "EAD", "vazio"].includes(c.estado);
                   return (
                     <td key={d.dia} className={`ag-${c.estado}`}>
                       {c.estado === "aula" && c.aulas?.map((x) => <div key={x.id}><b>{x.turma}</b> · {x.uc}</div>)}
@@ -100,10 +102,11 @@ export default function AgendaInstrutor({ cenarioId, instrutorId, semana, fimSem
                           <option value="PL">PL · Planejamento</option>
                           <option value="PJ">PJ · Projeto / outra</option>
                           <option value="TR">TR · Treinamento</option>
+                          <option value="EAD">EAD · Tutoria / encontro remoto</option>
                         </select>
                       ) : livre && <span>{ROTULO[c.estado]}</span>}
                       {!livre && c.estado !== "aula" && <span title={c.descricao}>{ROTULO[c.estado]}</span>}
-                      {c.descricao && ["PL", "PJ", "TR"].includes(c.estado) && !c.descricao.startsWith(({ PL: "Planejamento", PJ: "Projeto", TR: "Treinamento" } as any)[c.estado]) &&
+                      {c.descricao && ["PL", "PJ", "TR", "EAD"].includes(c.estado) && !c.descricao.startsWith(({ PL: "Planejamento", PJ: "Projeto", TR: "Treinamento", EAD: "Tutoria" } as any)[c.estado]) &&
                         <small>{c.descricao}</small>}
                     </td>
                   );

@@ -110,7 +110,7 @@ def carregar(db, ano: int = 2026):
         matrizes[cod_c] = (curso, mat, [])
         for cod, nome, ch, tipos_uc, enc in ucs:
             uc = UnidadeCurricular(matriz_id=mat.id, codigo=f"{PREFIXO}{cod}", nome=nome, carga_horaria_total=ch, duracao_bloco_periodos=4,
-                                   encontros_semanais=enc, certificacao_exigida="NR-10" if cod == "CMD" else None)
+                                   encontros_semanais=enc, certificacao_exigida="NR-10" if cod == "CMD" else None, divisao_confirmada=True)
             db.add(uc)
             db.flush()
             for t in tipos_uc:

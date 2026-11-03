@@ -39,7 +39,7 @@ ENTIDADES: dict[str, dict] = {
                  "opcoes": {"situacao": ["rascunho", "vigente", "encerrada"]}},
     "ucs": {"model": UnidadeCurricular, "rotulo": "Unidades curriculares", "grupo": "Acadêmico", "label": "{codigo} – {nome}",
             "busca": ["codigo", "nome", "competencias"], "extras": {"tipos_ambiente_ids": {"tipo": "multiref", "ref": "tipos_ambiente", "rotulo": "Tipos de ambiente aceitos"}},
-            "opcoes": {"categoria": ["tecnica", "transversal"], "modalidade": ["presencial", "ead"]}},
+            "opcoes": {"categoria": ["tecnica", "transversal"], "modalidade": ["presencial", "ead", "semipresencial"]}},
     "uc_prerequisitos": {"model": UCPrerequisito, "rotulo": "Pré-requisitos de UCs", "grupo": "Acadêmico", "label": "{uc_id}", "busca": [], "pk": ["uc_id", "prerequisito_id"]},
     "uc_recursos": {"model": UCRecurso, "rotulo": "Equipamentos exigidos por UC", "grupo": "Acadêmico", "label": "{recurso_tipo}", "busca": ["recurso_tipo"],
                     "pk": ["uc_id", "recurso_tipo"]},
@@ -111,13 +111,19 @@ FORMULARIOS: dict[str, dict] = {
                  "rotulos": {"tipo_oferta": "Público / versão do curso (ex.: PAGANTE, SEDU, AIT)"},
                  "ajuda": {"tipo_oferta": "O curso tem uma sigla só (ex.: ELT); cada público com currículo próprio — PAGANTE, SEDU, AIT… — é uma "
                                           "versão. Vazio = vale para todos."}},
-    "ucs": {"principais": ["matriz_id", "codigo", "nome", "carga_horaria_total", "modalidade", "categoria", "encontros_semanais", "tipos_ambiente_ids", "sequencia", "certificacao_exigida"],
+    "ucs": {"principais": ["matriz_id", "codigo", "nome", "carga_horaria_total", "carga_horaria_ead", "carga_horaria_presencial", "modalidade", "categoria", "encontros_semanais", "tipos_ambiente_ids", "sequencia", "certificacao_exigida"],
             "avancados": ["modulo", "ch_teorica", "ch_pratica", "capacidade_min", "capacidade_max", "divide_grupos", "prioridade", "competencias", "restricoes_pedagogicas"],
             "rotulos": {"encontros_semanais": "Dias de aula por semana", "sequencia": "Ordem na matriz", "certificacao_exigida": "Certificação exigida do instrutor",
-                        "categoria": "Categoria da UC", "modalidade": "Presencial ou EAD"},
-            "ajuda": {"carga_horaria_total": "Em horas. Cada aula vale o tempo real (55 min de dia, 50 min à noite) e cada dia de aula ocupa o turno "
-                                               "inteiro (4 aulas); o que falta vira outra aula. Ex.: UC de 20 h no matutino = 22 aulas.",
-                      "modalidade": "Só para cursos que preveem EAD. UC EAD é cursada a distância: não entra na grade nem ocupa sala ou instrutor.",
+                        "categoria": "Categoria da UC", "modalidade": "Modalidade da UC",
+                        "carga_horaria_total": "Carga horária TOTAL (h)", "carga_horaria_ead": "Carga horária EaD (h)",
+                        "carga_horaria_presencial": "Carga horária presencial (h)"},
+            "ajuda": {"carga_horaria_total": "Carga do aluno, em horas: EaD + presencial. Só a PRESENCIAL vira aula (55 min de dia, 50 à noite; "
+                                               "cada dia de aula ocupa o turno inteiro, 4 aulas; o que falta vira outra aula).",
+                      "carga_horaria_ead": "Horas a distância (0 se não houver). Não ocupam sala nem a agenda do instrutor; tutoria ou encontro "
+                                           "remoto vai na agenda do instrutor como atividade própria (EAD).",
+                      "carga_horaria_presencial": "Horas presenciais: viram aulas, salas e agenda. Total = EaD + presencial (preencha uma, a outra é calculada).",
+                      "modalidade": "Presencial, EAD (presencial = 0) ou semipresencial — sai das cargas; difere da modalidade do curso. "
+                                    "EaD só em curso que prevê EAD.",
                       "categoria": "Transversal: qualquer instrutor pode dar (não precisa marcar no perfil). Técnica: só os instrutores que "
                                    "marcaram a UC no próprio perfil (sim ou em partes)."}},
     "ambientes": {"principais": ["codigo", "nome", "unidade_id", "tipo_ambiente_id", "todas_areas", "area_id", "areas_ids", "capacidade_fisica", "predio", "acessivel", "situacao"],

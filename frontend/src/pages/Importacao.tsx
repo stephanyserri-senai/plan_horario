@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ImpactoCarga, ResumoCargasPrevia } from "../components/ImpactoCarga";
 import { useSearchParams } from "react-router-dom";
 import { api, baixar } from "../api";
 import { Abas, Badge, Campo, Card, Erro, Pagina, Tabela, useCarregar } from "../components/ui";
@@ -122,6 +123,7 @@ function Importacao() {
         })()}
         <Card titulo={`2. Prévia e validação — ${NOME_TIPO[previa.tipo] || previa.tipo}`}>
           <p>{Object.entries(previa.resumo).map(([k, v]) => <Badge key={k} tipo={k === "erro" ? "bloqueio" : k === "criar" ? "ok" : "info"}>{ACOES[k] || rotuloCampo(k)}: {String(v)}</Badge>)}</p>
+          {previa.cargas && <ResumoCargasPrevia previa={previa} redefinir={(opcoes) => remapear({ opcoes })} />}
           <select aria-label="Filtrar ação" value={filtroAcao} onChange={(e) => setFiltroAcao(e.target.value)}><option value="">Todas as linhas</option>{["criar", "atualizar", "sem_alteracao", "erro"].map((a) => <option key={a} value={a}>{ACOES[a]}</option>)}</select>
           <Tabela colunas={[{ chave: "linha", rotulo: "Linha" }, { chave: "acao", rotulo: "Ação", render: (i: any) => <Badge tipo={i.acao === "erro" ? "bloqueio" : i.acao === "criar" ? "ok" : "info"}>{ACOES[i.acao] || i.acao}</Badge> },
             { chave: "valores", rotulo: "Valores", render: (i: any) => <small>{Object.entries(i.valores).filter(([, v]) => v != null).map(([k, v]) => `${rotuloCampo(k)}: ${v}`).join(" · ")}</small> },
@@ -133,6 +135,7 @@ function Importacao() {
         </Card>
       </>}
       {rel && <Card titulo="Resultado"><p>Criados: {rel.criados} · Atualizados: {rel.atualizados} · Sem alteração: {rel.sem_alteracao} · Ignorados por erro: {rel.ignorados_por_erro}</p>
+        {rel.matrizes !== undefined && <><h3>Impacto nas aulas já programadas</h3><ImpactoCarga /></>}
         {rel.aulas_bloqueadas?.length > 0 && <><h3>Aulas bloqueadas pela validação</h3><ul>{rel.aulas_bloqueadas.map((b: any, i: number) => <li key={i}>Linha {b.linha}: {b.motivo} {(b.ocorrencias || []).map((o: any) => o.descricao).join("; ")}</li>)}</ul></>}</Card>}
       <Card titulo="Histórico de importações">
         <Tabela colunas={[{ chave: "id", rotulo: "#" }, { chave: "arquivo", rotulo: "Arquivo" }, { chave: "tipo", rotulo: "Tipo", render: (i: any) => NOME_TIPO[i.tipo] || i.tipo }, { chave: "status", rotulo: "Situação" },
