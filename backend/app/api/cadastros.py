@@ -282,6 +282,12 @@ def _matriz_padrao(db: Session, curso_id: int, tipo_oferta: str | None = None) -
             or next((m for m in ms if m.situacao == "vigente"), None) or (ms[0] if ms else None))
 
 
+def _publicos_do_curso(db: Session, curso_id: int) -> set[str]:
+    """Públicos (tipo_oferta) com versão em uso no curso — "" = versão para todos os públicos."""
+    return {(m.tipo_oferta or "").upper() for m in db.scalars(select(MatrizCurricular).where(
+        MatrizCurricular.curso_id == curso_id, MatrizCurricular.ativo.is_(True), MatrizCurricular.situacao != "encerrada"))}
+
+
 def _derivar(db: Session, ent: str, dados: dict, obj=None) -> dict:
     """Completa campos que vêm de outro cadastro, para o usuário não digitar a mesma coisa duas vezes."""
     from app.models import Area, Calendario, Turno
@@ -310,6 +316,12 @@ def _derivar(db: Session, ent: str, dados: dict, obj=None) -> dict:
         if curso:
             trocou_curso = obj is None or ("curso_id" in d and int(d["curso_id"]) != obj.curso_id)
             if vazio("matriz_id") and trocou_curso:
+                # cada público (SEDU, PAGANTE, aprendizagem...) tem o seu desenho curricular: com mais de um, a turma escolhe
+                publicos = _publicos_do_curso(db, curso.id)
+                tipo_t = (d.get("_tipo_oferta") or "").strip().upper()
+                if len(publicos) > 1 and tipo_t not in publicos and "" not in publicos:
+                    raise EntradaInvalida(f"O curso {curso.codigo} tem desenhos curriculares para públicos diferentes "
+                                          f"({', '.join(sorted(p or 'todos os públicos' for p in publicos))}): escolha o público da turma.")
                 m = _matriz_padrao(db, curso.id, d.get("_tipo_oferta"))
                 if m is None:
                     raise ConflitoValidacao(f"O curso {curso.codigo} ainda não tem matriz curricular. Cadastre a matriz e as UCs antes da turma.")
@@ -419,10 +431,29 @@ def _dados_instrutor(db: Session | None, inst) -> dict:
     from app.services.regras_aula import BLOCOS_PFP
     integral = {(_t.fromisoformat(a), _t.fromisoformat(b)) for a, b, _c in BLOCOS_PFP} | {(_t(8), _t(17))}  # janelas das turmas PFP
     cod = {t.id: t.codigo for t in turnos}
+    sab_turnos = list(db.scalars(select(Turno).where(Turno.unidade_id == inst.unidade_id, Turno.codigo.in_(("S", "SV")))))
     return {"ucs_competencia": [{"uc_id": c.uc_id, "nivel": c.nivel} for c in comps],
             "jornada": jornada_dos_codigos(cod[i] for i in t_ids) if t_ids else None,
             "disp_turnos": t_ids, "disp_dias": sorted({x.dia_semana for x in disp}),
+            "disp_sabado": "".join(l for l, c in (("M", "S"), ("V", "SV")) if any(
+                t.codigo == c and any(x.dia_semana == 5 and x.hora_inicio <= t.hora_inicio and x.hora_fim >= t.hora_fim for x in disp) for t in sab_turnos)),
             "disp_personalizada": any((x.hora_inicio, x.hora_fim) not in janelas | integral for x in disp if x.dia_semana < 5)}
+
+
+def _gravar_sabado(db: Session, inst, turnos_un: dict, dados: dict, dias, cods):
+    """Sábado independente dos turnos de segunda a sexta: M (09–13), V (14–18), os dois ou nenhum (`disp_sabado`).
+    Sem o campo (planilha antiga), marcar o sábado nos dias vale como M (09–13)."""
+    from app.models import DisponibilidadeInstrutor
+    sab = dados.get("disp_sabado")
+    if sab is None:
+        sab = "M" if 5 in dias else ""
+    sab = str(sab).upper().replace(" ", "").replace(";", "").replace(",", "").replace("E", "")
+    if sab and set(sab) - {"M", "V"}:
+        raise EntradaInvalida("Sábado: M (09:00–13:00), V (14:00–18:00), MV ou vazio.")
+    for letra, cod in (("M", "S"), ("V", "SV")):
+        if letra in sab and cod in turnos_un:
+            t = turnos_un[cod]
+            db.add(DisponibilidadeInstrutor(instrutor_id=inst.id, dia_semana=5, hora_inicio=t.hora_inicio, hora_fim=t.hora_fim))
 
 
 def _gravar_instrutor(db: Session, inst, dados: dict):
@@ -477,12 +508,7 @@ def _gravar_instrutor(db: Session, inst, dados: dict):
             for a, b in janelas_pfp(cods):
                 for dia in [x for x in dias if x < 5]:
                     db.add(DisponibilidadeInstrutor(instrutor_id=inst.id, dia_semana=dia, hora_inicio=_t.fromisoformat(a), hora_fim=_t.fromisoformat(b)))
-        if 5 in dias and "S" in turnos_un:  # dá aula aos sábados: M 09:00–13:00; quem é da tarde, V 14:00–18:00
-            sabs = [turnos_un["S"]] if cods - {"V", "T"} or "SV" not in turnos_un else []
-            if "SV" in turnos_un and cods & {"V", "T"}:
-                sabs.append(turnos_un["SV"])
-            for sab in sabs:
-                db.add(DisponibilidadeInstrutor(instrutor_id=inst.id, dia_semana=5, hora_inicio=sab.hora_inicio, hora_fim=sab.hora_fim))
+        _gravar_sabado(db, inst, turnos_un, dados, dias, cods)
     elif inst.id and ("max_horas_dia" in dados or "carga_horaria_contratual" in dados):
         # mudou a carga sem mexer nos turnos: os turnos atuais precisam continuar valendo (40 h = MV ou VN)
         db.flush()
@@ -491,6 +517,9 @@ def _gravar_instrutor(db: Session, inst, dados: dict):
             erro = validar_jornada(atual["jornada"], inst.max_horas_dia)
             if erro:
                 raise ConflitoValidacao(erro + " Ajuste os turnos de trabalho junto com a carga.")
+    if dados.get("jornada") in (None, "") and dados.get("disp_sabado") is not None and inst.id:  # só o sábado mudou
+        db.execute(delete(DisponibilidadeInstrutor).where(DisponibilidadeInstrutor.instrutor_id == inst.id, DisponibilidadeInstrutor.dia_semana == 5))
+        _gravar_sabado(db, inst, turnos_un, dados, [5], set())
     db.flush()
 
 
@@ -774,7 +803,7 @@ def atualizar(ent: str, id_: str, dados: dict = Body(...), db: Session = Depends
             depois_ = auditoria.snapshot(obj)
             extras_depois = {**_dados_instrutor(db, obj), "areas_ids": serializar(obj, ent).get("areas_ids")}
             mudou = [k for k in vals if str(antes.get(k)) != str(depois_.get(k))]
-            mudou += [k for k in ("areas_ids", "ucs_competencia", "disp_turnos", "disp_dias")
+            mudou += [k for k in ("areas_ids", "ucs_competencia", "disp_turnos", "disp_dias", "disp_sabado")
                       if dados.get(k) is not None and _norm(extras_antes.get(k)) != _norm(extras_depois.get(k))]
             _avisar_instrutor(db, ctx, ent, obj, mudou)
         else:

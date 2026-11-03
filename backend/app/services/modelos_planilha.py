@@ -88,8 +88,10 @@ MODELOS: dict[str, dict] = {
             ("Carga horária contratual (h/semana)", False, "Jornada contratual: 40 h = dois turnos por dia (MV ou VN); 20 h = um turno.", None, 14, 40, 20),
             ("Limite de aulas por semana (h)", False, "Máximo de horas de aula na semana: até 90% da jornada (40 h → 36 h; 20 h → 16 h). Vazio = o máximo.", None, 14, 28, 16),
             ("Máximo de horas por dia", False, "Padrão: carga contratual ÷ 5 (40 h/sem = 8 h/dia). 4 h = 1 turno por dia; 8 h = até 2 turnos.", None, 12, 8, 4),
-            ("Turnos de trabalho", False, "M (manhã), V (tarde) ou N (noite) para um turno; com 40 h semanais (8 h por dia), MV ou VN.", "jornadas", 14, "MV", "N"),
-            ("Dias disponíveis", False, "Ex.: seg a sex; seg;qua;sex.", None, 14, "seg a sex", "seg a qui"),
+            ("Turnos de trabalho", False, "De segunda a sexta: M (matutino), V (vespertino) ou N (noturno) para um turno; com 40 h semanais (8 h por dia), MV ou VN.", "jornadas", 14, "MV", "N"),
+            ("Dias disponíveis", False, "De segunda a sexta. Ex.: seg a sex; seg;qua;sex.", None, 14, "seg a sex", "seg a qui"),
+            ("Sábado (M, V ou MV)", False, "Independe dos turnos de segunda a sexta: M = 09:00–13:00, V = 14:00–18:00, MV = os dois; vazio = não dá aula no sábado.",
+             "sabado_turnos", 12, "V", ""),
             ("UCs que ministra (códigos)", False, "Códigos das UCs em que é habilitado, separados por ';'.", None, 22, "FEL; CMD", "LOG01"),
             ("UCs que ministra em partes (códigos)", False, "UCs técnicas que ministra só em parte. UCs transversais não precisam ser informadas: qualquer instrutor pode dar.", None, 20, "", ""),
             ("Certificações (ex.: NR-10)", False, "Separadas por ';'.", None, 18, "NR-10", ""),
@@ -98,7 +100,7 @@ MODELOS: dict[str, dict] = {
             ("Gestor", False, "Gestor imediato do instrutor.", None, 22, "Nome do gestor", "Nome do gestor"),
             ("Jaleco N. Profissional", False, "Numeração profissional do jaleco (ex.: 40, 42, 44).", None, 12, "42", "46"),
             ("Jaleco PMG", False, "Tamanho do jaleco: PP, P, M, G, GG ou XG.", "tamanhos_pmg", 10, "M", "G"),
-            ("Jaleco 1, 2, 3", False, "Tamanho do jaleco na referência 1, 2 ou 3.", "jaleco_123", 10, "2", "3"),
+            ("Jaleco 1, 2, 3", False, "Número do modelo do jaleco: qualquer número (1, 2, 3, 4…).", None, 10, "2", "5"),
             ("Numeração de blusa", False, "Tamanho da blusa (ex.: P, M, G, GG).", None, 12, "M", "G"),
             ("Numeração de botina", False, "Número da botina (ex.: 38, 40, 42).", None, 12, "38", "42"),
         ],
@@ -133,7 +135,7 @@ def gerar_modelo(db: Session, tipo: str, dados: list[list] | None = None) -> byt
     tipos = sorted({*TIPOS_SALA_PADRAO, *(t.nome for t in db.scalars(select(TipoAmbiente).where(TipoAmbiente.ativo.is_(True))) if not t.codigo.startswith("DEMO-"))})
     listas = {
         "unidades": unidades, "areas": [a for a, _ in areas], "areas_ou_todas": ["TODAS"] + [a for a, _ in areas],
-        "tipos_sala": tipos, "turnos": ["M", "V", "N", "S", "SV"], "jornadas": ["M", "V", "N", "MV", "VN"], "modalidades_instrutor": ["Mensalista", "Horista"], "niveis_instrutor": ["Técnico", "Básico"], "categorias_uc": ["Técnica", "Transversal"], "tamanhos_pmg": ["PP", "P", "M", "G", "GG", "XG"], "jaleco_123": ["1", "2", "3"], "sim_nao": ["Sim", "Não"],
+        "tipos_sala": tipos, "turnos": ["M", "V", "N", "S", "SV"], "jornadas": ["M", "V", "N", "MV", "VN"], "modalidades_instrutor": ["Mensalista", "Horista"], "niveis_instrutor": ["Técnico", "Básico"], "categorias_uc": ["Técnica", "Transversal"], "tamanhos_pmg": ["PP", "P", "M", "G", "GG", "XG"], "sabado_turnos": ["M", "V", "MV"], "sim_nao": ["Sim", "Não"],
         "modalidades": ["presencial", "semipresencial", "EAD"],
         "tipos_curso": ["técnico", "qualificação", "aperfeiçoamento", "aprendizagem industrial", "habilitação", "graduação tecnológica"],
     }

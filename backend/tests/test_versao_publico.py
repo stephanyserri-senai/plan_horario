@@ -33,6 +33,10 @@ def test_versoes_por_publico_e_turma(db, mundo):
     # turma SEDU: escolhe a versão; recebe as 3 UCs dela e o nome indica o público
     manha = c.get("/api/cadastros/turnos/opcoes", headers=h).json()
     turno = next(t["id"] for t in manha if "Matutino" in t["rotulo"] and "Beira" in t["rotulo"]) if manha else None
+    # sem escolher o público: recusada (cada público tem o seu desenho curricular)
+    r = c.post("/api/cadastros/turmas", json={"curso_id": curso["id"], "_numero": "11", "_tipo_oferta": "HTC", "turno_id": turno,
+                                              "qtd_alunos": 30, "data_inicio": "2026-08-03", "data_fim": "2026-12-18"}, headers=h)
+    assert r.status_code == 422 and "público" in r.json()["erro"]
     r = c.post("/api/cadastros/turmas", json={"curso_id": curso["id"], "matriz_id": ids["SEDU"], "_numero": "12", "_tipo_oferta": "HTC",
                                               "turno_id": turno, "qtd_alunos": 30, "data_inicio": "2026-08-03", "data_fim": "2026-12-18"}, headers=h)
     assert r.status_code == 200, r.text

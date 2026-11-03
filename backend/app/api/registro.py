@@ -63,7 +63,7 @@ ENTIDADES: dict[str, dict] = {
                                "ucs_competencia": {"tipo": "competencias", "rotulo": "UCs que ministra"},
                                "jornada": {"tipo": "jornada", "rotulo": "Turnos de trabalho"}}, "pessoais": ["email"], "opcoes": {"situacao": ["ativo", "afastado", "ferias", "desligado"],
                                                                                                  "modalidade": ["mensalista", "horista"], "nivel": ["tecnico", "basico"],
-                                                                                                 "jaleco_pmg": ["PP", "P", "M", "G", "GG", "XG"], "jaleco_num": ["1", "2", "3"]}},
+                                                                                                 "jaleco_pmg": ["PP", "P", "M", "G", "GG", "XG"]}},
     "instrutor_unidades": {"model": InstrutorUnidade, "rotulo": "Unidades de atuação", "grupo": "Instrutores", "label": "{unidade_id}", "busca": [],
                            "pk": ["instrutor_id", "unidade_id"]},
     "competencias": {"model": CompetenciaInstrutor, "rotulo": "Matriz de competências", "grupo": "Instrutores", "label": "{instrutor_id}/{uc_id}",
@@ -145,7 +145,7 @@ FORMULARIOS: dict[str, dict] = {
                     "avancados": ["intervalo_minimo_h", "areas_competencia", "restricoes_deslocamento"],
                     "rotulos": {"areas_competencia": "Formação e especialidades", "max_horas_dia": "Horas de aula por dia", "nivel": "Nível do instrutor",
                                 "gestor_imediato": "Gestor imediato", "jaleco_np": "Jaleco – numeração profissional", "jaleco_pmg": "Jaleco – P/M/G",
-                                "jaleco_num": "Jaleco – 1, 2, 3", "tamanho_blusa": "Numeração de blusa", "numero_botina": "Numeração de botina"},
+                                "jaleco_num": "Jaleco – número do modelo (1, 2, 3, 4…)", "tamanho_blusa": "Numeração de blusa", "numero_botina": "Numeração de botina"},
                     "ajuda": {"limite_ch_letiva": "Até 90% da jornada com aula (40 h → 36 h = 9 de 10 turnos; 20 h → 16 h = 4 de 5). "
                                                   "O turno restante fica para planejamento. Vazio = o máximo.",
                               "max_horas_dia": "Calculada pela carga contratual (40 h/sem = 8 h/dia). Até 4 h = 1 turno por dia; 8 h = 2 turnos (MV ou VN).",

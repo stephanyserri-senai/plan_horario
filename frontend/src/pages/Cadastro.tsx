@@ -275,7 +275,7 @@ export function ListaEntidade({ ent }: { ent: string }) {
       }
       const corpo = { ...edicao };
       delete corpo.__novo;
-      if (!corpo.__disp) { delete corpo.disp_turnos; delete corpo.disp_dias; delete corpo.jornada; }  // só regrava a disponibilidade se foi alterada
+      if (!corpo.__disp) { delete corpo.disp_turnos; delete corpo.disp_dias; delete corpo.jornada; delete corpo.disp_sabado; }  // só regrava a disponibilidade se foi alterada
       delete corpo.__disp;
       delete corpo.__horas_manual;
       const salvo = novo ? await api.post(`/api/cadastros/${ent}`, corpo) : await api.put(`/api/cadastros/${ent}/${idDe(meta, edicao)}`, corpo);
@@ -612,12 +612,37 @@ function ordenarInstrutores(itens: any[], ordem: string, ad: Record<number, any>
 function VersaoDoCurso({ c, cursoId, v, set }: { c: CampoMeta; cursoId: any; v: any; set: (v: any) => void }) {
   const r = useCarregar<any>(() => (cursoId ? api.get(`/api/cadastros/matrizes?curso_id=${cursoId}&por_pagina=100&ativo=true`) : Promise.resolve(null)), [cursoId]);
   const vs: any[] = (r.dados?.itens || []).filter((m: any) => m.situacao !== "encerrada");
+  // cada público (SEDU, PAGANTE, aprendizagem...) tem o seu desenho curricular, mesmo no mesmo curso
+  const publicos = Array.from(new Set(vs.map((m: any) => m.tipo_oferta || ""))).sort();
+  const atual = vs.find((m: any) => String(m.id) === String(v ?? ""));
+  const [pub, setPub] = useState<string | null>(null);
+  const publico = atual ? (atual.tipo_oferta || "") : pub;
+  useEffect(() => { setPub(null); }, [cursoId]);
+  const escolherPublico = (p: string) => {
+    setPub(p);
+    const doPublico = vs.filter((m: any) => (m.tipo_oferta || "") === p);
+    const vig = doPublico.find((m: any) => m.situacao === "vigente") || doPublico[0];
+    set(vig ? String(vig.id) : "");
+  };
+  const versoes = publico == null ? [] : vs.filter((m: any) => (m.tipo_oferta || "") === publico);
+  const rot = (p: string) => p || "Todos os públicos";
   return (
-    <Campo rotulo={c.rotulo} ajuda={c.ajuda}>
-      <select value={v ?? ""} disabled={!cursoId} onChange={(e) => set(e.target.value)}>
-        <option value="">{cursoId ? (vs.length ? "Automática (a vigente do tipo de oferta)" : "— o curso ainda não tem versão —") : "Escolha o curso primeiro"}</option>
-        {vs.map((m: any) => <option key={m.id} value={m.id}>{m.tipo_oferta || "Todos os públicos"} · versão {m.versao}{m.situacao !== "vigente" ? ` (${m.situacao})` : ""}</option>)}
-      </select>
-    </Campo>
+    <>
+      <Campo rotulo="Público da turma (desenho curricular)" obrigatorio={publicos.length > 1 && !publicos.includes("")}
+        ajuda={publicos.length > 1 ? "SEDU, pagante, aprendizagem… cada público tem as suas UCs, mesmo no mesmo curso." : undefined}>
+        {!cursoId ? <select disabled><option>Escolha o curso primeiro</option></select>
+          : !vs.length ? <select disabled><option>— o curso ainda não tem versão —</option></select>
+          : <div className="pub-chips" role="radiogroup" aria-label="Público da turma">
+            {publicos.map((p) => <button type="button" key={p || "todos"} role="radio" aria-checked={publico === p}
+              className={`chip-filtro ${publico === p ? "on" : ""}`} onClick={() => escolherPublico(p)}>{rot(p)}</button>)}
+          </div>}
+      </Campo>
+      {publico != null && versoes.length > 1 && <Campo rotulo={c.rotulo} ajuda={c.ajuda}>
+        <select value={v ?? ""} onChange={(e) => set(e.target.value)}>
+          {versoes.map((m: any) => <option key={m.id} value={m.id}>{rot(m.tipo_oferta)} · versão {m.versao}{m.situacao !== "vigente" ? ` (${m.situacao})` : ""}</option>)}
+        </select>
+      </Campo>}
+      {publico != null && versoes.length === 1 && <p className="sub versao-aviso">Versão {versoes[0].versao} de {rot(publico)}{versoes[0].situacao !== "vigente" ? ` (${versoes[0].situacao})` : ""}.</p>}
+    </>
   );
 }

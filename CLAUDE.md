@@ -37,6 +37,9 @@ UC transversal/técnica, substituição, solicitações, quadro 5:4...) estão e
   é gerado por `scripts/gerar_semestre_demo_sql.py`.
 - Nunca expor chaves `service_role`, senhas ou segredos no frontend ou no repositório.
 - Toda alocação passa pela validação central (`backend/app/services/validacao.py`).
+- Turma: o público (SEDU, PAGANTE, aprendizagem…) é obrigatório quando o curso tem versões para mais de um (regra TURMA_PUBLICO;
+  `cadastros._publicos_do_curso`; tela `VersaoDoCurso`: escolhe o público e depois a versão). Sábado do instrutor independe da
+  jornada da semana: `disp_sabado` (M, V, MV ou vazio; `cadastros._gravar_sabado`; coluna "Sábado (M, V ou MV)" na planilha).
 - Turmas modulares: `turmas.modulos` (vazio = não modular) e `modulo_atual`; código `TIPO-SIGLA-MÓDULO-NÚMERO` (HTC-AIT-2-34).
   Ao criar um semestre, `services/modulos.avancar` passa as turmas ao próximo módulo (código sobe) até o último.
 - UC fora do prazo: modular → reposição aos sábados (exceção `reposicao`, que libera dia/turno/disponibilidade só no turno de
@@ -82,7 +85,7 @@ UC transversal/técnica, substituição, solicitações, quadro 5:4...) estão e
   confirma (cria `Bloqueio` tipo evento no ambiente → gerador/validação respeitam) ou recusa com motivo; página `/agendamentos`.
 - Diárias (regra DIARIAS): `services/diarias.py`, tabela `solicitacoes_diarias`; a supervisão registra em `/diarias`
   (`/api/diarias`, situação em `POST /api/diarias/{id}/situacao`: solicitada → aprovada → paga, ou recusada/cancelada com motivo); aviso no portal.
-- Instrutor: `gestor_imediato` e uniforme (`jaleco_np`, `jaleco_pmg`, `jaleco_num`, `tamanho_blusa`, `numero_botina`) no cadastro, no
+- Instrutor: `gestor_imediato` e uniforme (`jaleco_np`, `jaleco_pmg`, `jaleco_num` (qualquer número), `tamanho_blusa`, `numero_botina`) no cadastro, no
   portal (tamanhos editáveis pelo instrutor), na planilha de levantamento (modelo, importação `CAMPOS_UNIFORME` e exportação).
 - Riscos: `services/resolucoes.sugerir` dá uma correção por caso (acao para `services/sugestoes.aplicar`); trocar sala e
   remarcar valem também com o horário publicado (ajuste operacional, como a substituição).

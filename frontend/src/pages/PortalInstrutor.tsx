@@ -197,7 +197,7 @@ function MeusDados({ eu, salvo }: { eu: any; salvo: () => void }) {
     setErro(null); setSalvando(true);
     try {
       const corpo: any = { areas_ids: v.areas_ids, ucs_competencia: v.ucs_competencia, certificacoes: v.certificacoes, formacao: v.formacao, uniforme: v.uniforme || {} };
-      if (v.__disp) { corpo.jornada = v.jornada; corpo.disp_dias = v.disp_dias; }
+      if (v.__disp) { corpo.jornada = v.jornada; corpo.disp_dias = v.disp_dias; corpo.disp_sabado = v.disp_sabado ?? ""; }
       await api.put("/api/portal/eu", corpo);
       aviso("Dados salvos no seu cadastro. A supervisão já vê as alterações."); salvo();
     } catch (e) { setErro(e); } finally { setSalvando(false); }
@@ -249,7 +249,7 @@ function MeusDados({ eu, salvo }: { eu: any; salvo: () => void }) {
         <h2>Uniforme</h2>
         <p className="sub">Gestor imediato: <b>{eu.gestor_imediato || "não informado (a supervisão preenche)"}</b></p>
         <div className="unif-grid">
-          {([["jaleco_np", "Jaleco – numeração profissional", ""], ["jaleco_pmg", "Jaleco – P/M/G", "PP,P,M,G,GG,XG"], ["jaleco_num", "Jaleco – 1, 2, 3", "1,2,3"],
+          {([["jaleco_np", "Jaleco – numeração profissional", ""], ["jaleco_pmg", "Jaleco – P/M/G", "PP,P,M,G,GG,XG"], ["jaleco_num", "Jaleco – número do modelo", ""],
             ["tamanho_blusa", "Numeração de blusa", ""], ["numero_botina", "Numeração de botina", ""]] as [string, string, string][]).map(([k, rot, ops]) =>
             <label key={k} className="campo"><span className="campo-rotulo">{rot}</span>
               {ops ? <select value={v.uniforme?.[k] || ""} onChange={(e) => setV({ ...v, uniforme: { ...(v.uniforme || {}), [k]: e.target.value } })}>

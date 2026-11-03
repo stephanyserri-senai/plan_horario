@@ -107,8 +107,13 @@ def catalogo() -> list[dict]:
           ["cadastro de turmas", "importação", "conformidade"])
     regra("TURMA_SABADO", "Turmas e dias", "obrigatoria", "Turma de sábado",
           "Turma de sábado tem aula presencial só no sábado, no turno M (09:00–13:00) ou no turno V (14:00–18:00), 4 aulas. "
-          "Sábado não é usado por turmas da semana.",
+          "Sábado não é usado por turmas da semana. A turma e a aula de sábado independem do horário de segunda a sexta: o instrutor "
+          "informa à parte se dá aula no sábado (M, V, os dois ou nenhum), qualquer que seja o seu turno na semana.",
           ["cadastro de turmas", "gerador", "validação"], {"M": "09:00–13:00", "V": "14:00–18:00"})
+    regra("TURMA_PUBLICO", "Turmas e dias", "obrigatoria", "Público da turma (desenho curricular)",
+          "Cada público — SEDU, pagante, aprendizagem, AIT… — tem o seu desenho curricular, mesmo no mesmo curso (mesma sigla). Ao "
+          "cadastrar ou importar uma turma de curso com versões para mais de um público (e sem versão para todos), é obrigatório escolher o público; a turma "
+          "recebe as UCs da versão daquele público.", ["cadastro de turmas", "importação"])
     regra("TURMA_FLEXIVEL", "Turmas e dias", "obrigatoria", "Exceção: aperfeiçoamento e empresas",
           "Só atendimentos específicos de aperfeiçoamento e turmas para empresas podem ter menos dias por semana (o treinamento costuma ser curto).",
           ["cadastro de turmas", "importação"], {"tipos_de_oferta": sorted(OFERTAS_FLEXIVEIS)})

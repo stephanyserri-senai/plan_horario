@@ -20,7 +20,7 @@ ROTULO_CAMPO = {
     "carga_horaria_contratual": "carga contratual", "limite_ch_letiva": "limite de aulas por semana", "max_horas_dia": "horas de aula por dia",
     "turno_preferencial_id": "turno preferencial", "situacao": "situação", "ativo": "situação no cadastro", "areas_competencia": "formação e especialidades",
     "intervalo_minimo_h": "descanso entre jornadas", "restricoes_deslocamento": "restrições de deslocamento", "matricula": "matrícula",
-    "areas_ids": "outras áreas", "ucs_competencia": "UCs que ministra", "disp_turnos": "turnos disponíveis", "disp_dias": "dias disponíveis",
+    "areas_ids": "outras áreas", "ucs_competencia": "UCs que ministra", "disp_turnos": "turnos disponíveis", "disp_dias": "dias disponíveis", "disp_sabado": "turnos de sábado",
 }
 
 # cadastros ligados a um instrutor e o texto do aviso quando alguém da supervisão os altera

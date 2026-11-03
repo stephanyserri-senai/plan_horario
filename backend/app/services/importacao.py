@@ -172,8 +172,8 @@ def _uniforme(v, d, E):
         if k == "jaleco_pmg" and x.upper() not in TAMANHOS_PMG:
             E.append(f"jaleco P/M/G '{x}' inválido: use {', '.join(TAMANHOS_PMG[:6])}…")
             continue
-        if k == "jaleco_num" and x not in ("1", "2", "3"):
-            E.append(f"jaleco 1, 2, 3 '{x}' inválido: use 1, 2 ou 3")
+        if k == "jaleco_num" and not x.isdigit():
+            E.append(f"jaleco (número do modelo) '{x}' inválido: use um número (ex.: 1, 2, 3, 4…)")
             continue
         d[k] = x.upper()[:10] if k != "gestor_imediato" else x[:120]
 
@@ -246,6 +246,7 @@ SPECS: dict[str, dict] = {
         "limite_ch_letiva": ("float", False, ["limite_de_aulas_por_semana_h", "limite_letivo"]),
         "max_horas_dia": ("float", False, ["maximo_de_horas_por_dia"]),
         "turnos": ("str", False, ["turnos_de_trabalho", "turnos_disponiveis"]), "dias": ("dias", False, ["dias_disponiveis"]),
+        "sabado": ("str", False, ["sabado_m_v_ou_mv", "turnos_de_sabado", "aula_no_sabado"]),
         "ucs_pleno": ("str", False, ["ucs_que_ministra_codigos", "ucs_que_ministra"]),
         "ucs_parcial": ("str", False, ["ucs_que_ministra_em_partes_codigos", "ucs_em_partes", "ucs_que_ministra_sob_supervisao_codigos", "ucs_sob_supervisao"]),
         "certificacoes": ("str", False, ["certificacoes_ex_nr_10"]), "areas_competencia": ("str", False, ["formacao_e_especialidades", "especialidades"]),
@@ -573,12 +574,28 @@ def _preparar_levantamento(db, r, v, E, A):
                 if not turno:
                     E.append("a unidade não tem os turnos desta jornada cadastrados")
                     continue
-                disp += [[dd, turno.hora_inicio.strftime("%H:%M"), turno.hora_fim.strftime("%H:%M")] for dd in dias]
+                disp += [[dd, turno.hora_inicio.strftime("%H:%M"), turno.hora_fim.strftime("%H:%M")] for dd in dias if dd < 5]
             if uid and r.turno(uid, "I"):  # turmas PFP: quem é da manhã dá 08–12; quem é da tarde, 13–17
                 from app.services.regras_aula import janelas_pfp
                 disp += [[dd, a, b] for a, b in janelas_pfp(JORNADAS[j]) for dd in dias if dd < 5]
     else:
         A.append("turnos de trabalho não informados: cadastre depois (M, V, N, MV ou VN)")
+    # sábado: independente dos turnos de segunda a sexta — M (09–13), V (14–18) ou MV; sem a coluna, "sáb" nos dias vale como M
+    bruto_sab = str(v.get("sabado") or "").strip().upper()
+    sab = "" if bruto_sab in ("NÃO", "NAO", "-", "NENHUM") else bruto_sab.replace(" ", "").replace(";", "").replace(",", "").replace("E", "")
+    if not bruto_sab and 5 in (v["dias"] or []):
+        sab = "M"
+    if sab and set(sab) - {"M", "V"}:
+        E.append(f"sábado '{v.get('sabado')}' inválido: use M (09–13), V (14–18) ou MV")
+    elif uid:
+        for letra, cod in (("M", "S"), ("V", "SV")):
+            if letra in sab:
+                tid = r.turno(uid, cod)
+                t = db.get(Turno, tid) if tid else None
+                if t is None:
+                    E.append("a unidade não tem o turno de sábado " + letra)
+                else:
+                    disp.append([5, t.hora_inicio.strftime("%H:%M"), t.hora_fim.strftime("%H:%M")])
     comps = []
     for col, nivel in (("ucs_pleno", "pleno"), ("ucs_parcial", "parcial")):
         for cod in _lista(v[col]):
@@ -635,7 +652,13 @@ def _preparar(db: Session, r: Resolvedor, tipo: str, v: dict) -> tuple[dict | No
         mid = r.matriz(v["curso_codigo"], v["versao"], v.get("oferta"))
         uid = r.unidade(v["unidade_codigo"])
         if not mid:
-            E.append(f"matriz {v['curso_codigo']} v{v['versao']} não cadastrada")
+            pubs = sorted({(t or "") for t in db.scalars(select(MatrizCurricular.tipo_oferta).where(
+                MatrizCurricular.curso_id == r.curso(v["curso_codigo"]), MatrizCurricular.versao == v["versao"]))}) if r.curso(v["curso_codigo"]) else []
+            if len(pubs) > 1 and not (v.get("oferta") or "").strip():
+                E.append(f"o curso {v['curso_codigo']} v{v['versao']} tem desenhos curriculares por público ({', '.join(p or 'todos' for p in pubs)}): "
+                         "informe o público da turma na coluna Público / versão do curso")
+            else:
+                E.append(f"matriz {v['curso_codigo']} v{v['versao']}{' ' + v['oferta'] if v.get('oferta') else ''} não cadastrada")
         if not uid:
             E.append(f"unidade '{v['unidade_codigo']}' não cadastrada")
         d = {"codigo": v["codigo"], "nome": v["nome"] or v["codigo"], "curso_id": r.curso(v["curso_codigo"]), "matriz_id": mid, "unidade_id": uid,

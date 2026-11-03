@@ -129,6 +129,18 @@ export function horasPorDia(valores: any): number {
   return c > 0 ? Math.min(12, Math.max(1, Math.round(c / 5))) : 8;
 }
 
+/** Sábado: independe dos turnos de segunda a sexta — M (09–13), V (14–18), os dois ou nenhum. */
+export function SabadoInstrutor({ valores, setVarios }: { valores: any; setVarios: (v: Record<string, any>) => void }) {
+  const sab: string = valores.disp_sabado ?? ((valores.disp_dias || []).includes(5) ? "M" : "");
+  const set = (v: string) => setVarios({ disp_sabado: v, disp_dias: (valores.disp_dias ?? [0, 1, 2, 3, 4]).filter((d: number) => d !== 5), __disp: true });
+  return (
+    <div className="checks sab-instrutor"><span className="mudo">Sábado (independe da semana):</span>
+      {[["", "Não dá aula"], ["M", "M · 09–13"], ["V", "V · 14–18"], ["MV", "M e V"]].map(([v, r]) =>
+        <label key={v || "nao"} className={sab === v ? "marcada" : ""}><input type="radio" name="disp_sabado" checked={sab === v} onChange={() => set(v)} /> {r}</label>)}
+    </div>
+  );
+}
+
 /** Turnos de trabalho do instrutor: 8 h por dia (40 h/semana) = dois turnos (MV ou VN); menos = um turno (M, V ou N). */
 export function JornadaInstrutor({ valores, setVarios }: { valores: any; setVarios: (v: Record<string, any>) => void }) {
   const horas = horasPorDia(valores);
@@ -141,8 +153,8 @@ export function JornadaInstrutor({ valores, setVarios }: { valores: any; setVari
   return (
     <fieldset className="painel-campo">
       <legend>Turnos de trabalho</legend>
-      <p className="sub">{dois ? <>Com <b>{horas} h de aula por dia</b> o instrutor trabalha <b>dois turnos</b>: manhã e tarde (MV) ou tarde e noite (VN).</>
-        : <>Com <b>{horas} h de aula por dia</b> o instrutor trabalha <b>um turno</b>: manhã (M), tarde (V) ou noite (N).</>}</p>
+      <p className="sub">{dois ? <>Com <b>{horas} h de aula por dia</b> o instrutor trabalha <b>dois turnos</b> de segunda a sexta: matutino e vespertino (MV) ou vespertino e noturno (VN).</>
+        : <>Com <b>{horas} h de aula por dia</b> o instrutor trabalha <b>um turno</b> de segunda a sexta: matutino (M), vespertino (V) ou noturno (N).</>}</p>
       <div className="jornadas" role="radiogroup" aria-label="Turnos de trabalho">
         {opcoes.map((j) => <label key={j} className={atual === j ? "marcada" : ""}>
           <input type="radio" name="jornada" checked={atual === j} onChange={() => mudar(j, dias)} /> {JORNADAS[j]}</label>)}
@@ -150,9 +162,10 @@ export function JornadaInstrutor({ valores, setVarios }: { valores: any; setVari
       {invalida && <p className="sub tom-erro">⚠ "{JORNADAS[atual] || atual}" não combina com {horas} h por dia. Escolha uma das opções acima.</p>}
       {!atual && <p className="sub">⚠ Sem turnos de trabalho o instrutor não é escalado.</p>}
       {valores.disp_personalizada && !valores.__disp && <p className="sub">Há horários personalizados cadastrados; escolher os turnos aqui substitui esses horários.</p>}
-      <div className="checks"><span className="mudo">Dias:</span>{DIAS.slice(0, 6).map((d, i) => (
+      <div className="checks"><span className="mudo">Dias (seg a sex):</span>{DIAS.slice(0, 5).map((d, i) => (
         <label key={i}><input type="checkbox" checked={dias.includes(i)}
           onChange={(e) => mudar(atual, e.target.checked ? [...dias, i].sort() : dias.filter((x) => x !== i))} /> {d.slice(0, 3)}</label>))}</div>
+      <SabadoInstrutor valores={valores} setVarios={setVarios} />
     </fieldset>
   );
 }
