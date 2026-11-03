@@ -134,13 +134,17 @@ export default function EstruturaCurricular({ visao = "estrutura" }: { visao?: s
   const novaUC = (v: any) => { setErro(null); setEdicao({ ent: "ucs", fixos: fixosUC(v.id), titulo: `Nova UC — ${v.curso.codigo} ${rotVersao(v)}`,
     valores: { __novo: true, matriz_id: v.id, categoria: "tecnica", modalidade: "presencial", encontros_semanais: 2, sequencia: (v.ucs || 0) + 1 } }); };
   const listas: PropsLista = { areas, cursos: todosCursos, abrir: ir, editarCurso, editarVersao, editarUC: abrirUC, novaUC, novoCurso, concluirVersao, editavel, rev,
-    mudou: () => { arv.recarregar(); setRev((x) => x + 1); } };
+    mudou: () => { arv.recarregar(); setRev((x) => x + 1); }, filtroCurso: curso, areaSel: area,
+    limparFiltro: () => { const n = new URLSearchParams(sp); n.delete("curso"); n.delete("versao"); n.delete("area"); setSp(n); } };
   if (visao !== "estrutura") return (
     <div className="cur">
       {arv.carregando && !arv.dados && <p role="status">Carregando…</p>}
       {arv.erro && <div className="erro-box">{arv.erro}</div>}
-      {arv.dados && visao === "cursos" && <ListaCursos {...listas} />}
-      {arv.dados && visao === "matrizes" && <ListaVersoes {...listas} />}
+      {arv.dados && <FiltroAtivo curso={curso} area={area} areas={areas} limpar={listas.limparFiltro} />}
+      {arv.dados && visao === "cursos" && <ListaCursos key={`${cursoId}-${area}`} {...listas} />}
+      {arv.dados && visao === "matrizes" && <ListaVersoes key={`${cursoId}-${area}`} {...listas} />}
+      {arv.dados && curso && <InstrutoresDoCurso cursoId={curso.id} matrizId={versao?.id ?? null} />}
+      {arv.dados && !curso && areaAtual && <InstrutoresDoCurso areaId={areaAtual.id} />}
       {modal}
     </div>
   );
@@ -199,6 +203,7 @@ export default function EstruturaCurricular({ visao = "estrutura" }: { visao?: s
             <small className="mudo">Depois crie a matriz e cadastre as UCs aqui mesmo.</small></button>}
           {!areaAtual.cursos.length && !editavel && <div className="cur-vazio">Nenhum curso nesta área.</div>}
         </div>
+        <InstrutoresDoCurso areaId={areaAtual.id} />
       </>}
 
       {!busca && curso && <section className="cur-detalhe">
@@ -275,6 +280,7 @@ export default function EstruturaCurricular({ visao = "estrutura" }: { visao?: s
           {ucs.dados && !ucs.dados.ucs.length && <div className="cur-vazio">Nenhuma UC nesta versão.{versao.situacao === "rascunho" ? " Use “+ Nova UC”." : ""}</div>}
         </>}
         <EpisDoCurso cursoId={curso.id} editavel={editavel} />
+        <InstrutoresDoCurso cursoId={curso.id} matrizId={versao?.id ?? null} />
       </section>}
       {modal}
       {apagando && (apagando.versao
@@ -448,7 +454,47 @@ function nomeArea(n: string) { return n && n === n.toUpperCase() && !n.includes(
 type PropsLista = {
   areas: any[]; cursos: any[]; abrir: (a: any, c: number | null, v?: number | null) => void; editarCurso: (c: any) => void; editarVersao: (v: any) => void;
   editarUC: (u?: any) => void; novaUC: (v: any) => void; novoCurso: () => void; concluirVersao: (v: any) => void; editavel: boolean; rev: number; mudou: () => void;
+  filtroCurso?: any | null; areaSel?: string; limparFiltro?: () => void;
 };
+
+/** Curso (ou área) escolhido na navegação: as outras abas mostram só ele, até limpar. */
+function FiltroAtivo({ curso, area, areas, limpar }: { curso?: any | null; area?: string; areas: any[]; limpar?: () => void }) {
+  const a = areas.find((x: any) => String(x.id) === String(area));
+  if (!curso && !a) return null;
+  return (
+    <div className="filtro-ativo">🔎 Mostrando só {curso ? <b>{curso.codigo} — {curso.nome}</b> : <>a área <b>{nomeArea(a.nome)}</b></>}
+      {limpar && <button className="btn-link" onClick={limpar}>mostrar todos</button>}</div>
+  );
+}
+
+/** Instrutores da área e, com o curso, quanto cada um cobre das UCs técnicas da versão (sim = 1, em partes = ½). */
+export function InstrutoresDoCurso({ areaId, cursoId, matrizId }: { areaId?: number | null; cursoId?: number | null; matrizId?: number | null }) {
+  const r = useCarregar<any>(() => (areaId || cursoId)
+    ? api.get(`/api/estrutura-curricular/instrutores?${new URLSearchParams(Object.entries({ area_id: areaId, curso_id: cursoId, matriz_id: matrizId })
+      .filter(([, v]) => v != null).map(([k, v]) => [k, String(v)])).toString()}`) : Promise.resolve(null), [areaId, cursoId, matrizId]);
+  const d = r.dados;
+  if (!d) return r.carregando ? <p role="status">Carregando instrutores…</p> : null;
+  const comCurso = d.curso_id != null;
+  return (
+    <section className="card cur-instrutores">
+      <h3>👥 Instrutores {comCurso ? "que podem dar este curso" : "da área"} <small className="mudo">({d.instrutores.length})</small></h3>
+      {comCurso && d.ucs_sem_instrutor.length > 0 && <p className="alerta-txt">⚠ {d.ucs_sem_instrutor.length} UC(s) técnica(s) sem nenhum instrutor marcado: {d.ucs_sem_instrutor.join(", ")}</p>}
+      {!d.instrutores.length && <p className="mudo">Nenhum instrutor {comCurso ? "marcou UCs deste curso nem é da área" : "nesta área"}.</p>}
+      <div className="cur-inst-grade">
+        {d.instrutores.map((i: any) => (
+          <a key={i.id} className="cur-inst" href={`/cadastros/instrutores?perfil=${i.id}`} title="Abrir o perfil do instrutor">
+            <b>{i.nome}</b>
+            <small className="mudo">{i.matricula} · {i.modalidade}{i.nivel === "basico" ? " · básico" : ""} · {i.carga_semanal} h/sem{!i.da_area ? " · outra área" : ""}</small>
+            {comCurso && <>
+              <span className="barra-pct fina"><span className={`barra-pct-v ${i.cobertura_pct >= 60 ? "bp-ok" : i.cobertura_pct > 0 ? "bp-alerta" : "bp-neutro"}`} style={{ width: `${i.cobertura_pct || 0}%` }} /></span>
+              <small>{i.cobertura_pct != null ? `${String(i.cobertura_pct).replace(".", ",")}% das UCs técnicas` : "—"}
+                {i.ucs_sim.length ? ` · sim: ${i.ucs_sim.join(", ")}` : ""}{i.ucs_em_partes.length ? ` · em partes: ${i.ucs_em_partes.join(", ")}` : ""}</small>
+            </>}
+          </a>))}
+      </div>
+    </section>
+  );
+}
 
 function Chips({ op, valor, mudar }: { op: [string, string][]; valor: string; mudar: (v: string) => void }) {
   return <div className="ci-rapidos" role="group">{op.map(([k, rot]) => <button key={k} className={`chip-filtro ${valor === k ? "on" : ""}`} onClick={() => mudar(k)}>{rot}</button>)}</div>;
@@ -460,13 +506,13 @@ function FiltroArea({ areas, valor, mudar }: { areas: any[]; valor: string; muda
 }
 
 /** Lista de cursos: uma linha por curso (sigla, nome, área, versões, UCs, turmas, EPIs) — clique abre na navegação. */
-function ListaCursos({ areas, cursos, abrir, editarCurso, novoCurso, editavel, rev, mudou }: PropsLista) {
+function ListaCursos({ areas, cursos, abrir, editarCurso, novoCurso, editavel, rev, mudou, filtroCurso, areaSel, limparFiltro }: PropsLista) {
   const { aviso } = useApp();
   const [q, setQ] = useState("");
-  const [area, setArea] = useState("");
+  const [area, setArea] = useState(filtroCurso ? "" : areaSel || "");
   const [filtro, setFiltro] = useState("");
   const inativos = useCarregar<any>(() => (filtro === "inativos" ? api.get("/api/cadastros/cursos?ativo=false&por_pagina=500") : Promise.resolve(null)), [filtro, rev]);
-  const lista = cursos.filter((c: any) => (!area || String(c.area.id) === area) && (!q || `${c.codigo} ${c.nome}`.toLowerCase().includes(q.toLowerCase()))
+  const lista = cursos.filter((c: any) => (!filtroCurso || c.id === filtroCurso.id) && (!area || String(c.area.id) === area) && (!q || `${c.codigo} ${c.nome}`.toLowerCase().includes(q.toLowerCase()))
     && (filtro !== "sem_matriz" || !c.versoes.length) && (filtro !== "com_turmas" || c.turmas_ativas.length));
   const inativar = async (c: any, ativar = false) => {
     if (!ativar && !confirm(`Inativar o curso ${c.codigo}? Ele sai das listas e das turmas novas (o histórico fica guardado).`)) return;
@@ -518,12 +564,12 @@ function ListaCursos({ areas, cursos, abrir, editarCurso, novoCurso, editavel, r
 
 /** Versões da matriz e as UCs de cada uma: cada versão (por público: PAGANTE, SEDU, AIT…) tem a sua lista de UCs; abra a versão para ver,
  * incluir, editar, retirar ou reativar as UCs dela. */
-function ListaVersoes({ areas, cursos, abrir, editarVersao, editarUC, novaUC, concluirVersao, editavel, rev, mudou }: PropsLista) {
+function ListaVersoes({ areas, cursos, abrir, editarVersao, editarUC, novaUC, concluirVersao, editavel, rev, mudou, filtroCurso, areaSel, limparFiltro }: PropsLista) {
   const { aviso } = useApp();
   const [q, setQ] = useState("");
-  const [area, setArea] = useState("");
+  const [area, setArea] = useState(filtroCurso ? "" : areaSel || "");
   const [filtro, setFiltro] = useState("");
-  const [abertas, setAbertas] = useState<Set<number>>(new Set());
+  const [abertas, setAbertas] = useState<Set<number>>(new Set(filtroCurso ? filtroCurso.versoes.map((v: any) => v.id) : []));
   const ativas = useCarregar<any[]>(() => api.get("/api/estrutura-curricular/ucs?ativas=true"), [rev]);
   const retiradas = useCarregar<any[]>(() => api.get("/api/estrutura-curricular/ucs?ativas=false"), [rev]);
   const porVersao = useMemo(() => {
@@ -536,7 +582,7 @@ function ListaVersoes({ areas, cursos, abrir, editarVersao, editarUC, novaUC, co
   const termo = q.trim().toLowerCase();
   const casaUC = (u: any) => !!termo && `${u.codigo} ${u.nome}`.toLowerCase().includes(termo);
   const fragil = (u: any) => u.habilitados != null && u.habilitados <= 1;
-  const versoes = cursos.flatMap((c: any) => c.versoes.map((v: any) => ({ ...v, curso: c })))
+  const versoes = cursos.filter((c: any) => !filtroCurso || c.id === filtroCurso.id).flatMap((c: any) => c.versoes.map((v: any) => ({ ...v, curso: c })))
     .filter((v: any) => {
       const ucs = porVersao[v.id]?.ativas || [];
       return (!area || String(v.curso.area.id) === area)

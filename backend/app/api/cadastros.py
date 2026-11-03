@@ -1258,3 +1258,49 @@ def apagar_versao(mid: int, db: Session = Depends(get_db), ctx: Contexto = Depen
                         depois={"ucs": len(ucs), "competencias": info["competencias"]})
     db.commit()
     return {k: v for k, v in info.items() if not k.startswith("_")}
+
+
+# ============================================================================ instrutores da área / do curso (página de cursos)
+@router.get("/estrutura-curricular/instrutores")
+def instrutores_da_estrutura(area_id: int | None = None, curso_id: int | None = None, matriz_id: int | None = None,
+                             db: Session = Depends(get_db), ctx: Contexto = Depends(get_contexto)):
+    """Instrutores da área (principal ou outras áreas) e, com o curso/versão, quanto cada um cobre das UCs técnicas da versão
+    (sim = 1, em partes = 0,5; transversais qualquer um dá) — inclui quem é de outra área mas marcou UCs do curso."""
+    from app.models import Instrutor, InstrutorArea
+    ctx.exigir("cadastros.ler")
+    c = db.get(Curso, curso_id) if curso_id else None
+    area_id = area_id or (c.area_id if c else None)
+    ids = set()
+    if area_id:
+        ids |= set(db.scalars(select(Instrutor.id).where(Instrutor.ativo.is_(True), Instrutor.area_id == area_id)))
+        ids |= set(db.scalars(select(InstrutorArea.instrutor_id).where(InstrutorArea.area_id == area_id)))
+    ucs = []
+    if c is not None:
+        mids = [matriz_id] if matriz_id else list(db.scalars(select(MatrizCurricular.id).where(MatrizCurricular.curso_id == c.id)))
+        ucs = db.scalars(select(UnidadeCurricular).where(UnidadeCurricular.matriz_id.in_(mids), UnidadeCurricular.ativo.is_(True))).all() if mids else []
+    tecnicas = {u.id: u for u in ucs if u.categoria != "transversal"}
+    from collections import defaultdict
+    comp = defaultdict(dict)
+    if tecnicas:
+        for iid, uid, nivel in db.execute(select(CompetenciaInstrutor.instrutor_id, CompetenciaInstrutor.uc_id, CompetenciaInstrutor.nivel)
+                                          .where(CompetenciaInstrutor.uc_id.in_(list(tecnicas)), CompetenciaInstrutor.ativo.is_(True))):
+            comp[iid][uid] = nivel
+        ids |= set(comp)
+    insts = db.scalars(select(Instrutor).where(Instrutor.id.in_(ids), Instrutor.ativo.is_(True)).order_by(Instrutor.nome)).all() if ids else []
+    if ctx.unidades is not None:
+        insts = [i for i in insts if i.unidade_id in ctx.unidades]
+    ch_tec = sum(float(u.carga_horaria_total or 0) for u in tecnicas.values()) or 0
+    res = []
+    for i in insts:
+        mine = comp.get(i.id, {})
+        cob = sum(float(tecnicas[u].carga_horaria_total or 0) * (1 if n == "pleno" else 0.5 if n == "parcial" else 0) for u, n in mine.items())
+        res.append({"id": i.id, "nome": i.nome, "matricula": i.matricula, "modalidade": i.modalidade, "nivel": i.nivel,
+                    "carga_semanal": float(i.carga_horaria_contratual or 0), "da_area": i.area_id == area_id,
+                    "ucs_sim": sorted(tecnicas[u].codigo for u, n in mine.items() if n == "pleno"),
+                    "ucs_em_partes": sorted(tecnicas[u].codigo for u, n in mine.items() if n == "parcial"),
+                    "cobertura_pct": round(100 * cob / ch_tec, 1) if ch_tec else None})
+    if c is not None:
+        res.sort(key=lambda x: (-(x["cobertura_pct"] or 0), x["nome"]))
+    sem_ninguem = sorted(u.codigo for u in tecnicas.values() if not any(u.id in comp[i] for i in comp))
+    return {"area_id": area_id, "curso_id": c.id if c else None, "matriz_id": matriz_id, "instrutores": res,
+            "ucs_tecnicas": len(tecnicas), "ucs_sem_instrutor": sem_ninguem}

@@ -69,3 +69,14 @@ def test_apagar_uma_versao_so(db, mundo):
     assert db.scalar(select(func.count()).select_from(UnidadeCurricular).where(UnidadeCurricular.matriz_id == v1id)) == 1  # a outra ficou
     # versão com turmas: recusada
     assert c.delete(f"/api/matrizes/{m.matriz.id}").status_code == 409
+
+
+def test_instrutores_do_curso(db, mundo):
+    m = mundo
+    c = _cli()
+    r = c.get(f"/api/estrutura-curricular/instrutores?curso_id={m.curso.id}&matriz_id={m.matriz.id}")
+    assert r.status_code == 200, r.text
+    d = r.json()
+    nomes = {i["nome"]: i for i in d["instrutores"]}
+    assert m.i1.nome in nomes and nomes[m.i1.nome]["cobertura_pct"] > 0
+    assert d["instrutores"][0]["cobertura_pct"] >= d["instrutores"][-1]["cobertura_pct"]
