@@ -60,7 +60,7 @@ class _Agenda:
 
     def turnos_da_aula(self, ini, fim, dia: int | None = None):
         """Turnos de trabalho que a aula cobre (a de dia inteiro da PFP cobre manhã e tarde). Sábado só tem o turno de sábado."""
-        cands = self.turnos if dia is None else [t for t in self.turnos if (t.codigo == "S") == (dia == 5)]
+        cands = self.turnos if dia is None else [t for t in self.turnos if (t.codigo in ("S", "SV")) == (dia == 5)]
         return [t for t in cands if t.hora_inicio < fim and t.hora_fim > ini]
 
     def turno_de(self, h):
@@ -86,7 +86,7 @@ def _livres(db, ag: _Agenda, inst: Instrutor, seg: date, turno: Turno, dias: lis
                     livres.append(k)
                     break
         return livres
-    cobre = [t.id for t in ag.turnos_da_aula(turno.hora_inicio, turno.hora_fim, 5 if turno.codigo == "S" else 0)] or [turno.id]
+    cobre = [t.id for t in ag.turnos_da_aula(turno.hora_inicio, turno.hora_fim, 5 if turno.codigo in ("S", "SV") else 0)] or [turno.id]
     return [k for k in dias if any(x.dia_semana == k and x.hora_inicio <= turno.hora_inicio and x.hora_fim >= turno.hora_fim for x in disp)
             and not any((seg + timedelta(days=k), t) in ocupados for t in cobre)]
 

@@ -127,7 +127,7 @@ def montar_perfil(db: Session, inst: Instrutor, cenario_id: int | None, ver_emai
         for a in aulas:
             if d0 <= a.data <= d1:
                 por_sem[a.data - timedelta(days=a.data.weekday())] += a.minutos_aula / 60
-                por_turno["Manhã" if a.inicio.hour < 12 else "Tarde" if a.inicio.hour < 18 else "Noite"] += a.minutos_aula / 60
+                por_turno["M" if a.inicio.hour < 12 else "V" if a.inicio.hour < 18 else "N"] += a.minutos_aula / 60
         seg, serie = d0 - timedelta(days=d0.weekday()), []
         while seg <= d1:
             h = por_sem.get(seg, 0.0)
@@ -136,7 +136,7 @@ def montar_perfil(db: Session, inst: Instrutor, cenario_id: int | None, ver_emai
             seg += timedelta(days=7)
         pico = max(serie, key=lambda x: x["horas"]) if serie else None
         ocupacao = {"carga_semanal": carga, "limite_letivo": limite_letivo_efetivo(inst), "semanas": serie,
-                    "pico": pico, "por_turno": {k: round(v, 1) for k, v in sorted(por_turno.items(), key=lambda x: ["Manhã", "Tarde", "Noite"].index(x[0]))},
+                    "pico": pico, "por_turno": {k: round(v, 1) for k, v in sorted(por_turno.items(), key=lambda x: "MVN".index(x[0]))},
                     "semanas_acima_teto": sum(1 for x in serie if x["horas"] > limite_letivo_efetivo(inst) + 1e-6)}
         semestre = {"ocupacao": ocupacao, "cenario_id": cen.id, "inicio": d0.isoformat(), "fim": d1.isoformat(), "aulas": len(aulas), "horas": round(horas, 1),
                     "realizadas": sum(1 for a in aulas if a.data < hoje), "turmas": len({a.turma_id for a in aulas}),
@@ -235,7 +235,7 @@ def atualizar_pdi(pid: int, d: dict = Body(...), ctx: Contexto = Depends(requer(
 
 
 # ============================================================================ disponibilidade (uma linha por instrutor) e termo de horas
-TURNOS_QUADRO = ("M", "T", "V", "N", "S")
+TURNOS_QUADRO = ("M", "T", "V", "N", "S", "SV")
 
 
 def _mesclar(janelas: list[tuple[int, int]]) -> list[tuple[int, int]]:
@@ -255,7 +255,7 @@ def quadro_disponibilidade(q: str = "", modalidade: str = "", cenario_id: int | 
     modalidade — mensalista (jornada semanal fixa, teto de 90%) ou horista (termo de horas do mês)."""
     from app.models import Turno
     from app.services import termos as termos_svc
-    from app.services.regras_aula import limite_letivo_efetivo
+    from app.services.regras_aula import letra_turno, limite_letivo_efetivo
     ref = termos_svc._mes_param(mes) if mes else termos_svc.mes_de(date.today())
     qi = select(Instrutor).where(Instrutor.ativo.is_(True))
     if ctx.unidades is not None:
@@ -292,12 +292,12 @@ def quadro_disponibilidade(q: str = "", modalidade: str = "", cenario_id: int | 
             total += sum(b - a for a, b in js)
             cods = []
             for t in turnos.get(i.unidade_id, []):
-                if (t.codigo == "S") != (dia == 5):
+                if (t.codigo in ("S", "SV")) != (dia == 5):
                     continue
                 ti, tf = t.hora_inicio.hour * 60 + t.hora_inicio.minute, t.hora_fim.hour * 60 + t.hora_fim.minute
                 sob = sum(max(0, min(b, tf) - max(a, ti)) for a, b in js)
                 if sob >= 0.5 * (tf - ti):
-                    cods.append("V" if t.codigo == "T" else t.codigo)
+                    cods.append(letra_turno(t))  # sempre M, V ou N (no sábado também)
             dias.append({"dia": dia, "turnos": cods, "janelas": [f"{a // 60:02d}:{a % 60:02d}–{b // 60:02d}:{b % 60:02d}" for a, b in js]})
         linha = {"id": i.id, "nome": i.nome, "matricula": i.matricula, "modalidade": i.modalidade, "nivel": i.nivel,
                  "carga_semanal": float(i.carga_horaria_contratual or 0), "limite_letivo": limite_letivo_efetivo(i),

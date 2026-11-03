@@ -95,7 +95,8 @@ export default function Grade() {
   // as aulas dela caem nas linhas da manhã e da tarde
   const linhas = useMemo(() => {
     const ps = (periodos.dados || []).filter((p) => p.turno_codigo !== "I");
-    return [...ps.filter((p) => p.turno_codigo !== "S"), ...ps.filter((p) => p.turno_codigo === "S")];
+    const sab = (p: any) => p.turno_codigo === "S" || p.turno_codigo === "SV";
+    return [...ps.filter((p) => !sab(p)), ...ps.filter(sab)];
   }, [periodos.dados]);
   const dias = useMemo(() => {
     const ds = new Set<number>();

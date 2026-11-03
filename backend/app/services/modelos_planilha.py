@@ -95,6 +95,12 @@ MODELOS: dict[str, dict] = {
             ("Certificações (ex.: NR-10)", False, "Separadas por ';'.", None, 18, "NR-10", ""),
             ("Formação e especialidades", False, "Texto livre: formação, experiência, softwares, equipamentos.", None, 36,
              "Eng. elétrica; 8 anos em manutenção industrial", "Tecnólogo em logística; WMS"),
+            ("Gestor", False, "Gestor imediato do instrutor.", None, 22, "Nome do gestor", "Nome do gestor"),
+            ("Jaleco N. Profissional", False, "Numeração profissional do jaleco (ex.: 40, 42, 44).", None, 12, "42", "46"),
+            ("Jaleco PMG", False, "Tamanho do jaleco: PP, P, M, G, GG ou XG.", "tamanhos_pmg", 10, "M", "G"),
+            ("Jaleco 1, 2, 3", False, "Tamanho do jaleco na referência 1, 2 ou 3.", "jaleco_123", 10, "2", "3"),
+            ("Numeração de blusa", False, "Tamanho da blusa (ex.: P, M, G, GG).", None, 12, "M", "G"),
+            ("Numeração de botina", False, "Número da botina (ex.: 38, 40, 42).", None, 12, "38", "42"),
         ],
     },
     "turmas": {
@@ -102,12 +108,12 @@ MODELOS: dict[str, dict] = {
         "resumo": "Uma linha por turma. As UCs da matriz são ligadas automaticamente à turma.",
         "colunas": [
             ("Código da turma", True, "Código único.", None, 14, "EXEMPLO-T1", None),
-            ("Nome da turma", False, "Nome exibido.", None, 26, "Eletrotécnica 2026/2 Manhã", None),
+            ("Nome da turma", False, "Nome exibido.", None, 26, "Eletrotécnica 2026/2 M", None),
             ("Código do curso", True, "Curso já cadastrado.", None, 14, "ELT", None),
             ("Versão da matriz", True, "Versão do currículo do curso.", None, 12, "2026.1", None),
             ("Público / versão do curso", False, "PAGANTE, SEDU, AIT… quando o curso tem currículo por público (vazio = o geral).", None, 14, "SEDU", None),
             ("Unidade", True, "BEIRA-MAR ou PORTO.", "unidades", 14, "BEIRA-MAR", None),
-            ("Turno", False, "Manhã, Tarde ou Noite.", "turnos", 12, "Manhã", None),
+            ("Turno", False, "M, V ou N (matutino, vespertino, noturno); sábado: S (M 09–13) ou SV (V 14–18).", "turnos", 12, "M", None),
             ("Alunos", False, "Quantidade de alunos.", None, 10, 30, None),
             ("Início", True, "Data de início (dd/mm/aaaa).", None, 12, "03/08/2026", None),
             ("Término", True, "Data de término (dd/mm/aaaa).", None, 12, "18/12/2026", None),
@@ -127,7 +133,7 @@ def gerar_modelo(db: Session, tipo: str, dados: list[list] | None = None) -> byt
     tipos = sorted({*TIPOS_SALA_PADRAO, *(t.nome for t in db.scalars(select(TipoAmbiente).where(TipoAmbiente.ativo.is_(True))) if not t.codigo.startswith("DEMO-"))})
     listas = {
         "unidades": unidades, "areas": [a for a, _ in areas], "areas_ou_todas": ["TODAS"] + [a for a, _ in areas],
-        "tipos_sala": tipos, "turnos": ["Manhã", "Tarde", "Noite"], "jornadas": ["M", "V", "N", "MV", "VN"], "modalidades_instrutor": ["Mensalista", "Horista"], "niveis_instrutor": ["Técnico", "Básico"], "categorias_uc": ["Técnica", "Transversal"], "sim_nao": ["Sim", "Não"],
+        "tipos_sala": tipos, "turnos": ["M", "V", "N", "S", "SV"], "jornadas": ["M", "V", "N", "MV", "VN"], "modalidades_instrutor": ["Mensalista", "Horista"], "niveis_instrutor": ["Técnico", "Básico"], "categorias_uc": ["Técnica", "Transversal"], "tamanhos_pmg": ["PP", "P", "M", "G", "GG", "XG"], "jaleco_123": ["1", "2", "3"], "sim_nao": ["Sim", "Não"],
         "modalidades": ["presencial", "semipresencial", "EAD"],
         "tipos_curso": ["técnico", "qualificação", "aperfeiçoamento", "aprendizagem industrial", "habilitação", "graduação tecnológica"],
     }

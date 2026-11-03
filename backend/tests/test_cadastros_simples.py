@@ -41,7 +41,7 @@ def test_cadastros_preenchem_campos_repetidos(db, mundo):
     t = r.json()
     assert t["codigo"] == "HTC-ELT-12" and t["matriz_id"] == mat["id"] and t["unidade_id"] == bm.id and t["area_id"] == energ.id
     assert t["_numero"] == "12" and t["_tipo_oferta"] == "HTC"
-    assert "Habilitação técnica" in t["nome"] and "Manhã" in t["nome"]
+    assert "Habilitação técnica" in t["nome"] and "Matutino" in t["nome"]
     assert db.scalar(select(TurmaUC).where(TurmaUC.turma_id == t["id"])) is not None  # UCs ligadas
     # sem número: mensagem clara
     r = c.post("/api/cadastros/turmas", json={"curso_id": curso["id"]}, headers=h)
@@ -70,7 +70,7 @@ def test_cadastros_preenchem_campos_repetidos(db, mundo):
     assert r.status_code == 200 and r.json()["ucs_competencia"] == []
     assert db.scalar(select(CompetenciaInstrutor).where(CompetenciaInstrutor.instrutor_id == i["id"])).ativo is False
     # horas por dia vêm da carga contratual e limitam os turnos por dia (4 h = 1 turno; 8 h = 2)
-    tarde = db.scalar(select(Turno).where(Turno.unidade_id == bm.id, Turno.codigo == "T"))
+    tarde = db.scalar(select(Turno).where(Turno.unidade_id == bm.id, Turno.codigo == "V"))
     r = c.post("/api/cadastros/instrutores", json={"matricula": "M2", "nome": "Paulo", "area_id": energ.id, "carga_horaria_contratual": 20,
                                                    "disp_turnos": [manha.id, tarde.id]}, headers=h)
     assert r.status_code == 409 and "um turno" in r.text

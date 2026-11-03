@@ -142,3 +142,21 @@ echo "Gerado backend/sql/atualizacao_0023.sql"
   ALEMBIC_DATABASE_URL="postgresql+psycopg://usuario:senha@host/banco" python -m alembic upgrade 0023:0024 --sql
 } > sql/atualizacao_0024.sql
 echo "Gerado backend/sql/atualizacao_0024.sql"
+{
+  echo "-- Atualização 0024 -> 0025: turnos M, V e N (matutino, vespertino, noturno): o código T passa a V e os nomes mudam;"
+  echo "-- cria o turno V de sábado (14:00–18:00). Nada é apagado. Cole no SQL Editor do Supabase e clique em Run."
+  ALEMBIC_DATABASE_URL="postgresql+psycopg://usuario:senha@host/banco" python -m alembic upgrade 0024:0025 --sql
+} > sql/atualizacao_0025.sql
+echo "Gerado backend/sql/atualizacao_0025.sql"
+{
+  echo "-- Atualização 0025 -> 0026: solicitação de diárias (recursos extras) para instrutores em eventos e projetos,"
+  echo "-- registrada e aprovada pela supervisão. Só cria a tabela. Cole no SQL Editor do Supabase e clique em Run."
+  ALEMBIC_DATABASE_URL="postgresql+psycopg://usuario:senha@host/banco" python -m alembic upgrade 0025:0026 --sql
+} > sql/atualizacao_0026.sql
+echo "Gerado backend/sql/atualizacao_0026.sql"
+{
+  echo "-- Atualização 0026 -> 0027: instrutor com gestor imediato e uniforme (jaleco em 3 referências, blusa e botina)."
+  echo "-- Só acrescenta colunas. Cole no SQL Editor do Supabase e clique em Run."
+  ALEMBIC_DATABASE_URL="postgresql+psycopg://usuario:senha@host/banco" python -m alembic upgrade 0026:0027 --sql
+} > sql/atualizacao_0027.sql
+echo "Gerado backend/sql/atualizacao_0027.sql"

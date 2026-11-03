@@ -19,7 +19,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, select, text
 
-from app.api import agendamentos, analise, cadastros, epis, instrutores, planejamento, seguranca, portal
+from app.api import agendamentos, analise, cadastros, diarias, epis, instrutores, planejamento, seguranca, portal
 from app.core.config import get_settings
 from app.core.db import SessionLocal
 from app.core.errors import ErroDominio
@@ -108,7 +108,7 @@ async def erro_interno(request: Request, exc: Exception):
 
 
 for r in (seguranca.router, cadastros.router, planejamento.router, analise.router, portal.router, epis.router, instrutores.router,
-          agendamentos.router):
+          agendamentos.router, diarias.router):
     app.include_router(r)
 
 

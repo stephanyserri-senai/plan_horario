@@ -1670,5 +1670,94 @@ END $$;
 
 UPDATE alembic_version SET version_num='0024' WHERE alembic_version.version_num = '0023';
 
+-- Running upgrade 0024 -> 0025
+
+UPDATE turnos t SET codigo = 'V' WHERE codigo = 'T' AND NOT EXISTS (SELECT 1 FROM turnos o WHERE o.unidade_id = t.unidade_id AND o.codigo = 'V');
+
+UPDATE turnos SET nome = 'Matutino' WHERE codigo = 'M';
+
+UPDATE turnos SET nome = 'Vespertino' WHERE codigo = 'V';
+
+UPDATE turnos SET nome = 'Noturno' WHERE codigo = 'N';
+
+UPDATE turnos SET nome = 'Matutino (sábado)' WHERE codigo = 'S';
+
+DO $$ DECLARE u record; t_id int; BEGIN
+      FOR u IN SELECT DISTINCT unidade_id AS id FROM turnos WHERE codigo = 'S' LOOP
+        IF NOT EXISTS (SELECT 1 FROM turnos WHERE unidade_id = u.id AND codigo = 'SV') THEN
+          INSERT INTO turnos (unidade_id, codigo, nome, hora_inicio, hora_fim, ordem, ativo, criado_em, atualizado_em)
+          VALUES (u.id, 'SV', 'Vespertino (sábado)', '14:00', '18:00', 6, true, now(), now()) RETURNING id INTO t_id;
+          INSERT INTO periodos_horarios (unidade_id, turno_id, ordem, hora_inicio, hora_fim, dias_semana, excepcional, ativo, criado_em, atualizado_em)
+          SELECT u.id, t_id, v.ordem, v.ini::time, v.fim::time, '{5}', false, true, now(), now() FROM (VALUES (1, '14:00', '14:55'), (2, '14:55', '15:50'), (3, '16:10', '17:05'), (4, '17:05', '18:00')) AS v(ordem, ini, fim);
+        END IF;
+      END LOOP;
+      UPDATE horarios_funcionamento SET hora_fim = '18:00' WHERE dia_semana = 5 AND hora_fim < '18:00';
+    END $$;
+
+UPDATE alembic_version SET version_num='0025' WHERE alembic_version.version_num = '0024';
+
+-- Running upgrade 0025 -> 0026
+
+CREATE TABLE solicitacoes_diarias (
+    id SERIAL NOT NULL, 
+    instrutor_id INTEGER NOT NULL, 
+    motivo VARCHAR(20) NOT NULL, 
+    titulo VARCHAR(200) NOT NULL, 
+    descricao TEXT, 
+    destino VARCHAR(200), 
+    data_inicio DATE NOT NULL, 
+    data_fim DATE NOT NULL, 
+    quantidade NUMERIC(5, 1) NOT NULL, 
+    valor_unitario NUMERIC(10, 2), 
+    outros_recursos TEXT, 
+    centro_custo VARCHAR(60), 
+    status VARCHAR(20) DEFAULT 'solicitada' NOT NULL, 
+    resposta TEXT, 
+    solicitado_por_id INTEGER, 
+    decidido_por_id INTEGER, 
+    decidido_em TIMESTAMP WITHOUT TIME ZONE, 
+    pago_em DATE, 
+    criado_em TIMESTAMP WITHOUT TIME ZONE DEFAULT now() NOT NULL, 
+    PRIMARY KEY (id), 
+    CONSTRAINT diaria_status_check CHECK (status in ('solicitada','aprovada','paga','recusada','cancelada')), 
+    CONSTRAINT diaria_motivo_check CHECK (motivo in ('evento','projeto','outro')), 
+    CONSTRAINT diaria_quantidade_check CHECK (quantidade > 0), 
+    CONSTRAINT diaria_periodo_check CHECK (data_fim >= data_inicio), 
+    FOREIGN KEY(instrutor_id) REFERENCES instrutores (id) ON DELETE CASCADE, 
+    FOREIGN KEY(solicitado_por_id) REFERENCES usuarios (id) ON DELETE SET NULL, 
+    FOREIGN KEY(decidido_por_id) REFERENCES usuarios (id) ON DELETE SET NULL
+);
+
+CREATE INDEX ix_solicitacoes_diarias_instrutor_id ON solicitacoes_diarias (instrutor_id);
+
+ALTER TABLE public.solicitacoes_diarias ENABLE ROW LEVEL SECURITY;
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+    EXECUTE 'REVOKE ALL ON public.solicitacoes_diarias FROM anon';
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+    EXECUTE 'REVOKE ALL ON public.solicitacoes_diarias FROM authenticated';
+  END IF;
+END $$;
+
+UPDATE alembic_version SET version_num='0026' WHERE alembic_version.version_num = '0025';
+
+-- Running upgrade 0026 -> 0027
+
+ALTER TABLE instrutores ADD COLUMN gestor_imediato VARCHAR(120);
+
+ALTER TABLE instrutores ADD COLUMN jaleco_np VARCHAR(10);
+
+ALTER TABLE instrutores ADD COLUMN jaleco_pmg VARCHAR(10);
+
+ALTER TABLE instrutores ADD COLUMN jaleco_num VARCHAR(10);
+
+ALTER TABLE instrutores ADD COLUMN tamanho_blusa VARCHAR(10);
+
+ALTER TABLE instrutores ADD COLUMN numero_botina VARCHAR(10);
+
+UPDATE alembic_version SET version_num='0027' WHERE alembic_version.version_num = '0026';
+
 COMMIT;
 

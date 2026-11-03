@@ -98,7 +98,7 @@ function TaxasDeOcupacao({ inicio, fim, amb, inst, ins }: { inicio: string; fim:
       x.ocup += t.horas_ocupadas || 0; x.disp += t.horas_disponiveis || 0;
       m.set(nome, x);
     }
-    const ordem = ["Manhã", "Tarde", "Noite", "Sábado"];
+    const ordem = ["Matutino", "Vespertino", "Noturno", "Matutino (sábado)", "Vespertino (sábado)"];
     return [...m.values()].filter((x) => x.disp > 0)
       .sort((a, b) => (ordem.indexOf(a.turno) + 99) % 99 - (ordem.indexOf(b.turno) + 99) % 99)
       .map((x) => ({ turno: x.turno, taxa_ocupacao_pct: Math.round((1000 * x.ocup) / x.disp) / 10 }));

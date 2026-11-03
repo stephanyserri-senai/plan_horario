@@ -148,6 +148,36 @@ CONV = {"str": _str, "int": _int, "float": _float, "date": _date, "time": _time,
 
 # --------------------------------------------------------------------------- especificações
 # campo: (tipo, obrigatório, sinônimos)
+# gestor imediato e uniforme do instrutor (jaleco em 3 referências, blusa e botina)
+CAMPOS_UNIFORME = {
+    "gestor_imediato": ("str", False, ["gestor", "gestor_imediato", "gestor_a_imediato"]),
+    "jaleco_np": ("str", False, ["jaleco_n_profissional", "jaleco_numeracao_profissional", "jaleco_np"]),
+    "jaleco_pmg": ("str", False, ["jaleco_pmg", "jaleco_p_m_g"]),
+    "jaleco_num": ("str", False, ["jaleco_1_2_3", "jaleco_123", "jaleco_numero"]),
+    "tamanho_blusa": ("str", False, ["numeracao_de_blusa", "numeracao_da_blusa", "blusa", "tamanho_da_blusa"]),
+    "numero_botina": ("str", False, ["numeracao_de_botina", "numeracao_da_botina", "botina", "numero_da_botina"]),
+}
+TAMANHOS_PMG = ("PP", "P", "M", "G", "GG", "XG", "XGG", "EG", "EGG", "G1", "G2", "G3")
+
+
+def _uniforme(v, d, E):
+    """Gestor imediato, jaleco (numeração profissional, P/M/G e 1/2/3), blusa e botina."""
+    for k in CAMPOS_UNIFORME:
+        x = v.get(k)
+        if x in (None, ""):
+            continue
+        x = str(x).strip()
+        if x.endswith(".0"):
+            x = x[:-2]
+        if k == "jaleco_pmg" and x.upper() not in TAMANHOS_PMG:
+            E.append(f"jaleco P/M/G '{x}' inválido: use {', '.join(TAMANHOS_PMG[:6])}…")
+            continue
+        if k == "jaleco_num" and x not in ("1", "2", "3"):
+            E.append(f"jaleco 1, 2, 3 '{x}' inválido: use 1, 2 ou 3")
+            continue
+        d[k] = x.upper()[:10] if k != "gestor_imediato" else x[:120]
+
+
 SPECS: dict[str, dict] = {
     "unidades": {"chave": ["codigo"], "campos": {
         "codigo": ("str", True, ["cod", "codigo_unidade", "sigla"]), "nome": ("str", True, ["unidade", "nome_unidade"]),
@@ -181,7 +211,7 @@ SPECS: dict[str, dict] = {
         "email": ("str", False, ["e_mail"]), "unidade_codigo": ("str", True, ["unidade"]), "carga_horaria_contratual": ("float", False, ["ch_contratual", "jornada"]),
         "limite_ch_letiva": ("float", False, ["ch_letiva", "limite_letivo"]), "areas_competencia": ("str", False, ["areas"]),
         "area": ("str", False, ["area_tecnologica"]), "modalidade": ("str", False, ["vinculo"]),
-        "nivel": ("str", False, ["nivel_do_instrutor"])}},
+        "nivel": ("str", False, ["nivel_do_instrutor"]), **CAMPOS_UNIFORME}},
     "competencias": {"chave": ["matricula", "uc_codigo"], "campos": {
         "matricula": ("str", True, ["instrutor"]), "uc_codigo": ("str", True, ["uc"]), "curso_codigo": ("str", False, ["curso"]),
         "versao": ("str", False, ["matriz"]), "nivel": ("str", False, []), "valido_ate": ("date", False, ["validade"])}},
@@ -218,7 +248,8 @@ SPECS: dict[str, dict] = {
         "turnos": ("str", False, ["turnos_de_trabalho", "turnos_disponiveis"]), "dias": ("dias", False, ["dias_disponiveis"]),
         "ucs_pleno": ("str", False, ["ucs_que_ministra_codigos", "ucs_que_ministra"]),
         "ucs_parcial": ("str", False, ["ucs_que_ministra_em_partes_codigos", "ucs_em_partes", "ucs_que_ministra_sob_supervisao_codigos", "ucs_sob_supervisao"]),
-        "certificacoes": ("str", False, ["certificacoes_ex_nr_10"]), "areas_competencia": ("str", False, ["formacao_e_especialidades", "especialidades"])}},
+        "certificacoes": ("str", False, ["certificacoes_ex_nr_10"]), "areas_competencia": ("str", False, ["formacao_e_especialidades", "especialidades"]),
+        **CAMPOS_UNIFORME}},
     "disponibilidade_instrutores": {"chave": ["matricula", "dia_semana", "hora_inicio"], "campos": {
         "matricula": ("str", True, ["instrutor"]), "dia_semana": ("dia", True, ["dia"]), "hora_inicio": ("time", True, ["inicio"]),
         "hora_fim": ("time", True, ["fim"])}},
@@ -299,6 +330,18 @@ def detectar_tipo(cabecalhos: list[str]) -> str:
 
 
 # --------------------------------------------------------------------------- resolução
+# Turnos são M, V e N (matutino, vespertino, noturno); no sábado, M (09–13, código "S") e V (14–18, código "SV").
+ALIAS_TURNO = {"m": "M", "manha": "M", "matutino": "M", "t": "V", "tarde": "V", "v": "V", "vespertino": "V",
+               "n": "N", "noite": "N", "noturno": "N", "s": "S", "sabado": "S", "sabado m": "S", "sabado manha": "S",
+               "matutino (sabado)": "S", "sv": "SV", "sabado v": "SV", "sabado tarde": "SV", "vespertino (sabado)": "SV"}
+
+
+def _sem_acento_min(txt) -> str:
+    import unicodedata
+    t = unicodedata.normalize("NFKD", str(txt or "")).encode("ascii", "ignore").decode().lower()
+    return " ".join(t.replace("-", " ").split())
+
+
 class Resolvedor:
     def __init__(self, db: Session):
         self.db = db
@@ -343,6 +386,7 @@ class Resolvedor:
         return self._get(("m", cid, versao, of), busca if cid else (lambda: None))
 
     def turno(self, unidade_id, cod):
+        cod = ALIAS_TURNO.get(_sem_acento_min(cod), cod)
         return self._get(("t", unidade_id, cod), lambda: self.db.scalar(select(Turno.id).where(Turno.unidade_id == unidade_id, (func.lower(Turno.codigo) == cod.lower()) | (func.lower(Turno.nome) == cod.lower()))))
 
     def tipo_amb(self, cod):
@@ -509,6 +553,7 @@ def _preparar_levantamento(db, r, v, E, A):
     _regra_90(d, E)
     _modalidade(v, d, E)
     _nivel(v, d, E)
+    _uniforme(v, d, E)
     _area(r, v, d, E, A, multiplas=True)
     disp = []
     from app.services.regras_aula import JORNADAS, horas_dia_pela_carga, normalizar_jornada, validar_jornada
@@ -523,7 +568,7 @@ def _preparar_levantamento(db, r, v, E, A):
         else:
             dias = v["dias"] if v["dias"] is not None else [0, 1, 2, 3, 4]
             for cod in JORNADAS[j]:
-                tid = r.turno(uid, {"M": "Manhã", "T": "Tarde", "N": "Noite"}[cod]) if uid else None
+                tid = r.turno(uid, cod) if uid else None
                 turno = db.get(Turno, tid) if tid else None
                 if not turno:
                     E.append("a unidade não tem os turnos desta jornada cadastrados")
@@ -610,7 +655,7 @@ def _preparar(db: Session, r: Resolvedor, tipo: str, v: dict) -> tuple[dict | No
         tn = db.get(_Turno, d["turno_id"]) if d.get("turno_id") else None
         if (erro_pfp := erro_turno_pfp(eh_pfp(v["codigo"]), tn.codigo if tn else None)):
             E.append(erro_pfp)
-        if tn is not None and tn.codigo == TURNO_SABADO:
+        if tn is not None and tn.codigo in (TURNO_SABADO, "SV"):
             d["dias_possiveis"], d["dias_ead"] = [5], []
         erro = erro_padrao_dias(d.get("dias_possiveis") or [0, 1, 2, 3, 4], d.get("dias_ead") or [], tn.codigo if tn else None,
                                 oferta_flexivel(db, v["codigo"], d.get("curso_id")))
@@ -643,6 +688,7 @@ def _preparar(db: Session, r: Resolvedor, tipo: str, v: dict) -> tuple[dict | No
         d["unidade_id"] = uid
         _modalidade(v, d, E)
         _nivel(v, d, E)
+        _uniforme(v, d, E)
         _regra_90(d, E)
         _area(r, v, d, E, A, multiplas=True)
         return d, db.scalars(select(Instrutor).where(Instrutor.matricula == v["matricula"])).first(), E, A

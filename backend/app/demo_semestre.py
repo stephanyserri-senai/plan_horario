@@ -130,22 +130,22 @@ CURSOS = [
 TURMAS = [
     ("HTC-ELT-12", "ELT", "Eletrotécnica 12 – Habilitação técnica", "M", 30, None, {}),
     ("HTC-ELT-13", "ELT", "Eletrotécnica 13 – Habilitação técnica", "N", 28, None, {"ELT-CMD": date(ANO, 12, 4)}),
-    ("AIT-AUT-05", "AUT", "Automação Industrial 05 – Aprendizagem industrial técnica", "T", 24, None, {}),
+    ("AIT-AUT-05", "AUT", "Automação Industrial 05 – Aprendizagem industrial técnica", "V", 24, None, {}),
     ("HTC-MEC-08", "MEC", "Mecânica 08 – Habilitação técnica", "N", 26, None, {}),
     ("AIB-MAU-03", "MAU", "Mecânico de Automóveis 03 – Aprendizagem industrial básica", "M", 24, None, {}),
-    ("HTC-MCT-04", "MCT", "Mecatrônica 04 – Habilitação técnica", "T", 26, None, {}),
+    ("HTC-MCT-04", "MCT", "Mecatrônica 04 – Habilitação técnica", "V", 26, None, {}),
     ("HTC-INS-02", "INS", "Instrumentação 02 – Habilitação técnica", "N", 22, None, {}),
     ("HTC-LOG-21", "LOG", "Logística 21 – Habilitação técnica", "N", 32, None, {}),
     ("AIT-LOG-07", "LOG", "Logística 07 – Aprendizagem industrial técnica", "M", 28, None, {}),
     ("HTC-POR-03", "POR", "Portos 03 – Habilitação técnica", "N", 30, None, {"POR-GCT": date(ANO, 11, 13)}),
-    ("HTC-DDS-09", "DDS", "Desenvolvimento de Sistemas 09 – Habilitação técnica", "T", 30, None, {}),
+    ("HTC-DDS-09", "DDS", "Desenvolvimento de Sistemas 09 – Habilitação técnica", "V", 30, None, {}),
     ("QUA-DGR-01", "DGR", "Design Gráfico 01 – Qualificação profissional", "N", 24, None, {}),
-    ("EMP-ADM-02", "ADM", "Assistente Administrativo 02 – Turma para empresa", "T", 20, [0, 2, 4], {}),
+    ("EMP-ADM-02", "ADM", "Assistente Administrativo 02 – Turma para empresa", "V", 20, [0, 2, 4], {}),
     # Wagner Prado: 5 manhãs + 4 tardes = 9 de 10 turnos (teto de 90%)
     ("QUA-ELI-01", "ELI", "Eletricista Instalador 01 – Qualificação", "M", 24, None, {}),
     ("QUA-INF-01", "INF", "Informática Básica 01 – Qualificação aos sábados", "S", 20, [5], {}),
     ("PFP-OPL-01", "OPL", "Operador de Logística 01 – PFP (manhã e tarde)", "I", 20, None, {}),
-    ("EMP-MNT-01", "MNT", "Manutenção Elétrica 01 – Turma para empresa", "T", 18, [0, 1, 2, 3], {}),
+    ("EMP-MNT-01", "MNT", "Manutenção Elétrica 01 – Turma para empresa", "V", 18, [0, 1, 2, 3], {}),
 ]
 CH_SEM_AJUSTE = {"ELI", "MNT", "NRB", "OPL"}  # carga já calculada para ocupar o semestre
 
@@ -412,7 +412,7 @@ def montar(db, ctx, limite_s: float = 120) -> dict:
     solic("BM-1002", "folga", date(ANO, 10, 23), date(ANO, 10, 23), [], "Consulta médica agendada (exame de rotina) no período da tarde e da noite.")
     solic("BM-1001", "substituicao", date(ANO, 10, 28), date(ANO, 10, 29), [],
           "Vou acompanhar a visita técnica da HTC-ELT-12 à subestação; preciso que alguém assuma minhas outras aulas.")
-    solic("PT-2006", "folga", date(ANO, 10, 30), date(ANO, 10, 30), [turno[(unid["PORTO"].id, "T")].id],
+    solic("PT-2006", "folga", date(ANO, 10, 30), date(ANO, 10, 30), [turno[(unid["PORTO"].id, "V")].id],
           "Participação em banca de TCC na faculdade.", "aprovada", "Aprovado. Sem aulas suas nesse turno.")
     solic("PT-2004", "folga", date(ANO, 11, 6), date(ANO, 11, 6), [], "Compromisso pessoal.", "recusada",
           "Neste dia há a visita ao terminal com a HTC-POR-03 e não há substituto com NR-29. Podemos ver outra data?")
@@ -455,7 +455,7 @@ def pendencias(db, ctx, cen, instrutores, unid, area, turno, cursos, cal) -> dic
     c, m = cursos["ELT"]
     u_id = c.unidade_id
     t = Turma(codigo="HTC-ELT-14", nome="Eletrotécnica 14 – Habilitação técnica (início em 19/10, 1ª UC neste semestre)", curso_id=c.id, matriz_id=m.id,
-              unidade_id=u_id, area_id=c.area_id, calendario_id=cal["BEIRA-MAR"].id, turno_id=turno[(u_id, "T")].id, qtd_alunos=26,
+              unidade_id=u_id, area_id=c.area_id, calendario_id=cal["BEIRA-MAR"].id, turno_id=turno[(u_id, "V")].id, qtd_alunos=26,
               data_inicio=date(ANO, 10, 19), data_fim=FIM, dias_possiveis=[0, 1, 2, 3, 4], num_grupos=1, situacao="planejada")
     db.add(t)
     db.flush()
@@ -465,7 +465,7 @@ def pendencias(db, ctx, cen, instrutores, unid, area, turno, cursos, cal) -> dic
     # turma que vai começar sem instrutor possível: só o Wagner é habilitado em NR-10 e já está no teto de 90%
     c2, m2 = cursos["NRB"]
     nrb = Turma(codigo="QUA-NRB-01", nome="NR-10 Básico 01 – Qualificação (início em 03/11)", curso_id=c2.id, matriz_id=m2.id,
-                unidade_id=c2.unidade_id, area_id=c2.area_id, calendario_id=cal["BEIRA-MAR"].id, turno_id=turno[(c2.unidade_id, "T")].id,
+                unidade_id=c2.unidade_id, area_id=c2.area_id, calendario_id=cal["BEIRA-MAR"].id, turno_id=turno[(c2.unidade_id, "V")].id,
                 qtd_alunos=20, data_inicio=date(ANO, 11, 3), data_fim=FIM, dias_possiveis=[0, 1, 2, 3, 4], num_grupos=1, situacao="planejada")
     db.add(nrb)
     db.flush()

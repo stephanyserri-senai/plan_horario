@@ -10,7 +10,8 @@ UC transversal/técnica, substituição, solicitações, quadro 5:4...) estão e
 `python scripts/gerar_regras_md.py` (um teste confere que o documento está em dia).
 
 ## Convenções
-- Nomenclatura: TURNO é matutino, vespertino ou noturno (e o turno de sábado). Para contar aulas na semana use
+- Nomenclatura: TURNO é sempre M, V ou N (matutino, vespertino, noturno) em telas, planilhas e termo; códigos internos M, V, N e,
+  no sábado, "S" (M 09–13) e "SV" (V 14–18) — `regras_aula.letra_turno`/`eh_sabado` (o antigo código "T" virou "V" na 0025). Para contar aulas na semana use
   "dias de aula" (cada dia ocupa um turno inteiro), nunca "turnos por semana". Turmas PFP têm manhã (08–12) e tarde
   (13–17); cada metade é um turno, com UC e instrutor próprios (turno oculto "I"; na grade caem nas linhas da manhã e da tarde).
 - Carga horária em minutos reais: cada aula vale 55 min (dia) ou 50 min (noite); o que falta vira outra aula
@@ -79,6 +80,10 @@ UC transversal/técnica, substituição, solicitações, quadro 5:4...) estão e
   grade ambientes × dias × turnos (`grade`: aula da grade PUBLICADA, bloqueio, reservado, pendente, feriado, livre) em
   `GET /api/ambientes/agenda` e `/api/portal/ambientes/agenda`; pedido do portal fica pendente e segura o horário; a supervisão
   confirma (cria `Bloqueio` tipo evento no ambiente → gerador/validação respeitam) ou recusa com motivo; página `/agendamentos`.
+- Diárias (regra DIARIAS): `services/diarias.py`, tabela `solicitacoes_diarias`; a supervisão registra em `/diarias`
+  (`/api/diarias`, situação em `POST /api/diarias/{id}/situacao`: solicitada → aprovada → paga, ou recusada/cancelada com motivo); aviso no portal.
+- Instrutor: `gestor_imediato` e uniforme (`jaleco_np`, `jaleco_pmg`, `jaleco_num`, `tamanho_blusa`, `numero_botina`) no cadastro, no
+  portal (tamanhos editáveis pelo instrutor), na planilha de levantamento (modelo, importação `CAMPOS_UNIFORME` e exportação).
 - Riscos: `services/resolucoes.sugerir` dá uma correção por caso (acao para `services/sugestoes.aplicar`); trocar sala e
   remarcar valem também com o horário publicado (ajuste operacional, como a substituição).
 

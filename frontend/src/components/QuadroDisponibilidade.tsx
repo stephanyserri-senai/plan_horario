@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, dataBR, qs } from "../api";
 import { useApp } from "../contexto";
@@ -6,7 +6,7 @@ import { Avatar, BarraPct } from "./PerfilInstrutor";
 import { Badge, Modal, useCarregar } from "./ui";
 
 const DIAS_CURTOS = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
-const NOME_TURNO: Record<string, string> = { M: "Manhã", V: "Tarde", N: "Noite", S: "Sábado" };
+const NOME_TURNO: Record<string, string> = { M: "Matutino", V: "Vespertino", N: "Noturno", S: "Matutino" };
 const h = (v: number) => `${Number(v || 0).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} h`;
 const mesAtual = () => new Date().toISOString().slice(0, 7);
 
@@ -258,9 +258,13 @@ export function PainelTermo({ instId, nome, url, somenteLeitura }: { instId: num
 const TURNOS_SEMANA = ["M", "V", "N"];
 const HORAS_TURNO: Record<string, number> = { M: 220 / 60, V: 220 / 60, N: 200 / 60, S: 220 / 60 };
 // horários usuais de entrada e saída de cada turno (dependem do turno de entrada do instrutor e do curso)
-const HORARIOS: Record<string, string[]> = { M: ["07:30-11:30", "08:00-12:00"], V: ["13:30-17:30", "13:00-17:30", "13:00-17:00"],
-  N: ["18:30-22:00", "18:00-22:00"], S: ["09:00-13:00", "08:00-12:00"] };
-const ROT_TURNO: Record<string, string> = { M: "Manhã", V: "Tarde", N: "Noite", S: "Sábado" };
+// sábado: M 09:00–13:00 e V 14:00–18:00
+const HORARIOS: Record<string, string[]> = { M: ["07:30-11:30", "08:00-12:00", "09:00-13:00"], V: ["13:30-17:30", "13:00-17:30", "13:00-17:00", "14:00-18:00"],
+  N: ["18:30-22:00", "18:00-22:00"] };
+const TURNOS_SABADO = ["M", "V"];
+// chave antiga do sábado ("S") vale como M
+const celulas = (ts: Record<string, any> | undefined) => { const r: Record<string, any> = {}; for (const [k, v] of Object.entries(ts || {})) r[k === "S" ? "M" : k] = v; return r; };
+const ROT_TURNO: Record<string, string> = { M: "Matutino", V: "Vespertino", N: "Noturno" };
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 type Cel = { tipo: string; ini?: string; fim?: string };
 type Agenda = Record<string, Record<string, Cel | string>>;
@@ -303,11 +307,12 @@ export function TotaisTermo({ agenda }: { agenda: Agenda }) {
  * ou 13:00–17:00; 18:30–22:00 ou 18:00–22:00), que depende do turno de entrada do instrutor e do curso. As horas do termo são contadas
  * por esse horário. Edição com “pincel”: escolha o tipo e o horário de cada turno e clique nos dias (clicar de novo apaga); no
  * cabeçalho, aplica o pincel em todas as semanas daquele dia. Ponto = aula já lançada; vermelho = aula fora do termo. Sem `mudar`: só leitura. */
-export function GradeTermo({ mes, agenda, aulas, horarios, mudar }: { mes: string; agenda: Agenda; aulas: Record<string, string[]>;
+export function GradeTermo({ mes, agenda: agenda0, aulas, horarios, mudar }: { mes: string; agenda: Agenda; aulas: Record<string, string[]>;
   horarios?: Record<string, Record<string, string[]>>; mudar?: (a: Agenda) => void }) {
+  const agenda = useMemo(() => Object.fromEntries(Object.entries(agenda0 || {}).map(([k, ts]) => [k, celulas(ts)])) as Agenda, [agenda0]);
   const [tipo, setTipo] = useState<string>("aula");
-  const [hor, setHor] = useState<Record<string, string>>({ M: HORARIOS.M[0], V: HORARIOS.V[0], N: HORARIOS.N[0], S: HORARIOS.S[0] });
-  const [outro, setOutro] = useState<Record<string, string>>({ M: "07:00-11:00", V: "13:00-17:00", N: "18:00-22:00", S: "08:00-12:00" });
+  const [hor, setHor] = useState<Record<string, string>>({ M: HORARIOS.M[0], V: HORARIOS.V[0], N: HORARIOS.N[0] });
+  const [outro, setOutro] = useState<Record<string, string>>({ M: "07:00-11:00", V: "13:00-17:00", N: "18:00-22:00" });
   const [a, mm] = mes.split("-").map(Number);
   const primeiro = new Date(a, mm - 1, 1, 12);
   const ultimo = new Date(a, mm, 0, 12).getDate();
@@ -320,7 +325,7 @@ export function GradeTermo({ mes, agenda, aulas, horarios, mudar }: { mes: strin
     if (d.getMonth() !== mm - 1 && d > primeiro) break;
   }
   const doMes = (d: Date) => d.getMonth() === mm - 1;
-  const turnosDo = (d: Date) => (d.getDay() === 6 ? ["S"] : TURNOS_SEMANA);
+  const turnosDo = (d: Date) => (d.getDay() === 6 ? TURNOS_SABADO : TURNOS_SEMANA);
   const pincel = (tn: string): Cel | null => {
     if (tipo === "livre") return null;
     const h = hor[tn] === "outro" ? outro[tn] : hor[tn];
@@ -362,7 +367,7 @@ export function GradeTermo({ mes, agenda, aulas, horarios, mudar }: { mes: strin
               <span className="gt-tot-cor" aria-hidden="true" />{r}</button>)}
         </div>
         {tipo !== "livre" && <div className="gt-pincel-hor">
-          {["M", "V", "N", "S"].map((tn) => <label key={tn}><span>{ROT_TURNO[tn]}</span>
+          {["M", "V", "N"].map((tn) => <label key={tn}><span>{ROT_TURNO[tn]}</span>
             <select value={hor[tn]} onChange={(e) => setHor({ ...hor, [tn]: e.target.value })}>
               {HORARIOS[tn].map((x) => <option key={x} value={x}>{x.replace("-", "–")}</option>)}
               <option value="outro">outro…</option><option value="">sem horário</option>
@@ -377,8 +382,8 @@ export function GradeTermo({ mes, agenda, aulas, horarios, mudar }: { mes: strin
       </div>}
       <div className="gt-cab">
         {DIAS_CURTOS.map((nome, dow) => <div key={nome} className="gt-cab-dia"><b>{nome}</b>
-          {mudar && <span className="gt-cab-turnos">{(dow === 5 ? ["S"] : TURNOS_SEMANA).map((tn) =>
-            <button key={tn} type="button" title={`Aplicar em ${ROT_TURNO[tn].toLowerCase()} de todas as ${nome.toLowerCase()}s do mês`} onClick={() => coluna(dow, tn)}>{tn === "S" ? "todos" : tn}</button>)}</span>}
+          {mudar && <span className="gt-cab-turnos">{(dow === 5 ? TURNOS_SABADO : TURNOS_SEMANA).map((tn) =>
+            <button key={tn} type="button" title={`Aplicar em ${ROT_TURNO[tn].toLowerCase()} de todas as ${nome.toLowerCase()}s do mês`} onClick={() => coluna(dow, tn)}>{tn}</button>)}</span>}
         </div>)}
       </div>
       {semanas.filter((sem) => sem.some((d) => doMes(d))).map((sem, i) => {
@@ -402,7 +407,7 @@ export function GradeTermo({ mes, agenda, aulas, horarios, mudar }: { mes: strin
                     return <button key={tn} type="button" disabled={!mudar} onClick={() => clicar(k, tn)}
                       className={`gt-t ${c ? `v-${c.tipo}` : ""} ${tem ? (cobre ? "com-aula" : "fora") : ""}`}
                       title={`${ROT_TURNO[tn]}: ${c ? `${TIPOS.find((t) => t.k === c.tipo)?.rotulo || c.tipo}${c.ini ? ` ${c.ini}–${c.fim}` : ""}` : "livre"}${tem ? ` · aula lançada${ha ? ` ${ha[0]}–${ha[1]}` : ""}${cobre ? "" : " (fora do termo)"}` : ""}`}>
-                      <span>{tn === "S" ? "Sáb" : tn}{c && TIPOS.find((t) => t.k === c.tipo)?.sigla ? ` ${TIPOS.find((t) => t.k === c.tipo)?.sigla}` : ""}{tem && <i aria-hidden="true">•</i>}</span>
+                      <span>{tn}{c && TIPOS.find((t) => t.k === c.tipo)?.sigla ? ` ${TIPOS.find((t) => t.k === c.tipo)?.sigla}` : ""}{tem && <i aria-hidden="true">•</i>}</span>
                       {c?.ini && <small>{curto(c.ini)}–{curto(c.fim)}</small>}</button>;
                   })}
                 </div>

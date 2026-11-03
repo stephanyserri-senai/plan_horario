@@ -88,7 +88,7 @@ def test_api_importa_sem_ortools():
 def test_saude_informa_fila_e_migracao(mundo):
     from app.main import app
     r = TestClient(app).get("/api/saude").json()
-    assert r["status"] == "ok" and r["migracao"] == "0024" and "execucoes_pendentes" in r["fila"]
+    assert r["status"] == "ok" and r["migracao"] == "0027" and "execucoes_pendentes" in r["fila"]
 
 
 # ------------------------------------------------------------------ RLS / Data API do Supabase
@@ -151,13 +151,13 @@ def test_sql_offline_das_migracoes_reproduz_banco_novo():
             assert c.scalar(text("SELECT count(*) FROM usuarios WHERE email = 'admin'")) == 1
             assert c.scalar(text("SELECT count(*) FROM pg_class cl JOIN pg_namespace n ON n.oid = cl.relnamespace "
                                  "WHERE n.nspname = 'public' AND cl.relkind = 'r' AND NOT cl.relrowsecurity")) == 0
-            assert c.scalar(text("SELECT version_num FROM alembic_version")) == "0024"
+            assert c.scalar(text("SELECT version_num FROM alembic_version")) == "0027"
             assert c.scalar(text("SELECT count(*) FROM pg_constraint WHERE conname LIKE 'excl_alocacao_%'")) == 3
             # estrutura fixa da instituição (migração 0003), idêntica a app/core/estrutura.py
             from app.core.estrutura import AREAS, UNIDADES
             assert sorted(c.execute(text("SELECT codigo, nome FROM unidades WHERE codigo IN ('BEIRA-MAR','PORTO')")).all()) == sorted(UNIDADES)
             assert sorted(c.execute(text("SELECT a.codigo, a.nome, u.codigo FROM areas a JOIN unidades u ON u.id = a.unidade_id")).all()) == sorted(AREAS)
-            assert c.scalar(text("SELECT count(*) FROM periodos_horarios p JOIN unidades u ON u.id = p.unidade_id WHERE u.codigo IN ('BEIRA-MAR','PORTO')")) == 48  # 3 turnos × 4 aulas + sábado (4) + integral PFP (8), nas 2 unidades
+            assert c.scalar(text("SELECT count(*) FROM periodos_horarios p JOIN unidades u ON u.id = p.unidade_id WHERE u.codigo IN ('BEIRA-MAR','PORTO')")) == 56  # 3 turnos × 4 aulas + sábado M e V (8) + integral PFP (8), nas 2 unidades
             assert c.scalar(text("SELECT count(*) FROM turma_uc tu JOIN turmas t ON t.id = tu.turma_id WHERE t.codigo LIKE 'DEMO-%'")) == 12
             assert c.scalar(text("SELECT valor->>'contagem' FROM configuracoes WHERE chave = 'regras_aula'")) == "relogio"
         eng.dispose()
@@ -490,19 +490,19 @@ def test_scripts_do_sql_editor_funcionam_comando_a_comando():
             os.environ.pop("ALEMBIC_DATABASE_URL", None)
         dsn = url.replace("postgresql+psycopg://", "postgresql://")
         sql_dir = RAIZ / "backend" / "sql"
-        for arq, vezes in (("atualizacao_0003.sql", 1), ("atualizacao_0004.sql", 1), ("atualizacao_0005.sql", 1), ("atualizacao_0006.sql", 1), ("atualizacao_0007.sql", 1), ("atualizacao_0008.sql", 1), ("atualizacao_0009.sql", 1), ("atualizacao_0010.sql", 1), ("atualizacao_0011.sql", 1), ("atualizacao_0012.sql", 1), ("atualizacao_0013.sql", 1), ("atualizacao_0014.sql", 1), ("atualizacao_0015.sql", 1), ("atualizacao_0016.sql", 1), ("atualizacao_0017.sql", 1), ("atualizacao_0018.sql", 1), ("atualizacao_0019.sql", 1), ("atualizacao_0020.sql", 1), ("atualizacao_0021.sql", 1), ("atualizacao_0022.sql", 1), ("atualizacao_0023.sql", 1), ("atualizacao_0024.sql", 1), ("seed_inicial.sql", 1), ("demo_recarregar.sql", 2)):
+        for arq, vezes in (("atualizacao_0003.sql", 1), ("atualizacao_0004.sql", 1), ("atualizacao_0005.sql", 1), ("atualizacao_0006.sql", 1), ("atualizacao_0007.sql", 1), ("atualizacao_0008.sql", 1), ("atualizacao_0009.sql", 1), ("atualizacao_0010.sql", 1), ("atualizacao_0011.sql", 1), ("atualizacao_0012.sql", 1), ("atualizacao_0013.sql", 1), ("atualizacao_0014.sql", 1), ("atualizacao_0015.sql", 1), ("atualizacao_0016.sql", 1), ("atualizacao_0017.sql", 1), ("atualizacao_0018.sql", 1), ("atualizacao_0019.sql", 1), ("atualizacao_0020.sql", 1), ("atualizacao_0021.sql", 1), ("atualizacao_0022.sql", 1), ("atualizacao_0023.sql", 1), ("atualizacao_0024.sql", 1), ("atualizacao_0025.sql", 1), ("atualizacao_0026.sql", 1), ("atualizacao_0027.sql", 1), ("seed_inicial.sql", 1), ("demo_recarregar.sql", 2)):
             for _ in range(vezes):
                 for cmd in _comandos_sql((sql_dir / arq).read_text(encoding="utf-8")):
                     with psycopg.connect(dsn, autocommit=True) as conn:
                         conn.execute(cmd.encode())
         eng = create_engine(url)
         with eng.connect() as c:
-            assert c.scalar(text("SELECT version_num FROM alembic_version")) == "0024"
+            assert c.scalar(text("SELECT version_num FROM alembic_version")) == "0027"
             assert c.scalar(text("SELECT count(*) FROM areas")) == 11
             assert c.scalar(text("SELECT count(*) FROM turmas WHERE codigo LIKE 'DEMO-%'")) == 3
             assert c.scalar(text("SELECT count(*) FROM turma_uc tu JOIN turmas t ON t.id = tu.turma_id WHERE t.codigo LIKE 'DEMO-%'")) == 12
             assert c.scalar(text("SELECT count(*) FROM turmas t JOIN unidades u ON u.id = t.unidade_id WHERE u.codigo = 'BEIRA-MAR' AND t.area_id IS NOT NULL")) == 3
-            assert c.scalar(text("SELECT count(*) FROM turnos t JOIN unidades u ON u.id = t.unidade_id WHERE u.codigo = 'BEIRA-MAR'")) == 5  # manhã, tarde, noite, sábado e integral (PFP)
+            assert c.scalar(text("SELECT count(*) FROM turnos t JOIN unidades u ON u.id = t.unidade_id WHERE u.codigo = 'BEIRA-MAR'")) == 6  # M, V, N, sábado M e V e integral (PFP)
             c.execute(text("INSERT INTO unidades (codigo, nome, situacao, ativo) VALUES ('DEMO-TESTE', 'UNIDADE DE DEMONSTRAÇÃO', 'ativa', true)"))
             c.commit()
         eng.dispose()
@@ -513,7 +513,7 @@ def test_scripts_do_sql_editor_funcionam_comando_a_comando():
         eng = create_engine(url)
         with eng.connect() as c:
             cont = lambda t: c.scalar(text(f"SELECT count(*) FROM {t}"))  # noqa: E731
-            assert (cont("unidades"), cont("areas"), cont("turnos"), cont("periodos_horarios")) == (2, 11, 10, 48)
+            assert (cont("unidades"), cont("areas"), cont("turnos"), cont("periodos_horarios")) == (2, 11, 12, 56)
             assert all(cont(t) == 0 for t in ("cursos", "turmas", "instrutores", "ambientes", "cenarios_planejamento", "unidades_curriculares",
                                                "tipos_ambiente", "calendarios", "alocacoes"))
             assert cont("usuarios") >= 1 and cont("permissoes_perfil") > 0 and cont("parametros_otimizacao") > 0

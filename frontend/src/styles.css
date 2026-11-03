@@ -1289,3 +1289,18 @@ thead .ag-amb { z-index: 3; }
 .ag-pedido.st-cancelado, .ag-pedido.st-recusado { opacity: .7; }
 .ag-resp { color: var(--texto); }
 .ag-resumo { background: var(--fundo); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; line-height: 1.6; }
+
+/* diárias */
+.dia-resumo { display: flex; flex-wrap: wrap; gap: 10px; align-items: stretch; margin-bottom: 12px; }
+.dia-resumo > .btn { align-self: center; margin-left: auto; }
+.dia-tot { background: var(--superficie); border: 1px solid var(--borda); border-left: 4px solid var(--borda); border-radius: 12px; padding: 8px 14px; display: grid; min-width: 150px; }
+.dia-tot b { font-size: 1.4rem; } .dia-tot span { font-size: .8rem; color: var(--texto-mudo, #667); }
+.dia-tot.st-solicitada, .dia-card.st-solicitada { border-left-color: #d9822b; }
+.dia-tot.st-aprovada, .dia-card.st-aprovada { border-left-color: #2f6fab; }
+.dia-tot.st-paga, .dia-card.st-paga { border-left-color: #1e7d4f; }
+.dia-form-card { display: grid; gap: 10px; margin-bottom: 12px; }
+.dia-form-card h3 { margin: 0; }
+.dia-form-card textarea { width: 100%; }
+.dia-alerta { margin: 0; font-size: .85rem; background: #fff4e5; color: #8a4b00; border-radius: 8px; padding: 6px 8px; }
+.unif-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px 14px; }
+.unif-grid input, .unif-grid select { width: 100%; }

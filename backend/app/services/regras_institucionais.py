@@ -51,12 +51,13 @@ def erro_padrao_dias(dias_possiveis, dias_ead, turno_codigo: str | None, flexive
     Turmas de aperfeiçoamento/para empresas podem ter menos dias. Devolve a mensagem de erro ou None."""
     dias = sorted(set(dias_possiveis or []))
     ead = sorted(set(dias_ead or []))
-    if turno_codigo == TURNO_SABADO:
+    from app.services.regras_aula import eh_sabado
+    if eh_sabado(turno_codigo):
         if dias != [SABADO]:
-            return "Turma do turno de sábado tem aula presencial só no sábado (09:00–13:00)."
+            return "Turma do turno de sábado tem aula presencial só no sábado (M 09:00–13:00 ou V 14:00–18:00)."
         return None
     if SABADO in dias or SABADO in ead or 6 in dias:
-        return "Aula no sábado só em turma do turno de sábado (09:00–13:00), e então só no sábado."
+        return "Aula no sábado só em turma de turno de sábado (M 09:00–13:00 ou V 14:00–18:00), e então só no sábado."
     if flexivel:
         return None if dias else "Informe ao menos um dia de aula."
     if dias == SEMANA and not ead:
@@ -88,12 +89,12 @@ def catalogo() -> list[dict]:
     """Todas as regras que o sistema aplica, com o tipo (obrigatória, preferência, aviso) e onde valem."""
     from app.services.analise_ocupacao import INSTRUTORES_POR_TURMA, OCUPACAO_IDEAL
     from app.services.planejamento import OFERTAS_BASICAS, OFERTAS_TECNICAS
-    from app.services.regras_aula import HORAS_POR_TURNO, OCUPACAO_MAXIMA, TURNO_SABADO as TS, TURNOS_PADRAO
+    from app.services.regras_aula import HORAS_POR_TURNO, OCUPACAO_MAXIMA, TURNO_SABADO as TS, TURNO_SABADO_V as TSV, TURNOS_PADRAO
     from app.services.substituicao import ANTECEDENCIA_DIAS
 
     def h(m):
         return f"{m // 60:02d}:{m % 60:02d}"
-    turnos = "; ".join(f"{nome} {h(a[0][0])}–{h(a[-1][0] + a[-1][1])}" for _c, nome, a in [*TURNOS_PADRAO, TS])
+    turnos = "; ".join(f"{nome} {h(a[0][0])}–{h(a[-1][0] + a[-1][1])}" for _c, nome, a in [*TURNOS_PADRAO, TS, TSV])
     R = []
 
     def regra(codigo, grupo, tipo, titulo, descricao, onde, parametros=None):
@@ -105,8 +106,9 @@ def catalogo() -> list[dict]:
           "Toda turma tem 5 dias presenciais (segunda a sexta) ou 4 dias presenciais + 1 dia de EAD (turma 80-20).",
           ["cadastro de turmas", "importação", "conformidade"])
     regra("TURMA_SABADO", "Turmas e dias", "obrigatoria", "Turma de sábado",
-          "Turma do turno de sábado tem aula presencial só no sábado, das 09:00 às 13:00 (4 aulas). Sábado não é usado por turmas da semana.",
-          ["cadastro de turmas", "gerador", "validação"], {"turno": "S", "horario": "09:00–13:00"})
+          "Turma de sábado tem aula presencial só no sábado, no turno M (09:00–13:00) ou no turno V (14:00–18:00), 4 aulas. "
+          "Sábado não é usado por turmas da semana.",
+          ["cadastro de turmas", "gerador", "validação"], {"M": "09:00–13:00", "V": "14:00–18:00"})
     regra("TURMA_FLEXIVEL", "Turmas e dias", "obrigatoria", "Exceção: aperfeiçoamento e empresas",
           "Só atendimentos específicos de aperfeiçoamento e turmas para empresas podem ter menos dias por semana (o treinamento costuma ser curto).",
           ["cadastro de turmas", "importação"], {"tipos_de_oferta": sorted(OFERTAS_FLEXIVEIS)})
@@ -225,6 +227,12 @@ def catalogo() -> list[dict]:
           "dentro da capacidade do ambiente; o pedido já segura o horário. A supervisão confirma — vira bloqueio do ambiente, que o "
           "gerador e a validação respeitam — ou recusa com o motivo, e também agenda direto. Cancelar libera o ambiente.",
           ["portal", "supervisão", "validação", "gerador"])
+    regra("DIARIAS", "Substituições e solicitações", "obrigatoria", "Diárias para eventos e projetos",
+          "Quando um instrutor precisa de recursos extras para um evento ou projeto, a supervisão registra a solicitação de diárias: "
+          "motivo (evento, projeto ou outro), local, período, número de diárias (inteiras ou meia diária, no máximo uma por dia do "
+          "período), valor da diária, outros recursos e centro de custo. Fluxo: solicitada → aprovada → paga; ou recusada/cancelada "
+          "com o motivo. O instrutor é avisado no portal a cada passo; se ele tem aula no período, a solicitação mostra quantas, para "
+          "providenciar a substituição.", ["supervisão", "portal"])
     regra("IMPRESSAO_PRAZO", "Substituições e solicitações", "obrigatoria", "Pedido de impressão até a quinta da semana anterior",
           "O instrutor pede a impressão do material pelo portal (o que imprimir, dia de uso, turma, cópias, páginas, frente e verso, "
           "colorido e o PDF do material — até 4 MB — ou o link do arquivo) até a quinta-feira da semana anterior ao uso — para usar de segunda a sábado da semana S, até a "

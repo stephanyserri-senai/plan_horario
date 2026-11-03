@@ -120,7 +120,7 @@ export function PreviaCodigoTurma({ valores }: { valores: any }) {
   );
 }
 
-const JORNADAS: Record<string, string> = { M: "M – Manhã", V: "V – Tarde (vespertino)", N: "N – Noite", MV: "MV – Manhã e tarde", VN: "VN – Tarde e noite" };
+const JORNADAS: Record<string, string> = { M: "M – Matutino", V: "V – Vespertino", N: "N – Noturno", MV: "MV – Matutino e vespertino", VN: "VN – Vespertino e noturno" };
 
 export function horasPorDia(valores: any): number {
   const h = Number(valores.max_horas_dia);

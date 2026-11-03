@@ -98,9 +98,9 @@ const PASSOS: [string, string, string][] = [
   ["✅", "Ajuste, acompanhe e publique", "Revise conflitos, acompanhe o Gantt e publique o horário."],
 ];
 const TURNOS: [string, string, string, string][] = [
-  ["☀️", "Manhã", "4 aulas de 55 min", "intervalo 9h20–9h40"],
-  ["🌤️", "Tarde", "4 aulas de 55 min", "intervalo 15h20–15h40"],
-  ["🌙", "Noite", "4 aulas de 50 min", "intervalo 20h00–20h10"],
+  ["☀️", "M – Matutino", "4 aulas de 55 min", "intervalo 9h20–9h40"],
+  ["🌤️", "V – Vespertino", "4 aulas de 55 min", "intervalo 15h20–15h40"],
+  ["🌙", "N – Noturno", "4 aulas de 50 min", "intervalo 20h00–20h10"],
 ];
 
 /** Tela de boas-vindas quando ainda não há semestre: apresenta o fluxo, a estrutura fixa e o andamento dos cadastros. */

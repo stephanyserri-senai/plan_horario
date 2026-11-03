@@ -20,7 +20,7 @@ const somaDias = (s: string, n: number) => { const d = new Date(s + "T12:00:00")
 
 /** Situação de cada instrutor e sala num dia, turno a turno. */
 const CURTO: Record<string, string> = { livre: "livre", PL: "PL", PJ: "PJ", TR: "TR", bloqueado: "indisp.", nao_letivo: "não letivo" };
-const SIGLA_TURNO: Record<string, string> = { M: "M", T: "V", N: "N", S: "S" };
+const SIGLA_TURNO: Record<string, string> = { M: "M", T: "V", V: "V", N: "N", S: "M", SV: "V" };  // no sábado: M 09–13, V 14–18
 
 /** Situação de cada instrutor e sala num dia (turno a turno) ou na semana inteira (dia a dia). */
 function QuemEstaOnde() {
@@ -91,7 +91,7 @@ function QuemEstaOnde() {
             onClick={() => { setVer(v); setEstado(""); }}>{v === "instrutores" ? "👤 Instrutores" : "🏫 Salas e laboratórios"}</button>)}
         </div>
         <select aria-label="Turno" value={turno} onChange={(e) => setTurno(e.target.value)}>
-          <option value="">Todos os turnos</option><option value="M">Manhã</option><option value="T">Tarde</option><option value="N">Noite</option><option value="S">Sábado</option></select>
+          <option value="">Todos os turnos</option><option value="M">M – Matutino</option><option value="V">V – Vespertino</option><option value="N">N – Noturno</option><option value="S">M – Sábado (09–13)</option><option value="SV">V – Sábado (14–18)</option></select>
         <input type="search" className="busca-larga" placeholder={ver === "instrutores" ? "Buscar instrutor pelo nome…" : "Buscar sala pelo código ou nome…"} aria-label="Buscar"
           value={busca} onChange={(e) => setBusca(e.target.value)} />
       </div>
@@ -115,7 +115,7 @@ function QuemEstaOnde() {
         </> : turnos.length === 0 ? <p className="sub">Nenhum turno com aula neste dia{turno ? " (no turno escolhido)" : ""}.</p> :
           <Tabela colunas={[coluna, ...turnos.map((t: any) => ({ chave: t.codigo, rotulo: t.nome, render: (l: any) => celula(l.turnos[t.codigo]) }))]}
             linhas={linhas} chave={(l: any) => l.id} vazio={estado ? `Ninguém “${ESTADO[estado][1].toLowerCase()}” neste dia.` : "Nada encontrado."} />}
-        {modo === "dia" && fora.length > 0 && <p className="sub">{fora.map((t: any) => t.nome).join(", ")}: sem aula {fora.some((t: any) => t.codigo === "S") ? "de segunda a sexta" : "aos sábados"} — escolha {fora.some((t: any) => t.codigo === "S") ? "um sábado" : "um dia útil"} para ver.</p>}
+        {modo === "dia" && fora.length > 0 && <p className="sub">{fora.map((t: any) => t.nome).join(", ")}: sem aula {fora.some((t: any) => t.codigo === "S" || t.codigo === "SV") ? "de segunda a sexta" : "aos sábados"} — escolha {fora.some((t: any) => t.codigo === "S" || t.codigo === "SV") ? "um sábado" : "um dia útil"} para ver.</p>}
       </>}
       {r.carregando && !d && <p role="status">Consultando…</p>}
       {r.erro && <div className="erro-box">{r.erro}</div>}

@@ -51,10 +51,10 @@ def test_termo_por_dia_e_turno(db, mundo):
     db.commit()
     assert r["agenda"][ter.isoformat()] == {"M": {"tipo": "aula"}} and r["dias_semana"] == [1, 2]
     assert r["resumo_agenda"]["turnos_aula"] == 2 and r["resumo_agenda"]["turnos_pl"] == 1
-    # turno de sábado só "S"; data de outro mês recusada
+    # sábado: só M e V (sem noturno); data de outro mês recusada
     import pytest
     with pytest.raises(EntradaInvalida):
-        termos.salvar(db, m.ctx, m.i1, "2026-08", 20, 0, agenda={sab.isoformat(): {"M": "aula"}})
+        termos.salvar(db, m.ctx, m.i1, "2026-08", 20, 0, agenda={sab.isoformat(): {"N": "aula"}})
     with pytest.raises(EntradaInvalida):
         termos.salvar(db, m.ctx, m.i1, "2026-08", 20, 0, agenda={"2026-09-01": {"M": "aula"}})
     db.rollback()

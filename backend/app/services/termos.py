@@ -62,16 +62,19 @@ def horas_programadas(db: Session, cenario_id: int, instrutor_id: int, mes: date
     return round(float(m or 0) / 60, 1)
 
 
-# termo por dia e turno (grade do mês): M = matutino, V = vespertino, N = noturno, S = sábado; cada célula é aula ou PL
-TURNOS_TERMO = ("M", "V", "N", "S")
-NOME_TURNO = {"M": "matutino", "V": "vespertino", "N": "noturno", "S": "sábado"}
+# termo por dia e turno (grade do mês): M = matutino, V = vespertino, N = noturno (no sábado, M 09–13 e V 14–18);
+# "S" é a chave antiga do sábado e vale como M
+TURNOS_TERMO = ("M", "V", "N")
+TURNOS_SABADO = ("M", "V")
+NOME_TURNO = {"M": "matutino", "V": "vespertino", "N": "noturno", "S": "matutino"}
 HORAS_TURNO = {"M": 220 / 60, "V": 220 / 60, "N": 200 / 60, "S": 220 / 60}  # sem horário: 4 aulas de 55 min (de dia) ou 50 min (à noite)
 HORAS_PL = 4.0  # turno de planejamento/projeto sem horário
 # o termo é o tempo PAGO para o instrutor estar disponível: aula, planejamento (PL), projeto (PJ) ou ajuste de urgência
 TIPOS_TERMO = {"aula": "Aula", "pl": "Planejamento (PL)", "pj": "Projeto (PJ)", "urgencia": "Ajuste de urgência"}
 DE_AULA = ("aula", "urgencia")  # turnos em que ele pode estar em sala (urgência = pago para cobrir aula fora do previsto)
 # horários de entrada e saída usuais de cada turno (dependem do turno de entrada do instrutor e do curso); outro horário também vale
-HORARIOS_TURNO = {"M": [("07:30", "11:30"), ("08:00", "12:00")], "V": [("13:30", "17:30"), ("13:00", "17:30"), ("13:00", "17:00")],
+HORARIOS_TURNO = {"M": [("07:30", "11:30"), ("08:00", "12:00"), ("09:00", "13:00")],
+                  "V": [("13:30", "17:30"), ("13:00", "17:30"), ("13:00", "17:00"), ("14:00", "18:00")],
                   "N": [("18:30", "22:00"), ("18:00", "22:00")], "S": [("09:00", "13:00"), ("08:00", "12:00")]}
 FAIXA_TURNO = {"M": ("06:00", "13:00"), "V": ("12:00", "18:30"), "N": ("17:30", "23:00"), "S": ("06:00", "18:30")}
 
@@ -99,15 +102,19 @@ def horas_cel(tn: str, v) -> float:
 
 
 def turno_da_aula(inicio) -> str:
-    if inicio.weekday() == 5:
-        return "S"
+    """M, V ou N pela hora de início (no sábado também: M 09–13, V 14–18)."""
     return "M" if inicio.hour < 12 else "V" if inicio.hour < 18 else "N"
+
+
+def _turno_cel(tn: str) -> str:
+    return "M" if tn == "S" else tn
 
 
 def cobre(t: TermoHoras, inicio, fim=None) -> bool:
     """A aula cai num turno com aula no termo, dentro do horário daquele dia? (termo sem agenda: vale o dia da semana)."""
     if t.agenda:
-        v = (t.agenda.get(inicio.date().isoformat()) or {}).get(turno_da_aula(inicio))
+        cels = {_turno_cel(k): x for k, x in (t.agenda.get(inicio.date().isoformat()) or {}).items()}
+        v = cels.get(turno_da_aula(inicio))
         if tipo_cel(v) not in DE_AULA:
             return False
         j = janela_cel(v)
@@ -129,7 +136,7 @@ def resumo_agenda(agenda: dict | None) -> dict:
 
 
 def _agenda(agenda, m: date) -> dict | None:
-    """Valida a grade do mês: só datas do mês, turnos M/V/N na semana e S no sábado, valores aula ou pl."""
+    """Valida a grade do mês: só datas do mês, turnos M/V/N na semana e M/V no sábado, valores aula, pl, pj ou urgencia."""
     if agenda is None:
         return None
     if not isinstance(agenda, dict):
@@ -144,9 +151,10 @@ def _agenda(agenda, m: date) -> dict | None:
             raise EntradaInvalida(f"{d:%d/%m/%Y} não é de {rotulo_mes(m)}.")
         if d.weekday() == 6:
             raise EntradaInvalida("Domingo não entra no termo.")
-        validos = ("S",) if d.weekday() == 5 else ("M", "V", "N")
+        validos = TURNOS_SABADO if d.weekday() == 5 else TURNOS_TERMO
         cel = {}
         for tn, v in (ts or {}).items():
+            tn = _turno_cel(tn)
             tipo = tipo_cel(v)
             if tipo in (None, "", "livre"):
                 continue
@@ -298,7 +306,8 @@ def painel(db: Session, inst: Instrutor, cenario_id: int | None, hoje: date | No
         dd = prox
         while dd <= fim_do_mes(prox):
             if dd.weekday() in padrao and dd.weekday() < 6:
-                agenda_sug[dd.isoformat()] = {tn: v for tn, v in padrao[dd.weekday()].items() if (tn == "S") == (dd.weekday() == 5)}
+                agenda_sug[dd.isoformat()] = {_turno_cel(tn): v for tn, v in padrao[dd.weekday()].items()
+                                          if _turno_cel(tn) in (TURNOS_SABADO if dd.weekday() == 5 else TURNOS_TERMO)}
             dd += timedelta(days=1)
         agenda_sug = {k: v for k, v in agenda_sug.items() if v}
     horas_sug = max(float(mp.get("programadas_h") or 0), float(ma.get("horas_aula") or 0) if ma.get("tem_termo") else 0.0)

@@ -45,7 +45,7 @@ def test_consultas_e_quadro(db, mundo):
     db.commit()
     sit = c.get(f"/api/consultas/situacao?cenario_id={cid}&data={SEG}", headers=h).json()
     cods = [t["codigo"] for t in sit["turnos"]]
-    assert "I" not in cods and cods[-1] == "S" and not sit["turnos"][-1]["no_dia"]
+    assert "I" not in cods and cods[-1] in ("S", "SV") and "S" in cods and not sit["turnos"][-1]["no_dia"]
     assert {l["turnos"]["S"]["estado"] for l in sit["instrutores"]} == {"sem_turno"}
     rk = c.get(f"/api/consultas/ranking?cenario_id={cid}&inicio={SEG}&fim={SEG + timedelta(days=13)}", headers=h).json()
     pcts = [l["ocupacao_pct"] for l in rk["instrutores_mais"]]

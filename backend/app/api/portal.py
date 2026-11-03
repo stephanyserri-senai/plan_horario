@@ -68,6 +68,8 @@ def _eu(db: Session, inst: Instrutor) -> dict:
         "limite_ch_letiva": float(inst.limite_ch_letiva),
         "turnos": [{"id": t.id, "nome": t.nome, "inicio": t.hora_inicio.strftime("%H:%M"), "fim": t.hora_fim.strftime("%H:%M")} for t in turnos],
         "certificacoes": list(certs), "formacao": inst.areas_competencia,
+        "gestor_imediato": inst.gestor_imediato,
+        "uniforme": {k: getattr(inst, k) for k in ("jaleco_np", "jaleco_pmg", "jaleco_num", "tamanho_blusa", "numero_botina")},
         "atualizado_pelo_instrutor_em": inst.atualizado_pelo_instrutor_em.isoformat() if inst.atualizado_pelo_instrutor_em else None,
         "notificacoes_novas": db.scalar(select(func.count()).select_from(Notificacao).where(Notificacao.instrutor_id == inst.id,
                                                                                           Notificacao.lida.is_(False))) or 0,
@@ -116,6 +118,16 @@ def atualizar_meus_dados(dados: dict = Body(...), ctx: Contexto = Depends(get_co
                 db.add(HabilitacaoInstrutor(instrutor_id=inst.id, nome=nome[:200], ativo=True))
     if "formacao" in dados:
         inst.areas_competencia = (str(dados["formacao"] or "").strip() or None)
+    if isinstance(dados.get("uniforme"), dict):  # tamanhos do uniforme (o gestor imediato é definido pela supervisão)
+        from app.core.errors import EntradaInvalida
+        from app.services.importacao import _uniforme
+        campos = ("jaleco_np", "jaleco_pmg", "jaleco_num", "tamanho_blusa", "numero_botina")
+        novo, erros = {}, []
+        _uniforme({k: dados["uniforme"].get(k) for k in campos}, novo, erros)
+        if erros:
+            raise EntradaInvalida("; ".join(erros).capitalize() + ".")
+        for k in campos:
+            setattr(inst, k, novo.get(k))
     inst.atualizado_pelo_instrutor_em = datetime.now()
     db.flush()
     depois = {**_dados_instrutor(db, inst), "areas_ids": _areas_ids(db, inst), "formacao": inst.areas_competencia}

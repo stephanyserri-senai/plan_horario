@@ -373,7 +373,7 @@ def _derivar(db: Session, ent: str, dados: dict, obj=None) -> dict:
             erro_pfp = erro_turno_pfp(pfp, turno.codigo if turno else None)
             if erro_pfp:
                 raise EntradaInvalida(erro_pfp)
-            if turno is not None and turno.codigo == TURNO_SABADO:
+            if turno is not None and turno.codigo in (TURNO_SABADO, "SV"):
                 d["dias_possiveis"], d["dias_ead"] = [5], []  # turma de sábado: só o sábado é presencial
             dias = d["dias_possiveis"] if "dias_possiveis" in d else (obj.dias_possiveis if obj else [0, 1, 2, 3, 4])
             ead = d["dias_ead"] if "dias_ead" in d else (obj.dias_ead if obj else [])
@@ -468,7 +468,7 @@ def _gravar_instrutor(db: Session, inst, dados: dict):
                 raise EntradaInvalida("Turno inválido para a unidade do instrutor.")
             for dia in dias:
                 if dia == 5 and "S" in turnos_un:
-                    continue  # sábado: turno próprio (abaixo)
+                    continue  # sábado: turnos próprios (abaixo)
                 db.add(DisponibilidadeInstrutor(instrutor_id=inst.id, dia_semana=dia, hora_inicio=t.hora_inicio, hora_fim=t.hora_fim))
         cods = {db.get(Turno, int(x)).codigo for x in dados["disp_turnos"]}
         if "I" in turnos_un:  # turmas PFP: quem é da manhã dá 08–12; quem é da tarde, 13–17
@@ -477,9 +477,12 @@ def _gravar_instrutor(db: Session, inst, dados: dict):
             for a, b in janelas_pfp(cods):
                 for dia in [x for x in dias if x < 5]:
                     db.add(DisponibilidadeInstrutor(instrutor_id=inst.id, dia_semana=dia, hora_inicio=_t.fromisoformat(a), hora_fim=_t.fromisoformat(b)))
-        if 5 in dias and "S" in turnos_un:  # dá aula aos sábados: 09:00–13:00
-            sab = turnos_un["S"]
-            db.add(DisponibilidadeInstrutor(instrutor_id=inst.id, dia_semana=5, hora_inicio=sab.hora_inicio, hora_fim=sab.hora_fim))
+        if 5 in dias and "S" in turnos_un:  # dá aula aos sábados: M 09:00–13:00; quem é da tarde, V 14:00–18:00
+            sabs = [turnos_un["S"]] if cods - {"V", "T"} or "SV" not in turnos_un else []
+            if "SV" in turnos_un and cods & {"V", "T"}:
+                sabs.append(turnos_un["SV"])
+            for sab in sabs:
+                db.add(DisponibilidadeInstrutor(instrutor_id=inst.id, dia_semana=5, hora_inicio=sab.hora_inicio, hora_fim=sab.hora_fim))
     elif inst.id and ("max_horas_dia" in dados or "carga_horaria_contratual" in dados):
         # mudou a carga sem mexer nos turnos: os turnos atuais precisam continuar valendo (40 h = MV ou VN)
         db.flush()

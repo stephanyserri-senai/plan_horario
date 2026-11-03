@@ -513,3 +513,34 @@ class PermissaoPerfil(Base):
     __tablename__ = "permissoes_perfil"
     perfil: Mapped[str] = mapped_column(String(20), primary_key=True)
     acao: Mapped[str] = mapped_column(String(60), primary_key=True)
+
+
+class SolicitacaoDiaria(Base):
+    """Diárias (recursos extras) para um instrutor em evento ou projeto: a supervisão registra a solicitação, aprova
+    (ou recusa, com motivo) e marca como paga. O instrutor é avisado no portal a cada passo."""
+    __tablename__ = "solicitacoes_diarias"
+    __table_args__ = (
+        CheckConstraint("status in ('solicitada','aprovada','paga','recusada','cancelada')", name="diaria_status_check"),
+        CheckConstraint("motivo in ('evento','projeto','outro')", name="diaria_motivo_check"),
+        CheckConstraint("quantidade > 0", name="diaria_quantidade_check"),
+        CheckConstraint("data_fim >= data_inicio", name="diaria_periodo_check"),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    instrutor_id: Mapped[int] = mapped_column(ForeignKey("instrutores.id", ondelete="CASCADE"), index=True)
+    motivo: Mapped[str] = mapped_column(String(20))  # evento | projeto | outro
+    titulo: Mapped[str] = mapped_column(String(200))  # nome do evento ou do projeto
+    descricao: Mapped[str | None] = mapped_column(Text)  # justificativa / atividades
+    destino: Mapped[str | None] = mapped_column(String(200))  # local (cidade, empresa, escola...)
+    data_inicio: Mapped[date] = mapped_column(Date)
+    data_fim: Mapped[date] = mapped_column(Date)
+    quantidade: Mapped[float] = mapped_column(Numeric(5, 1))  # número de diárias (aceita meia diária: 0,5)
+    valor_unitario: Mapped[float | None] = mapped_column(Numeric(10, 2))
+    outros_recursos: Mapped[str | None] = mapped_column(Text)  # transporte, hospedagem, material...
+    centro_custo: Mapped[str | None] = mapped_column(String(60))
+    status: Mapped[str] = mapped_column(String(20), default="solicitada", server_default="solicitada")
+    resposta: Mapped[str | None] = mapped_column(Text)  # motivo da recusa ou observação da supervisão
+    solicitado_por_id: Mapped[int | None] = mapped_column(ForeignKey("usuarios.id", ondelete="SET NULL"))
+    decidido_por_id: Mapped[int | None] = mapped_column(ForeignKey("usuarios.id", ondelete="SET NULL"))
+    decidido_em: Mapped[datetime | None] = mapped_column(DateTime)
+    pago_em: Mapped[date | None] = mapped_column(Date)
+    criado_em: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

@@ -71,7 +71,7 @@ def test_modelos_e_importacao_em_planilha_unica(db, mundo):
     # 3) levantamento de instrutores: áreas, turnos × dias, competências e certificação
     lev = preencher(db, "levantamento_instrutores", [
         ["M-100", "Paulo Torres", "paulo@x.br", "BEIRA-MAR", "MECÂNICA; AUTOMOTIVA", "Horista", "Básico", 40, 28, 8, "Manhã; Tarde", "seg a qui", "DTM; USI", "", "NR-12",
-         "Técnico em mecânica; 10 anos em usinagem CNC"],
+         "Técnico em mecânica; 10 anos em usinagem CNC", "Gestora da Mecânica", 44, "m", 2, "G", 41],
     ])
     importar(db, m.ctx, "levantamento_instrutores", lev)
     paulo = db.scalar(select(Instrutor).where(Instrutor.matricula == "M-100"))
@@ -82,6 +82,9 @@ def test_modelos_e_importacao_em_planilha_unica(db, mundo):
     assert db.scalars(select(HabilitacaoInstrutor).where(HabilitacaoInstrutor.instrutor_id == paulo.id)).first().nome == "NR-12"
     assert paulo.areas_competencia.startswith("Técnico em mecânica") and paulo.modalidade == "horista"
     assert paulo.nivel == "basico"
+    # gestor imediato e uniforme (jaleco em 3 referências, blusa e botina)
+    assert (paulo.gestor_imediato, paulo.jaleco_np, paulo.jaleco_pmg, paulo.jaleco_num, paulo.tamanho_blusa, paulo.numero_botina) == \
+        ("Gestora da Mecânica", "44", "M", "2", "G", "41")
 
     # 4) turmas: UCs da matriz ligadas automaticamente
     tur = preencher(db, "turmas", [["MEC-1", "Mecânica 2026/2 Manhã", "MEC-TEC", "2026.1", "", "BEIRA-MAR", "Manhã", 28, "03/08/2026", "18/12/2026", "seg a sex", "", "sex"]])

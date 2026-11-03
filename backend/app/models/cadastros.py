@@ -428,6 +428,13 @@ class Instrutor(TimestampMixin, Base):
     nivel: Mapped[str] = mapped_column(String(10), default="tecnico", server_default="tecnico")
     # última vez que o próprio instrutor atualizou os dados pelo portal
     atualizado_pelo_instrutor_em: Mapped[datetime | None] = mapped_column(DateTime)
+    # gestor imediato e uniforme: jaleco em 3 referências (numeração profissional, P/M/G e 1/2/3), blusa e botina
+    gestor_imediato: Mapped[str | None] = mapped_column(String(120))
+    jaleco_np: Mapped[str | None] = mapped_column(String(10))
+    jaleco_pmg: Mapped[str | None] = mapped_column(String(10))
+    jaleco_num: Mapped[str | None] = mapped_column(String(10))
+    tamanho_blusa: Mapped[str | None] = mapped_column(String(10))
+    numero_botina: Mapped[str | None] = mapped_column(String(10))
 
 
 class InstrutorUnidade(Base):
@@ -514,7 +521,7 @@ class TermoHoras(TimestampMixin, Base):
     horas_outras: Mapped[float] = mapped_column(Numeric(6, 2), default=0, server_default=text("0"))  # projetos, apoio etc.
     # dias da semana do termo (0 = segunda … 5 = sábado); vazio = qualquer dia da disponibilidade
     dias_semana: Mapped[list[int] | None] = mapped_column(ARRAY(Integer))
-    # agenda do mês por dia e turno: {"AAAA-MM-DD": {"M"|"V"|"N"|"S": "aula" | "pl"}}; vazio = vale dias_semana
+    # agenda do mês por dia e turno: {"AAAA-MM-DD": {"M"|"V"|"N": {tipo, ini, fim}} (sábado: M e V; "S" antigo = M)}; vazio = vale dias_semana
     agenda: Mapped[dict | None] = mapped_column(JSONB)
     observacao: Mapped[str | None] = mapped_column(Text)
     atualizado_por_id: Mapped[int | None] = mapped_column(ForeignKey("usuarios.id", ondelete="SET NULL"))

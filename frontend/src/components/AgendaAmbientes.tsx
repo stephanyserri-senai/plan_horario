@@ -11,7 +11,9 @@ const segunda = (s: string) => { const d = new Date(`${s}T12:00:00`); return som
 const ROT: Record<string, string> = { livre: "livre", aula: "aula", reservado: "reservado", pendente: "aguardando", bloqueado: "bloqueado",
   feriado: "feriado", indisponivel: "indisponível" };
 const TOM: Record<string, string> = { pendente: "alerta", confirmado: "ok", recusado: "erro", cancelado: "neutro" };
-const sigla = (t: any) => (t.sabado ? "Sáb" : (t.codigo || t.nome || "?").slice(0, 1).toUpperCase());
+// turnos sempre M, V ou N (no sábado: M 09–13 e V 14–18)
+const sigla = (t: any) => ({ M: "M", V: "V", T: "V", N: "N", S: "M", SV: "V" } as Record<string, string>)[String(t.codigo || "").toUpperCase()]
+  || ((t.inicio || "") < "12:00" ? "M" : (t.inicio || "") < "18:00" ? "V" : "N");
 
 /** Agendamento de ambientes (substitui a planilha de ambientes × datas × turnos): grade semanal com o que está livre,
  * com aula, reservado, aguardando a supervisão ou bloqueado. Portal: o instrutor clica num horário livre e pede.

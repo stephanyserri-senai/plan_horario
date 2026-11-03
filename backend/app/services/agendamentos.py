@@ -35,7 +35,7 @@ def turnos_da_unidade(db: Session, unidade_id: int) -> list[Turno]:
 
 
 def _sabado(t: Turno) -> bool:
-    return (t.codigo or "").upper() == "S" or "sáb" in (t.nome or "").lower() or "sab" in (t.nome or "").lower()
+    return (t.codigo or "").upper() in ("S", "SV") or "sáb" in (t.nome or "").lower() or "sab" in (t.nome or "").lower()
 
 
 def turno_vale_no_dia(t: Turno, d: date) -> bool:

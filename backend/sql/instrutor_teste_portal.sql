@@ -22,7 +22,7 @@ ON CONFLICT (matricula) DO NOTHING;
 
 INSERT INTO disponibilidade_instrutores (instrutor_id, dia_semana, hora_inicio, hora_fim)
 SELECT i.id, d, t.hora_inicio, t.hora_fim
-FROM instrutores i JOIN turnos t ON t.unidade_id = i.unidade_id AND t.codigo IN ('M', 'T') CROSS JOIN generate_series(0, 4) AS d
+FROM instrutores i JOIN turnos t ON t.unidade_id = i.unidade_id AND t.codigo IN ('M', 'T', 'V') CROSS JOIN generate_series(0, 4) AS d
 WHERE i.matricula = 'TESTE-PORTAL'
   AND NOT EXISTS (SELECT 1 FROM disponibilidade_instrutores x WHERE x.instrutor_id = i.id);
 

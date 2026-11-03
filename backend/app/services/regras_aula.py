@@ -62,17 +62,38 @@ def periodos_para_fechar(regras: dict, restante_min: float, periodos: list) -> i
 
 TURNOS_PADRAO = [
     # código, nome, aulas (início, duração em minutos) — intervalos ficam entre a 2ª e a 3ª aula
-    ("M", "Manhã", [(7 * 60 + 30, 55), (8 * 60 + 25, 55), (9 * 60 + 40, 55), (10 * 60 + 35, 55)]),
-    ("T", "Tarde", [(13 * 60 + 30, 55), (14 * 60 + 25, 55), (15 * 60 + 40, 55), (16 * 60 + 35, 55)]),
-    ("N", "Noite", [(18 * 60 + 30, 50), (19 * 60 + 20, 50), (20 * 60 + 20, 50), (21 * 60 + 10, 50)]),  # 18:30–22:00, intervalo 20:10–20:20
+    ("M", "Matutino", [(7 * 60 + 30, 55), (8 * 60 + 25, 55), (9 * 60 + 40, 55), (10 * 60 + 35, 55)]),
+    ("V", "Vespertino", [(13 * 60 + 30, 55), (14 * 60 + 25, 55), (15 * 60 + 40, 55), (16 * 60 + 35, 55)]),
+    ("N", "Noturno", [(18 * 60 + 30, 50), (19 * 60 + 20, 50), (20 * 60 + 20, 50), (21 * 60 + 10, 50)]),  # 18:30–22:00, intervalo 20:10–20:20
 ]
 # Sábado: turno próprio, 09:00–13:00 (4 aulas, intervalo 10:50–11:10), só aos sábados. Turma de sábado só tem aula presencial no sábado.
-TURNO_SABADO = ("S", "Sábado", [(9 * 60, 55), (9 * 60 + 55, 55), (11 * 60 + 10, 55), (12 * 60 + 5, 55)])
+# Turnos são sempre M, V e N (matutino, vespertino e noturno); no sábado: M 09:00–13:00 (código interno "S") e V 14:00–18:00 ("SV").
+TURNO_SABADO = ("S", "Matutino (sábado)", [(9 * 60, 55), (9 * 60 + 55, 55), (11 * 60 + 10, 55), (12 * 60 + 5, 55)])
+TURNO_SABADO_V = ("SV", "Vespertino (sábado)", [(14 * 60, 55), (14 * 60 + 55, 55), (16 * 60 + 10, 55), (17 * 60 + 5, 55)])  # 14:00–18:00
+CODIGOS_SABADO = {"S", "SV"}
+
+
+def eh_sabado(turno) -> bool:
+    """Turno que só vale aos sábados (o matutino de sábado, código "S", e o vespertino de sábado, "SV")."""
+    return (getattr(turno, "codigo", turno) or "").upper() in CODIGOS_SABADO
+
+
+def letra_turno(turno) -> str:
+    """M, V ou N — como o turno aparece em todo lugar (o de sábado também: M de manhã, V de tarde)."""
+    cod = (getattr(turno, "codigo", turno) or "").upper()
+    if cod in ("M", "V", "N"):
+        return cod
+    if cod == "SV" or cod == "T":
+        return "V"
+    if cod == "S":
+        return "M"
+    ini = getattr(turno, "hora_inicio", None)
+    return ("M" if ini.hour < 12 else "V" if ini.hour < 18 else "N") if ini is not None else cod
 # Turmas PFP: aula manhã e tarde, 08:00–12:00 e 13:00–17:00 (4 + 4 aulas; almoço 12:00–13:00), de segunda a sexta.
 # Cada metade é um turno: a manhã (08–12) e a tarde (13–17) podem ter UCs e instrutores diferentes; na grade
 # aparecem nas linhas da manhã e da tarde (o limiar de horário aceita 08:00 e 13:00).
 TURNO_INTEGRAL = ("I", "Manhã e tarde (PFP)", [(h * 60, 60) for h in (8, 9, 10, 11, 13, 14, 15, 16)])
-BLOCOS_PFP = [("08:00", "12:00", "M"), ("13:00", "17:00", "T")]  # cada bloco vale como o turno de mesmo código
+BLOCOS_PFP = [("08:00", "12:00", "M"), ("13:00", "17:00", "V")]  # cada bloco vale como o turno de mesmo código
 INTERVALO_MAX_MIN = 30  # pausa maior que isso (ex.: almoço) separa dois blocos de aula no mesmo turno
 
 
@@ -108,7 +129,7 @@ def bloco_da_hora(periodos: list, hora_min: int) -> list:
         if ini <= hora_min < fim:
             return b
     return bs[0] if bs else []
-TURNOS_ESPECIAIS = {"S", "I"}  # não entram na jornada M/V/N do instrutor
+TURNOS_ESPECIAIS = {"S", "SV", "I"}  # não entram na jornada M/V/N do instrutor
 
 
 HORAS_POR_TURNO = 4  # cada turno = 4 aulas
@@ -145,10 +166,10 @@ def horas_dia_pela_carga(carga_semanal) -> float:
     return float(min(12, max(1, round(float(carga_semanal) / 5))))
 
 
-# Turnos de trabalho do instrutor. V = vespertino (turno "T", tarde). Quem trabalha 8 h por dia (40 h/semana)
+# Turnos de trabalho do instrutor: M (matutino), V (vespertino) e N (noturno). Quem trabalha 8 h por dia (40 h/semana)
 # faz dois turnos seguidos (MV ou VN); com menos horas, um turno só (M, V ou N).
-JORNADAS = {"M": ["M"], "V": ["T"], "N": ["N"], "MV": ["M", "T"], "VN": ["T", "N"]}
-ROTULO_JORNADA = {"M": "M – Manhã", "V": "V – Tarde (vespertino)", "N": "N – Noite", "MV": "MV – Manhã e tarde", "VN": "VN – Tarde e noite"}
+JORNADAS = {"M": ["M"], "V": ["V"], "N": ["N"], "MV": ["M", "V"], "VN": ["V", "N"]}
+ROTULO_JORNADA = {"M": "M – Matutino", "V": "V – Vespertino", "N": "N – Noturno", "MV": "MV – Matutino e vespertino", "VN": "VN – Vespertino e noturno"}
 
 
 def turnos_exigidos(max_horas_dia) -> int:
@@ -161,9 +182,9 @@ def jornadas_permitidas(max_horas_dia) -> list[str]:
 
 
 def jornada_dos_codigos(codigos) -> str | None:
-    """Códigos de turno ({"M", "T"}) → jornada ("MV"); None se a combinação não for uma jornada válida."""
-    cods = set(codigos)
-    alvo = sorted(cods, key="MTN".index) if cods <= set("MTN") else None
+    """Códigos de turno ({"M", "V"}) → jornada ("MV"); None se a combinação não for uma jornada válida."""
+    cods = {"V" if c == "T" else c for c in codigos}
+    alvo = sorted(cods, key="MVN".index) if cods <= set("MVN") else None
     return next((j for j, cs in JORNADAS.items() if alvo is not None and cs == alvo), None)
 
 
@@ -175,7 +196,7 @@ def normalizar_jornada(valor: str) -> str | None:
     import unicodedata
     v = "".join(c for c in unicodedata.normalize("NFD", v) if unicodedata.category(c) != "Mn")
     cods = set()
-    for parte, cod in (("MANHA", "M"), ("MATUTINO", "M"), ("TARDE", "T"), ("VESPERTINO", "T"), ("NOITE", "N"), ("NOTURNO", "N")):
+    for parte, cod in (("MANHA", "M"), ("MATUTINO", "M"), ("TARDE", "V"), ("VESPERTINO", "V"), ("NOITE", "N"), ("NOTURNO", "N")):
         if parte in v:
             cods.add(cod)
     return jornada_dos_codigos(cods) if cods else None

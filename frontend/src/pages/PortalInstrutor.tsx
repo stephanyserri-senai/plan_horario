@@ -139,7 +139,7 @@ function SemanaInstrutor({ aulas, reservas, inicio }: { aulas: any[]; reservas: 
   );
 }
 
-function turnoDaHora(r: { inicio: string }) { return r.inicio < "12:00" ? "Manhã" : r.inicio < "18:00" ? "Tarde" : "Noite"; }
+function turnoDaHora(r: { inicio: string }) { return r.inicio < "12:00" ? "Matutino" : r.inicio < "18:00" ? "Vespertino" : "Noturno"; }
 function ordemTurno(t: string) { return t.startsWith("Manh") ? 0 : t.startsWith("Tard") ? 1 : t.startsWith("Noit") ? 2 : 3; }
 function corDe(k: string) {
   let h = 0;
@@ -196,7 +196,7 @@ function MeusDados({ eu, salvo }: { eu: any; salvo: () => void }) {
   const salvar = async () => {
     setErro(null); setSalvando(true);
     try {
-      const corpo: any = { areas_ids: v.areas_ids, ucs_competencia: v.ucs_competencia, certificacoes: v.certificacoes, formacao: v.formacao };
+      const corpo: any = { areas_ids: v.areas_ids, ucs_competencia: v.ucs_competencia, certificacoes: v.certificacoes, formacao: v.formacao, uniforme: v.uniforme || {} };
       if (v.__disp) { corpo.jornada = v.jornada; corpo.disp_dias = v.disp_dias; }
       await api.put("/api/portal/eu", corpo);
       aviso("Dados salvos no seu cadastro. A supervisão já vê as alterações."); salvo();
@@ -243,6 +243,20 @@ function MeusDados({ eu, salvo }: { eu: any; salvo: () => void }) {
       <section className="card">
         <h2>Formação e especialidades</h2>
         <textarea rows={4} placeholder="Formação, experiência na indústria, softwares, equipamentos que domina…" value={v.formacao || ""} onChange={(e) => setV({ ...v, formacao: e.target.value })} />
+      </section>
+
+      <section className="card">
+        <h2>Uniforme</h2>
+        <p className="sub">Gestor imediato: <b>{eu.gestor_imediato || "não informado (a supervisão preenche)"}</b></p>
+        <div className="unif-grid">
+          {([["jaleco_np", "Jaleco – numeração profissional", ""], ["jaleco_pmg", "Jaleco – P/M/G", "PP,P,M,G,GG,XG"], ["jaleco_num", "Jaleco – 1, 2, 3", "1,2,3"],
+            ["tamanho_blusa", "Numeração de blusa", ""], ["numero_botina", "Numeração de botina", ""]] as [string, string, string][]).map(([k, rot, ops]) =>
+            <label key={k} className="campo"><span className="campo-rotulo">{rot}</span>
+              {ops ? <select value={v.uniforme?.[k] || ""} onChange={(e) => setV({ ...v, uniforme: { ...(v.uniforme || {}), [k]: e.target.value } })}>
+                <option value="">—</option>{ops.split(",").map((o) => <option key={o} value={o}>{o}</option>)}</select>
+                : <input value={v.uniforme?.[k] || ""} maxLength={10} onChange={(e) => setV({ ...v, uniforme: { ...(v.uniforme || {}), [k]: e.target.value } })} />}
+            </label>)}
+        </div>
       </section>
 
       <Erro erro={erro} />

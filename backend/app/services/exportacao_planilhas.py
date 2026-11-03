@@ -357,7 +357,8 @@ def linhas_cadastro(db: Session, tipo: str, unidades=None) -> list[list]:
             cert = [h.nome for h in db.scalars(select(HabilitacaoInstrutor).where(HabilitacaoInstrutor.instrutor_id == i.id, HabilitacaoInstrutor.ativo.is_(True)))]
             res.append([i.matricula, i.nome, i.email, unid.get(i.unidade_id), _areas_de(db, i.area_id, InstrutorArea, "instrutor_id", i.id, i.todas_areas, areas),
                         (i.modalidade or "mensalista").capitalize(), "Básico" if i.nivel == "basico" else "Técnico", float(i.carga_horaria_contratual), float(i.limite_ch_letiva), float(i.max_horas_dia), jornada,
-                        "; ".join(abrev[d] for d in dias), "; ".join(pleno), "; ".join(sup), "; ".join(cert), i.areas_competencia])
+                        "; ".join(abrev[d] for d in dias), "; ".join(pleno), "; ".join(sup), "; ".join(cert), i.areas_competencia,
+                        i.gestor_imediato, i.jaleco_np, i.jaleco_pmg, i.jaleco_num, i.tamanho_blusa, i.numero_botina])
     elif tipo == "turmas":
         cursos = {c.id: c.codigo for c in db.scalars(select(Curso))}
         mz = {m.id: m for m in db.scalars(select(MatrizCurricular))}

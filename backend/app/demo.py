@@ -138,7 +138,7 @@ def carregar(db, ano: int = 2026):
         for d in range(5):
             db.add(DisponibilidadeInstrutor(instrutor_id=i.id, dia_semana=d, hora_inicio=ini, hora_fim=fim))
 
-    for cod_t, nome_t, cod_c, t_cod in [("ELT-1", "Eletrotécnica 1", "ELT", "M"), ("ELT-2", "Eletrotécnica 2", "ELT", "T"),
+    for cod_t, nome_t, cod_c, t_cod in [("ELT-1", "Eletrotécnica 1", "ELT", "M"), ("ELT-2", "Eletrotécnica 2", "ELT", "V"),
                                          ("AUT-1", "Automação Industrial 1", "AUT", "N")]:
         curso, mat, ucs = matrizes[cod_c]
         t = Turma(codigo=f"{PREFIXO}{cod_t}", nome=f"{nome_t} (DEMO)", curso_id=curso.id, matriz_id=mat.id, unidade_id=un.id, area_id=curso.area_id,

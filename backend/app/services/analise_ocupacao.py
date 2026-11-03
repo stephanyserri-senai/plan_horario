@@ -71,7 +71,7 @@ def situacao_no_dia(db: Session, cenario_id: int, dia: date, turno_codigo: str |
     from app.services.calendario import Calendarios
     # PFP (turno oculto "I") não tem coluna: as aulas dela (08–12, 13–17) caem na manhã e na tarde; o sábado vai por último
     turnos = sorted([t for t in _turnos(db, unidades) if t.codigo != "I" and (not turno_codigo or t.codigo == turno_codigo)],
-                    key=lambda t: (t.codigo == "S", t.hora_inicio))
+                    key=lambda t: (t.codigo in ("S", "SV"), t.hora_inicio))
     # turnos com aula neste dia da semana (o de sábado só no sábado; manhã, tarde e noite nos dias úteis)
     no_dia = {p.turno_id for p in db.scalars(select(PeriodoHorario).where(PeriodoHorario.ativo.is_(True), PeriodoHorario.excepcional.is_(False)))
               if dia.weekday() in (p.dias_semana or [])}
